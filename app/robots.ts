@@ -4,6 +4,6 @@ export default function robots() {
       userAgent: "*",
       allow: "/",
     },
-    sitemap: "https://your-vercel-domain.vercel.app/sitemap.xml",
+    sitemap: "https://job-site-buggedbrain.vercel.app/sitemap.xml",
   };
 }
