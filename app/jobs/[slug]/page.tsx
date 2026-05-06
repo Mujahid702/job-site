@@ -32,7 +32,7 @@ export default async function JobPage({
 
   if (!job) return <div className="p-6">Job not found</div>;
 
-  const jobUrl = `http://localhost:3000/jobs/${job.slug}`;
+  const jobUrl = `https://your-vercel-domain.vercel.app/jobs/${job.slug}`;
 
   return (
     <div className="max-w-4xl mx-auto p-6">
