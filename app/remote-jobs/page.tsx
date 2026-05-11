@@ -1,35 +1,36 @@
 import { supabase } from "@/lib/supabase";
 import JobCard from "@/components/JobCard";
-import { Briefcase, Sparkles, TrendingUp } from "lucide-react";
+import { Globe, Sparkles, TrendingUp } from "lucide-react";
 import { SidebarPromo } from "@/components/PromoComponents";
 
 export const metadata = {
-  title: "Fresher Jobs 2026 | BuggedBrain",
-  description: "Browse all latest fresher jobs and recruitment drives for 2026 graduates.",
+  title: "Remote Jobs 2026 | BuggedBrain",
+  description: "Browse remote-first job opportunities and work from anywhere in 2026.",
 };
 
-export default async function FresherJobs() {
+export default async function RemoteJobs() {
   const { data: jobs } = await supabase
     .from("jobs")
     .select("*")
+    .ilike("location", "%remote%")
     .order("created_at", { ascending: false });
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-16">
         <div>
-           <div className="flex items-center gap-2 text-blue-600 font-bold text-sm uppercase tracking-widest mb-2">
-              <Sparkles className="w-4 h-4 fill-blue-600" />
-              Direct Hiring
+           <div className="flex items-center gap-2 text-green-600 font-bold text-sm uppercase tracking-widest mb-2">
+              <Globe className="w-4 h-4" />
+              Work from Anywhere
            </div>
            <h1 className="text-5xl font-black text-slate-900 tracking-tight">
-              Fresher <span className="text-gradient">Jobs 2026</span>
+              Remote <span className="text-gradient">Opportunities</span>
            </h1>
-           <p className="text-lg text-slate-500 font-medium mt-4">Browse all latest full-time opportunities and recruitment drives.</p>
+           <p className="text-lg text-slate-500 font-medium mt-4">Work from the comfort of your home with these remote-first companies.</p>
         </div>
         <div className="flex items-center gap-4 text-sm font-bold text-slate-400 uppercase tracking-widest">
            <TrendingUp className="w-4 h-4" />
-           {jobs?.length || 0} Positions Available
+           {jobs?.length || 0} Global Roles
         </div>
       </div>
 
@@ -41,7 +42,7 @@ export default async function FresherJobs() {
               ))}
               {(!jobs || jobs.length === 0) && (
                 <div className="col-span-full py-32 text-center bg-white rounded-[3rem] border-2 border-dashed border-slate-200">
-                  <h3 className="text-2xl font-black text-slate-900 mb-2">No jobs found</h3>
+                  <h3 className="text-2xl font-black text-slate-900 mb-2">No remote jobs found</h3>
                   <p className="text-slate-500 font-medium">Check back soon for new opportunities!</p>
                 </div>
               )}
@@ -49,18 +50,18 @@ export default async function FresherJobs() {
          </div>
 
          <aside className="lg:col-span-4 space-y-8">
-            <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
-               <h4 className="text-xl font-black text-slate-900 mb-4">Job Alerts</h4>
-               <p className="text-sm text-slate-500 mb-6 font-medium">Get notified about new fresher jobs matching your profile.</p>
-               <button className="w-full py-4 bg-slate-900 text-white font-bold rounded-2xl hover:bg-blue-600 transition-all">Enable Alerts</button>
+            <div className="bg-slate-900 p-8 rounded-[2.5rem] text-white shadow-xl shadow-slate-200">
+               <h4 className="text-xl font-black mb-4">Remote Setup Guide</h4>
+               <p className="text-slate-400 mb-6 font-medium text-sm leading-relaxed">Everything you need to set up a productive home office and land a remote job.</p>
+               <button className="w-full py-4 bg-white text-slate-900 font-bold rounded-2xl hover:bg-blue-600 hover:text-white transition-all">Download Guide</button>
             </div>
 
             <SidebarPromo 
-               title="Top 10 High Paying Fresher Jobs"
-               description="A curated list of companies paying 12LPA+ for 2026 graduates."
+               title="Top 5 Skills for Remote Developers"
+               description="What companies look for when hiring remote software engineers in 2026."
                ctaText="Watch Video"
                youtubeLink="https://youtube.com"
-               thumbnail="https://images.unsplash.com/photo-1454165833767-027eeef1593e?auto=format&fit=crop&q=80&w=2070"
+               thumbnail="https://images.unsplash.com/photo-1527689368864-3a821dbccc34?auto=format&fit=crop&q=80&w=2070"
             />
          </aside>
       </div>

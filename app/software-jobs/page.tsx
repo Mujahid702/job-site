@@ -1,17 +1,18 @@
 import { supabase } from "@/lib/supabase";
 import JobCard from "@/components/JobCard";
-import { Briefcase, Sparkles, TrendingUp } from "lucide-react";
+import { Cpu, Sparkles, TrendingUp } from "lucide-react";
 import { SidebarPromo } from "@/components/PromoComponents";
 
 export const metadata = {
-  title: "Fresher Jobs 2026 | BuggedBrain",
-  description: "Browse all latest fresher jobs and recruitment drives for 2026 graduates.",
+  title: "Software Engineering Jobs 2026 | BuggedBrain",
+  description: "Latest Software Engineer, Developer, and IT jobs for freshers in 2026.",
 };
 
-export default async function FresherJobs() {
+export default async function SoftwareJobs() {
   const { data: jobs } = await supabase
     .from("jobs")
     .select("*")
+    .or("title.ilike.%software%,title.ilike.%developer%,title.ilike.%engineer%,title.ilike.%it%")
     .order("created_at", { ascending: false });
 
   return (
@@ -19,17 +20,17 @@ export default async function FresherJobs() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-16">
         <div>
            <div className="flex items-center gap-2 text-blue-600 font-bold text-sm uppercase tracking-widest mb-2">
-              <Sparkles className="w-4 h-4 fill-blue-600" />
-              Direct Hiring
+              <Cpu className="w-4 h-4" />
+              Tech & Engineering
            </div>
            <h1 className="text-5xl font-black text-slate-900 tracking-tight">
-              Fresher <span className="text-gradient">Jobs 2026</span>
+              Software <span className="text-gradient">Engineering</span>
            </h1>
-           <p className="text-lg text-slate-500 font-medium mt-4">Browse all latest full-time opportunities and recruitment drives.</p>
+           <p className="text-lg text-slate-500 font-medium mt-4">The best tech opportunities for the class of 2026 graduates.</p>
         </div>
         <div className="flex items-center gap-4 text-sm font-bold text-slate-400 uppercase tracking-widest">
            <TrendingUp className="w-4 h-4" />
-           {jobs?.length || 0} Positions Available
+           {jobs?.length || 0} Openings
         </div>
       </div>
 
@@ -41,7 +42,7 @@ export default async function FresherJobs() {
               ))}
               {(!jobs || jobs.length === 0) && (
                 <div className="col-span-full py-32 text-center bg-white rounded-[3rem] border-2 border-dashed border-slate-200">
-                  <h3 className="text-2xl font-black text-slate-900 mb-2">No jobs found</h3>
+                  <h3 className="text-2xl font-black text-slate-900 mb-2">No software jobs found</h3>
                   <p className="text-slate-500 font-medium">Check back soon for new opportunities!</p>
                 </div>
               )}
@@ -49,18 +50,18 @@ export default async function FresherJobs() {
          </div>
 
          <aside className="lg:col-span-4 space-y-8">
-            <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
-               <h4 className="text-xl font-black text-slate-900 mb-4">Job Alerts</h4>
-               <p className="text-sm text-slate-500 mb-6 font-medium">Get notified about new fresher jobs matching your profile.</p>
-               <button className="w-full py-4 bg-slate-900 text-white font-bold rounded-2xl hover:bg-blue-600 transition-all">Enable Alerts</button>
+            <div className="bg-blue-600 p-8 rounded-[2.5rem] text-white shadow-xl shadow-blue-100">
+               <h4 className="text-xl font-black mb-4">Interview Prep</h4>
+               <p className="text-blue-100 mb-6 font-medium text-sm leading-relaxed">Master Data Structures and Algorithms with our curated problem list for 2026 grads.</p>
+               <button className="w-full py-4 bg-white text-blue-600 font-bold rounded-2xl hover:bg-blue-50 transition-all">Start Practicing</button>
             </div>
 
             <SidebarPromo 
-               title="Top 10 High Paying Fresher Jobs"
-               description="A curated list of companies paying 12LPA+ for 2026 graduates."
-               ctaText="Watch Video"
+               title="2026 Developer Salary Report"
+               description="How much should you expect as a fresher software engineer in 2026? Live data from top cities."
+               ctaText="Watch Report"
                youtubeLink="https://youtube.com"
-               thumbnail="https://images.unsplash.com/photo-1454165833767-027eeef1593e?auto=format&fit=crop&q=80&w=2070"
+               thumbnail="https://images.unsplash.com/photo-1551288049-bbbda5366991?auto=format&fit=crop&q=80&w=2070"
             />
          </aside>
       </div>

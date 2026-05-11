@@ -1,75 +1,45 @@
 import { createClient } from "@/lib/supabase/server";
-import { Briefcase, Users, Eye, TrendingUp, Calendar, MapPin, ExternalLink, Edit2, Trash2 } from "lucide-react";
+import { Briefcase, MapPin, Calendar, ExternalLink, Edit2, Trash2, Search } from "lucide-react";
 import Link from "next/link";
 
-export default async function AdminDashboard() {
+export default async function ManageJobs() {
   const supabase = await createClient();
 
-  // Fetch some stats
-  const { count: totalJobs } = await supabase.from("jobs").select("*", { count: 'exact', head: true });
-  
-  // For now, let's just fetch latest 5 jobs for the table
-  const { data: latestJobs } = await supabase
+  const { data: jobs } = await supabase
     .from("jobs")
     .select("*")
-    .order("created_at", { ascending: false })
-    .limit(5);
-
-  const stats = [
-    { label: "Total Jobs", value: totalJobs || 0, icon: Briefcase, color: "bg-blue-500" },
-    { label: "Total Applications", value: "2.4k", icon: Users, color: "bg-green-500" },
-    { label: "Page Views", value: "15.8k", icon: Eye, color: "bg-indigo-500" },
-    { label: "Engagement", value: "+12%", icon: TrendingUp, color: "bg-orange-500" },
-  ];
+    .order("created_at", { ascending: false });
 
   return (
     <div className="space-y-10">
       <div className="flex justify-between items-end">
         <div>
-          <h1 className="text-4xl font-black text-slate-900 tracking-tight">Dashboard</h1>
-          <p className="text-slate-500 mt-2">Overview of your job portal performance</p>
+          <h1 className="text-4xl font-black text-slate-900 tracking-tight">Manage Jobs</h1>
+          <p className="text-slate-500 mt-2">Manage your active job postings</p>
         </div>
-        <Link 
-          href="/admin/new" 
-          className="px-6 py-3 bg-blue-600 text-white font-bold rounded-2xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-200"
-        >
-          Post New Job
-        </Link>
+        <div className="relative w-72">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+          <input 
+            type="text" 
+            placeholder="Search jobs..." 
+            className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm"
+          />
+        </div>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {stats.map((stat) => (
-          <div key={stat.label} className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex items-center gap-6">
-            <div className={`w-14 h-14 ${stat.color} rounded-2xl flex items-center justify-center text-white shadow-lg`}>
-              <stat.icon className="w-7 h-7" />
-            </div>
-            <div>
-              <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">{stat.label}</p>
-              <p className="text-2xl font-black text-slate-900">{stat.value}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Latest Jobs Table */}
       <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-8 border-b border-slate-100 flex justify-between items-center">
-          <h2 className="text-xl font-black text-slate-900">Latest Job Postings</h2>
-          <Link href="/admin/jobs" className="text-blue-600 font-bold hover:underline text-sm">View All Jobs</Link>
-        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead className="bg-slate-50 text-slate-500 text-xs font-bold uppercase tracking-widest">
               <tr>
                 <th className="px-8 py-4">Job Title & Company</th>
                 <th className="px-8 py-4">Location</th>
-                <th className="px-8 py-4">Date Posted</th>
+                <th className="px-8 py-4">Salary</th>
                 <th className="px-8 py-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {latestJobs?.map((job) => (
+              {jobs?.map((job) => (
                 <tr key={job.id} className="hover:bg-slate-50 transition-colors">
                   <td className="px-8 py-6">
                     <div>
@@ -84,9 +54,8 @@ export default async function AdminDashboard() {
                     </div>
                   </td>
                   <td className="px-8 py-6">
-                    <div className="flex items-center gap-2 text-slate-600 text-sm font-medium">
-                      <Calendar className="w-4 h-4 text-slate-400" />
-                      {new Date(job.created_at).toLocaleDateString()}
+                    <div className="text-sm font-bold text-blue-600">
+                      {job.salary}
                     </div>
                   </td>
                   <td className="px-8 py-6 text-right">

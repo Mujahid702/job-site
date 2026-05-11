@@ -1,26 +1,104 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: "Plus Jakarta Sans", var(--font-geist-sans), ui-sans-serif, system-ui;
   --font-mono: var(--font-geist-mono);
+  
+  --radius-3xl: 2rem;
+  --radius-2xl: 1.5rem;
+  --radius-xl: 1rem;
+  
+  --color-accent: var(--accent);
+  --color-accent-foreground: #ffffff;
+}
+
+:root {
+  --background: #ffffff;
+  --foreground: #1e293b;
+  --accent: #f43f5e;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    /* Keeping it light for now as per "premium job site" typical look, 
+       but we can add dark mode if requested. The user said "premium" 
+       and often these sites are light/clean. */
   }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+/* Reference Style Sidebar Header */
+.sidebar-header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #1e293b;
+  margin-bottom: 1.5rem;
+}
+
+.sidebar-header::before {
+  content: "";
+  display: block;
+  width: 12px;
+  height: 12px;
+  background: var(--accent);
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.sidebar-header::after {
+  content: "";
+  display: block;
+  flex-grow: 1;
+  height: 1px;
+  background: #e2e8f0;
+}
+
+.job-table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid #e2e8f0;
+}
+
+.job-table td {
+  padding: 12px 16px;
+  border: 1px solid #e2e8f0;
+  font-size: 0.95rem;
+}
+
+.job-table td:first-child {
+  font-weight: 700;
+  color: #475569;
+  width: 40%;
+}
+
+.section-spacing {
+  margin-top: 5rem;
+  margin-bottom: 5rem;
+}
+
+.content-padding {
+  padding-top: 4rem;
+  padding-bottom: 4rem;
+}
+
+.btn-accent {
+  background-color: var(--accent);
+  color: white;
+  transition: all 0.2s;
+}
+
+.btn-accent:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
 }
