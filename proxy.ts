@@ -42,7 +42,7 @@ export async function proxy(request: NextRequest) {
       return NextResponse.redirect(url)
     }
 
-    const isAdmin = user.email === 'admin@example.com' || user.email === 'buggedbrain2026@gmail.com' || user.user_metadata?.role === 'admin'
+    const isAdmin = user.email === 'admin@example.com' || user.email === 'buggedbrain2026@gmail.com' || user.email === 'mujjumujahid1992@gmail.com' || user.user_metadata?.role === 'admin'
     if (!isAdmin) {
       const url = request.nextUrl.clone()
       url.pathname = '/'

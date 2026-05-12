@@ -9,10 +9,9 @@ import {
   CheckCircle2,
   AlertCircle,
   Video,
-  ChevronRight,
-  XCircle
-} from "lucide-react";
+import { ChevronRight, XCircle } from "lucide-react";
 import Sidebar from "@/components/Sidebar";
+import ViewTracker from "@/components/ViewTracker";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -88,8 +87,10 @@ export default async function JobPage({
 
             <div className="flex items-center gap-2 text-sm font-bold text-slate-500">
                <Eye className="w-4 h-4" />
-               4,769 views
+               {job.views || 0} views
             </div>
+
+            <ViewTracker jobId={job.id} />
 
             {/* YouTube Guide Section - NEW */}
             <section className="p-10 bg-slate-900 rounded-[2.5rem] text-white relative overflow-hidden group">
@@ -289,7 +290,7 @@ export default async function JobPage({
                <h2 className="text-4xl font-black text-slate-900 uppercase text-center">Apply Link :-</h2>
                
                <div className="flex flex-col items-center gap-8">
-                  <a href={job.apply_link} target="_blank" className="w-full max-w-sm">
+                  <a href={`/api/track/apply?id=${job.id}&url=${encodeURIComponent(job.apply_link)}`} target="_blank" className="w-full max-w-sm">
                     <button className="w-full py-5 bg-accent text-white text-xl font-black rounded-xl shadow-xl shadow-accent/20 hover:scale-[1.02] transition-all">
                       Apply Now
                     </button>

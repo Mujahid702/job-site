@@ -5,10 +5,19 @@ import Link from "next/link";
 export default async function AdminDashboard() {
   const supabase = await createClient();
 
-  // Fetch some stats
-  const { count: totalJobs } = await supabase.from("jobs").select("*", { count: 'exact', head: true });
+  // Fetch all jobs to aggregate analytics
+  const { data: allJobs } = await supabase.from("jobs").select("views, applications");
+
+  const totalJobs = allJobs?.length || 0;
+  const totalViews = allJobs?.reduce((sum, job) => sum + (job.views || 0), 0) || 0;
+  const totalApplications = allJobs?.reduce((sum, job) => sum + (job.applications || 0), 0) || 0;
   
-  // For now, let's just fetch latest 5 jobs for the table
+  // Calculate Engagement (Applications / Views * 100)
+  const engagementRate = totalViews > 0 
+    ? ((totalApplications / totalViews) * 100).toFixed(1) + "%" 
+    : "0%";
+  
+  // Fetch latest 5 jobs for the table
   const { data: latestJobs } = await supabase
     .from("jobs")
     .select("*")
@@ -16,10 +25,10 @@ export default async function AdminDashboard() {
     .limit(5);
 
   const stats = [
-    { label: "Total Jobs", value: totalJobs || 0, icon: Briefcase, color: "bg-blue-500" },
-    { label: "Total Applications", value: "2.4k", icon: Users, color: "bg-green-500" },
-    { label: "Page Views", value: "15.8k", icon: Eye, color: "bg-indigo-500" },
-    { label: "Engagement", value: "+12%", icon: TrendingUp, color: "bg-orange-500" },
+    { label: "Total Jobs", value: totalJobs, icon: Briefcase, color: "bg-blue-500" },
+    { label: "Total Applications", value: totalApplications, icon: Users, color: "bg-green-500" },
+    { label: "Page Views", value: totalViews, icon: Eye, color: "bg-indigo-500" },
+    { label: "Engagement", value: engagementRate, icon: TrendingUp, color: "bg-orange-500" },
   ];
 
   return (
@@ -30,12 +39,7 @@ export default async function AdminDashboard() {
           <p className="text-slate-500 mt-2">Overview of your job portal performance</p>
         </div>
         <div className="flex gap-4">
-          <Link 
-            href="/admin/new" 
-            className="px-6 py-3 bg-blue-600 text-white font-bold rounded-2xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-200"
-          >
-            Post New Job
-          </Link>
+
           <Link 
             href="/admin/drives/new" 
             className="px-6 py-3 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200"

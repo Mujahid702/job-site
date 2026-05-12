@@ -10,17 +10,28 @@ import { User } from "@supabase/supabase-js";
 export default function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [user, setUser] = useState<User | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const supabase = createClient();
 
   useEffect(() => {
+    const checkAdmin = (u: User | null) => {
+      if (!u) return false;
+      return u.email === 'admin@example.com' || 
+             u.email === 'buggedbrain2026@gmail.com' || 
+             u.email === 'mujjumujahid1992@gmail.com' || 
+             u.user_metadata?.role === 'admin';
+    };
+
     const getUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       setUser(user);
+      setIsAdmin(checkAdmin(user));
     };
     getUser();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
+      setIsAdmin(checkAdmin(session?.user ?? null));
     });
 
     return () => subscription.unsubscribe();
@@ -57,10 +68,12 @@ export default function Header() {
           <div className="flex items-center gap-4 ml-4 pl-8 border-l border-slate-100">
             {user ? (
               <>
-                <Link href="/admin" className="text-sm font-black text-slate-600 hover:text-blue-600 transition-colors flex items-center gap-2">
-                  <LayoutDashboard className="w-4 h-4" />
-                  Admin
-                </Link>
+                {isAdmin && (
+                  <Link href="/admin" className="text-sm font-black text-slate-600 hover:text-blue-600 transition-colors flex items-center gap-2">
+                    <LayoutDashboard className="w-4 h-4" />
+                    Admin
+                  </Link>
+                )}
                 <form action="/auth/logout" method="post">
                   <button 
                     type="submit" 
@@ -112,14 +125,16 @@ export default function Header() {
           <div className="grid grid-cols-2 gap-4 mt-6 pt-6 border-t border-slate-50">
             {user ? (
               <>
-                <Link 
-                  href="/admin" 
-                  className="flex items-center justify-center gap-2 py-3 text-sm font-black text-slate-600 bg-slate-50 rounded-xl"
-                  onClick={() => setIsMenuOpen(false)}
-                >
-                  <LayoutDashboard className="w-4 h-4" />
-                  Admin
-                </Link>
+                {isAdmin && (
+                  <Link 
+                    href="/admin" 
+                    className="flex items-center justify-center gap-2 py-3 text-sm font-black text-slate-600 bg-slate-50 rounded-xl"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    <LayoutDashboard className="w-4 h-4" />
+                    Admin
+                  </Link>
+                )}
                 <form action="/auth/logout" method="post" className="w-full">
                   <button 
                     type="submit" 
