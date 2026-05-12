@@ -42,6 +42,13 @@ export default async function AdminLayout({
             Post New Job
           </Link>
           <Link 
+            href="/admin/drives/new" 
+            className="flex items-center gap-3 px-4 py-3 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all font-bold"
+          >
+            <PlusCircle className="w-5 h-5" />
+            Post New Drive
+          </Link>
+          <Link 
             href="/admin/jobs" 
             className="flex items-center gap-3 px-4 py-3 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all font-bold"
           >

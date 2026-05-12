@@ -66,7 +66,7 @@ export default function PrivacyPage() {
                <FileText className="w-6 h-6" />
              </div>
              <p className="text-blue-900 font-bold">
-               If you have any questions about this Privacy Policy, please contact us at <span className="underline">contactoffcampusjob@gmail.com</span>.
+               If you have any questions about this Privacy Policy, please contact us at <span className="underline">buggedbrain2026@gmail.com</span>.
              </p>
           </div>
         </div>

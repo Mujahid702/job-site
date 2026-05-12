@@ -46,12 +46,8 @@ export default function Footer() {
             <h3 className="text-lg font-black text-slate-900 mb-6">Contact Us</h3>
             <ul className="space-y-4 text-sm font-bold text-slate-500">
               <li className="flex items-center gap-2">
-                <Phone className="w-4 h-4 text-accent" />
-                9949065883
-              </li>
-              <li className="flex items-center gap-2">
                 <Mail className="w-4 h-4 text-accent" />
-                contactoffcampusjob@gmail.com
+                buggedbrain2026@gmail.com
               </li>
             </ul>
           </div>

@@ -1,12 +1,30 @@
 "use client";
 
 import Link from "next/link";
-import { Menu } from "lucide-react";
-import { useState } from "react";
+import { Menu, LogOut, LayoutDashboard } from "lucide-react";
+import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
+import { User } from "@supabase/supabase-js";
 
 export default function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const supabase = createClient();
+
+  useEffect(() => {
+    const getUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+    };
+    getUser();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, [supabase.auth]);
 
   const navLinks = [
     { href: "/", label: "Home" },
@@ -36,6 +54,37 @@ export default function Header() {
               {link.label}
             </Link>
           ))}
+          <div className="flex items-center gap-4 ml-4 pl-8 border-l border-slate-100">
+            {user ? (
+              <>
+                <Link href="/admin" className="text-sm font-black text-slate-600 hover:text-blue-600 transition-colors flex items-center gap-2">
+                  <LayoutDashboard className="w-4 h-4" />
+                  Admin
+                </Link>
+                <form action="/auth/logout" method="post">
+                  <button 
+                    type="submit" 
+                    className="px-6 py-2.5 bg-red-50 text-red-600 text-sm font-black rounded-xl hover:bg-red-100 transition-all flex items-center gap-2"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    Logout
+                  </button>
+                </form>
+              </>
+            ) : (
+              <>
+                <Link href="/login" className="text-sm font-black text-slate-600 hover:text-accent transition-colors">
+                  Login
+                </Link>
+                <Link 
+                  href="/signup" 
+                  className="px-6 py-2.5 bg-slate-900 text-white text-sm font-black rounded-xl hover:bg-accent transition-all shadow-lg shadow-slate-200"
+                >
+                  Sign Up
+                </Link>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Mobile Menu Button */}
@@ -60,6 +109,47 @@ export default function Header() {
               {link.label}
             </Link>
           ))}
+          <div className="grid grid-cols-2 gap-4 mt-6 pt-6 border-t border-slate-50">
+            {user ? (
+              <>
+                <Link 
+                  href="/admin" 
+                  className="flex items-center justify-center gap-2 py-3 text-sm font-black text-slate-600 bg-slate-50 rounded-xl"
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  <LayoutDashboard className="w-4 h-4" />
+                  Admin
+                </Link>
+                <form action="/auth/logout" method="post" className="w-full">
+                  <button 
+                    type="submit" 
+                    className="w-full flex items-center justify-center gap-2 py-3 text-sm font-black text-white bg-red-600 rounded-xl"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    <LogOut className="w-4 h-4" />
+                    Logout
+                  </button>
+                </form>
+              </>
+            ) : (
+              <>
+                <Link 
+                  href="/login" 
+                  className="flex items-center justify-center py-3 text-sm font-black text-slate-600 bg-slate-50 rounded-xl"
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  Login
+                </Link>
+                <Link 
+                  href="/signup" 
+                  className="flex items-center justify-center py-3 text-sm font-black text-white bg-slate-900 rounded-xl"
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  Sign Up
+                </Link>
+              </>
+            )}
+          </div>
         </div>
       )}
     </header>

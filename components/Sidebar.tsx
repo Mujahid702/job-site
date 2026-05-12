@@ -16,11 +16,12 @@ export default async function Sidebar() {
         <h3 className="sidebar-header">Search</h3>
         <div className="relative group">
           <input 
+            suppressHydrationWarning
             type="text" 
             placeholder="Search jobs..." 
             className="w-full pl-4 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-accent transition-all"
           />
-          <button className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-accent text-white rounded-lg flex items-center justify-center hover:brightness-110 transition-all">
+          <button suppressHydrationWarning className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-accent text-white rounded-lg flex items-center justify-center hover:brightness-110 transition-all">
             <Search className="w-4 h-4" />
           </button>
         </div>
@@ -33,7 +34,7 @@ export default async function Sidebar() {
           Subscribe to our YouTube channel for latest job updates, interview tips, and placement preparation guides.
         </p>
         <Link 
-          href="https://youtube.com" 
+          href="https://youtube.com/@buggedbrain25?si=KCFxnvILvUyn3M5_" 
           target="_blank"
           className="flex items-center justify-center gap-3 w-full py-4 bg-red-600 text-white font-black rounded-xl hover:bg-red-700 transition-all shadow-lg shadow-red-200"
         >
@@ -49,7 +50,7 @@ export default async function Sidebar() {
           Join our WhatsApp community to get instant job alerts directly on your phone.
         </p>
         <Link 
-          href="https://whatsapp.com" 
+          href="https://chat.whatsapp.com/DYALTIh1csSHuV0zdD9ONW" 
           target="_blank"
           className="flex items-center justify-center gap-3 w-full py-4 bg-green-600 text-white font-black rounded-xl hover:bg-green-700 transition-all shadow-lg shadow-green-200"
         >

@@ -1,4 +1,5 @@
 import { Mail, Phone, MapPin, Send, MessageSquare } from "lucide-react";
+import Link from "next/link";
 
 export const metadata = {
   title: "Contact Us | BuggedBrain",
@@ -37,19 +38,10 @@ export default function ContactPage() {
                   </div>
                   <div>
                     <p className="text-sm font-black text-slate-400 uppercase tracking-widest mb-1">Email Us</p>
-                    <p className="text-xl font-bold text-slate-900">contactoffcampusjob@gmail.com</p>
+                    <p className="text-xl font-bold text-slate-900">buggedbrain2026@gmail.com</p>
                   </div>
                 </div>
 
-                <div className="flex items-start gap-6 group">
-                  <div className="w-14 h-14 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center shrink-0 group-hover:bg-indigo-600 group-hover:text-white transition-all">
-                    <Phone className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-black text-slate-400 uppercase tracking-widest mb-1">Call Us</p>
-                    <p className="text-xl font-bold text-slate-900">+91 99490 65883</p>
-                  </div>
-                </div>
 
                 <div className="flex items-start gap-6 group">
                   <div className="w-14 h-14 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0 group-hover:bg-emerald-600 group-hover:text-white transition-all">
@@ -71,8 +63,8 @@ export default function ContactPage() {
                </p>
                <div className="flex gap-4 relative z-10">
                  {/* Social icons could go here */}
-                 <button className="px-6 py-3 bg-white/10 hover:bg-white/20 rounded-xl font-bold transition-all">WhatsApp</button>
-                 <button className="px-6 py-3 bg-white/10 hover:bg-white/20 rounded-xl font-bold transition-all">Telegram</button>
+                 <Link href="https://chat.whatsapp.com/DYALTIh1csSHuV0zdD9ONW" target="_blank" className="px-6 py-3 bg-white/10 hover:bg-white/20 rounded-xl font-bold transition-all text-center">WhatsApp</Link>
+                 <Link href="https://youtube.com/@buggedbrain25?si=KCFxnvILvUyn3M5_" target="_blank" className="px-6 py-3 bg-white/10 hover:bg-white/20 rounded-xl font-bold transition-all text-center">YouTube</Link>
                </div>
             </div>
           </div>

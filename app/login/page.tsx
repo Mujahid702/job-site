@@ -19,18 +19,26 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    try {
+      console.log("Supabase client:", supabase);
+      console.log("Supabase auth:", supabase?.auth);
+      
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (error) {
-      setError(error.message);
+      if (error) {
+        setError(error.message);
+        setLoading(false);
+      } else {
+        router.push("/");
+        router.refresh();
+      }
+    } catch (err: any) {
+      console.error("Login crash:", err);
+      setError(err.message || "An unexpected error occurred");
       setLoading(false);
-    } else {
-      router.push("/");
-      router.refresh();
     }
   };
 

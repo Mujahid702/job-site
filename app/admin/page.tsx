@@ -29,12 +29,20 @@ export default async function AdminDashboard() {
           <h1 className="text-4xl font-black text-slate-900 tracking-tight">Dashboard</h1>
           <p className="text-slate-500 mt-2">Overview of your job portal performance</p>
         </div>
-        <Link 
-          href="/admin/new" 
-          className="px-6 py-3 bg-blue-600 text-white font-bold rounded-2xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-200"
-        >
-          Post New Job
-        </Link>
+        <div className="flex gap-4">
+          <Link 
+            href="/admin/new" 
+            className="px-6 py-3 bg-blue-600 text-white font-bold rounded-2xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-200"
+          >
+            Post New Job
+          </Link>
+          <Link 
+            href="/admin/drives/new" 
+            className="px-6 py-3 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200"
+          >
+            Post New Drive
+          </Link>
+        </div>
       </div>
 
       {/* Stats Grid */}
