@@ -9,7 +9,9 @@ import {
   CheckCircle2,
   AlertCircle,
   Video,
-import { ChevronRight, XCircle } from "lucide-react";
+  ChevronRight,
+  XCircle
+} from "lucide-react";
 import Sidebar from "@/components/Sidebar";
 import ViewTracker from "@/components/ViewTracker";
 
