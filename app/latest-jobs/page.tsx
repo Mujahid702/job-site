@@ -10,7 +10,7 @@ export const metadata = {
 
 export default async function LatestJobsPage() {
   const { data: jobs } = await supabase
-    .from("jobs")
+    .from("job_postings")
     .select("*")
     .order("created_at", { ascending: false });
 
@@ -19,7 +19,7 @@ export default async function LatestJobsPage() {
       {/* Page Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-16">
         <div>
-           <div className="flex items-center gap-2 text-accent font-black text-xs uppercase tracking-[0.2em] mb-4">
+           <div className="flex items-center gap-2 text-accent font-black text-[10px] font-black uppercase tracking-[0.2em] mb-4">
               <Zap className="w-4 h-4 fill-accent" />
               Freshly Posted
            </div>
@@ -31,7 +31,7 @@ export default async function LatestJobsPage() {
            </p>
         </div>
         <div className="flex flex-wrap items-center gap-4">
-           <div className="px-5 py-3 bg-slate-50 text-slate-400 font-black text-xs uppercase tracking-widest rounded-xl border border-slate-100 flex items-center gap-2">
+           <div className="px-5 py-3 bg-slate-50 text-slate-400 font-black text-[10px] uppercase tracking-[0.2em] rounded-xl border border-slate-100 flex items-center gap-2">
               <TrendingUp className="w-4 h-4" />
               {jobs?.length || 0} Open Roles
            </div>
@@ -46,12 +46,12 @@ export default async function LatestJobsPage() {
                  <JobCard key={job.id} job={job} />
                ))}
                {(!jobs || jobs.length === 0) && (
-                 <div className="col-span-full py-40 text-center bg-slate-50 rounded-[4rem] border-2 border-dashed border-slate-200">
+                 <div className="col-span-full py-40 text-center bg-slate-50 rounded-[4rem] border border-dashed border-slate-200">
                     <div className="w-20 h-20 bg-white rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-sm">
                       <Filter className="w-10 h-10 text-slate-300" />
                     </div>
                     <h3 className="text-3xl font-black text-slate-900 mb-2">No jobs listed yet</h3>
-                    <p className="text-slate-500 font-medium">We're currently scouring the web for new roles. Check back in an hour!</p>
+                    <p className="text-slate-500 font-medium">We're currently scouring the web for new roles. Check back soon!</p>
                  </div>
                )}
              </div>
@@ -62,35 +62,35 @@ export default async function LatestJobsPage() {
              <div className="bg-slate-900 p-10 rounded-[3rem] text-white relative overflow-hidden shadow-2xl shadow-slate-200">
                 <div className="absolute top-0 right-0 w-32 h-32 bg-accent/20 blur-[60px]"></div>
                 <h4 className="text-2xl font-black mb-4 relative z-10">Job Alerts 24/7</h4>
-                <p className="text-slate-400 font-medium mb-8 relative z-10 leading-relaxed text-sm">
+                <p className="text-slate-400 font-bold mb-8 relative z-10 leading-relaxed text-sm">
                   Never miss an opportunity. Get instant notifications when a job matching your profile is posted.
                 </p>
-                <button className="w-full py-4 bg-white text-slate-900 font-black rounded-2xl hover:bg-accent hover:text-white transition-all relative z-10 uppercase tracking-widest text-xs">
+                <button className="w-full py-4 bg-white text-slate-900 font-black rounded-2xl hover:bg-accent hover:text-white transition-all relative z-10 uppercase tracking-[0.2em] text-[10px] shadow-lg">
                   Subscribe to Alerts
                 </button>
              </div>
 
              <SidebarPromo 
-                title="Prepare for Interviews"
-                description="Our curated guides help you clear rounds at TCS, Wipro, and Infosys with ease."
-                ctaText="Start Learning"
-                youtubeLink="https://youtube.com"
+                title="Interview Readiness"
+                description="Our curated guides help you clear rounds at TCS, Wipro, and Infosys with ease for 2026."
+                ctaText="Start Prep"
+                youtubeLink="https://youtube.com/@buggedbrain25"
                 thumbnail="https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&q=80&w=2070"
              />
 
              <div className="bg-blue-50 p-10 rounded-[3rem] border border-blue-100">
-                <h4 className="text-xl font-black text-blue-900 mb-4">Quick Stats</h4>
+                <h4 className="text-xl font-black text-blue-900 mb-4 tracking-tight">Market Stats</h4>
                 <div className="space-y-6">
                    <div className="flex justify-between items-center pb-4 border-b border-blue-200/50">
-                      <span className="text-sm font-bold text-blue-700/70">MNC Roles</span>
+                      <span className="text-[10px] font-black text-blue-700/70 uppercase tracking-widest">MNC Roles</span>
                       <span className="text-lg font-black text-blue-900">45+</span>
                    </div>
                    <div className="flex justify-between items-center pb-4 border-b border-blue-200/50">
-                      <span className="text-sm font-bold text-blue-700/70">Startup Roles</span>
+                      <span className="text-[10px] font-black text-blue-700/70 uppercase tracking-widest">Startup Roles</span>
                       <span className="text-lg font-black text-blue-900">120+</span>
                    </div>
                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-bold text-blue-700/70">Internships</span>
+                      <span className="text-[10px] font-black text-blue-700/70 uppercase tracking-widest">Internships</span>
                       <span className="text-lg font-black text-blue-900">30+</span>
                    </div>
                 </div>

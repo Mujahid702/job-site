@@ -10,7 +10,7 @@ import {
 
 export default async function Home() {
   const { data: jobs } = await supabase
-    .from("jobs")
+    .from("job_postings")
     .select("*")
     .order("created_at", { ascending: false });
 
@@ -63,7 +63,7 @@ export default async function Home() {
               {latestJobs.map((job) => (
                 <Link 
                   key={job.id} 
-                  href={`/jobs/${job.slug}`}
+                  href={`/jobs/${job.drive_slug}`}
                   className="block bg-white p-8 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md hover:border-accent/20 transition-all group"
                 >
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -77,7 +77,7 @@ export default async function Home() {
                         </span>
                       </div>
                       <h3 className="text-2xl font-black text-slate-900 group-hover:text-accent transition-colors leading-tight">
-                        {job.company} Careers Hiring {job.title} 2026 Apply Now
+                        {job.company_name} Careers Hiring {job.drive_title} 2026 Apply Now
                       </h3>
                       <div className="flex items-center gap-4 text-xs font-bold text-slate-400 uppercase tracking-widest">
                         <span>jobs adda freshers</span>
@@ -85,6 +85,7 @@ export default async function Home() {
                         <span>{new Date(job.created_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span>
                       </div>
                     </div>
+
                     <div className="shrink-0 flex items-center justify-center w-12 h-12 rounded-full border border-slate-100 group-hover:bg-accent group-hover:text-white transition-all">
                       <ChevronRight className="w-6 h-6" />
                     </div>

@@ -13,8 +13,8 @@ export async function POST(request: Request) {
 
     // Fetch current views
     const { data: job, error: fetchError } = await supabase
-      .from("jobs")
-      .select("views")
+      .from("job_postings")
+      .select("views_count")
       .eq("id", jobId)
       .single();
 
@@ -22,12 +22,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: fetchError.message }, { status: 500 });
     }
 
-    const currentViews = job.views || 0;
+    const currentViews = job.views_count || 0;
 
     // Update with incremented views
     const { error: updateError } = await supabase
-      .from("jobs")
-      .update({ views: currentViews + 1 })
+      .from("job_postings")
+      .update({ views_count: currentViews + 1 })
       .eq("id", jobId);
 
     if (updateError) {

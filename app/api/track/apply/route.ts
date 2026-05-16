@@ -15,18 +15,18 @@ export async function GET(request: Request) {
 
     // Fetch current applications count
     const { data: job, error: fetchError } = await supabase
-      .from("jobs")
-      .select("applications")
+      .from("job_postings")
+      .select("applications_count")
       .eq("id", jobId)
       .single();
 
     if (!fetchError) {
-      const currentApps = job.applications || 0;
+      const currentApps = job.applications_count || 0;
 
       // Update with incremented applications
       await supabase
-        .from("jobs")
-        .update({ applications: currentApps + 1 })
+        .from("job_postings")
+        .update({ applications_count: currentApps + 1 })
         .eq("id", jobId);
     }
   } catch (error) {

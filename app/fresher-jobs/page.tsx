@@ -10,7 +10,7 @@ export const metadata = {
 
 export default async function FresherJobs() {
   const { data: jobs } = await supabase
-    .from("jobs")
+    .from("job_postings")
     .select("*")
     .order("created_at", { ascending: false });
 
@@ -18,16 +18,16 @@ export default async function FresherJobs() {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-16">
         <div>
-           <div className="flex items-center gap-2 text-blue-600 font-bold text-sm uppercase tracking-widest mb-2">
+           <div className="flex items-center gap-2 text-blue-600 font-bold text-[10px] font-black uppercase tracking-[0.2em] mb-2">
               <Sparkles className="w-4 h-4 fill-blue-600" />
               Direct Hiring
            </div>
-           <h1 className="text-5xl font-black text-slate-900 tracking-tight">
+           <h1 className="text-5xl font-black text-slate-900 tracking-tight leading-tight">
               Fresher <span className="text-gradient">Jobs 2026</span>
            </h1>
            <p className="text-lg text-slate-500 font-medium mt-4">Browse all latest full-time opportunities and recruitment drives.</p>
         </div>
-        <div className="flex items-center gap-4 text-sm font-bold text-slate-400 uppercase tracking-widest">
+        <div className="flex items-center gap-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
            <TrendingUp className="w-4 h-4" />
            {jobs?.length || 0} Positions Available
         </div>
@@ -50,16 +50,16 @@ export default async function FresherJobs() {
 
          <aside className="lg:col-span-4 space-y-8">
             <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
-               <h4 className="text-xl font-black text-slate-900 mb-4">Job Alerts</h4>
-               <p className="text-sm text-slate-500 mb-6 font-medium">Get notified about new fresher jobs matching your profile.</p>
-               <button className="w-full py-4 bg-slate-900 text-white font-bold rounded-2xl hover:bg-blue-600 transition-all">Enable Alerts</button>
+               <h4 className="text-xl font-black text-slate-900 mb-4 tracking-tight">Instant Alerts</h4>
+               <p className="text-sm text-slate-500 mb-6 font-bold">Get notified about new fresher jobs matching your profile instantly.</p>
+               <button className="w-full py-4 bg-slate-900 text-white font-black rounded-2xl hover:bg-blue-600 transition-all shadow-lg text-[10px] uppercase tracking-widest">Enable Alerts</button>
             </div>
 
             <SidebarPromo 
-               title="Top 10 High Paying Fresher Jobs"
-               description="A curated list of companies paying 12LPA+ for 2026 graduates."
-               ctaText="Watch Video"
-               youtubeLink="https://youtube.com"
+               title="High Paying Fresher Jobs"
+               description="A curated list of companies paying 12LPA+ for 2026 graduates across India."
+               ctaText="Watch Masterclass"
+               youtubeLink="https://youtube.com/@buggedbrain25"
                thumbnail="https://images.unsplash.com/photo-1454165833767-027eeef1593e?auto=format&fit=crop&q=80&w=2070"
             />
          </aside>

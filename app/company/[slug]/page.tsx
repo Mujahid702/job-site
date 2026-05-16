@@ -25,46 +25,46 @@ export default async function CompanyPage({
   const companySearch = slug.replace(/-/g, ' ');
 
   const { data: jobs } = await supabase
-    .from("jobs")
+    .from("job_postings")
     .select("*")
-    .ilike("company", `%${companySearch}%`);
+    .ilike("company_name", `%${companySearch}%`);
 
   if (!jobs || jobs.length === 0) {
     return notFound();
   }
 
-  const companyName = jobs[0].company;
-  const fresherJobs = jobs.filter(job => !job.title?.toLowerCase().includes("intern"));
-  const internshipJobs = jobs.filter(job => job.title?.toLowerCase().includes("intern"));
+  const companyName = jobs[0].company_name;
+  const fresherJobs = jobs.filter(job => !job.drive_title?.toLowerCase().includes("intern"));
+  const internshipJobs = jobs.filter(job => job.drive_title?.toLowerCase().includes("intern"));
   
-  const salaries = Array.from(new Set(jobs.map(j => j.salary))).filter(Boolean);
-  const interviewTips = Array.from(new Set(jobs.map(j => j.interview_tips))).filter(Boolean);
+  const salaries = Array.from(new Set(jobs.map(j => j.salary_range))).filter(Boolean);
+  const interviewTips = Array.from(new Set(jobs.map(j => j.interview_questions_tips))).filter(Boolean);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
       {/* Premium Header */}
-      <div className="bg-white rounded-[3rem] p-12 border border-slate-100 shadow-sm mb-16 relative overflow-hidden">
+      <div className="bg-white rounded-[3.5rem] p-12 border border-slate-100 shadow-sm mb-16 relative overflow-hidden">
          <div className="absolute top-0 right-0 p-12 opacity-[0.03] pointer-events-none">
             <Building2 className="w-64 h-64" />
          </div>
          
          <div className="relative z-10 space-y-6">
-            <nav className="flex items-center gap-2 text-sm font-bold text-slate-400 uppercase tracking-widest mb-8">
+            <nav className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-8">
               <Link href="/" className="hover:text-blue-600 transition-colors">Home</Link>
-              <ChevronRight className="w-4 h-4" />
+              <ChevronRight className="w-3.5 h-3.5" />
               <span className="text-slate-900">Company</span>
             </nav>
             
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-8">
                <div className="space-y-4">
-                  <h1 className="text-5xl md:text-7xl font-black text-slate-900 tracking-tighter">
+                  <h1 className="text-5xl md:text-7xl font-black text-slate-900 tracking-tighter leading-tight">
                     {companyName}
                   </h1>
                   <p className="text-xl text-slate-500 font-medium max-w-xl">
                     Discover latest opportunities, salary insights, and preparation guides for {companyName}.
                   </p>
                </div>
-               <div className="flex items-center gap-3 px-6 py-3 bg-blue-50 text-blue-700 rounded-2xl font-black text-xl shadow-sm">
+               <div className="flex items-center gap-3 px-8 py-4 bg-blue-50 text-blue-700 rounded-3xl font-black text-xl shadow-sm border border-blue-100/50">
                   <TrendingUp className="w-6 h-6" />
                   {jobs.length} Active Roles
                </div>
@@ -79,7 +79,7 @@ export default async function CompanyPage({
           {/* Fresher Jobs Section */}
           <section>
             <div className="flex items-center gap-4 mb-10">
-               <div className="w-12 h-12 bg-blue-600 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-blue-100">
+               <div className="w-14 h-14 bg-blue-600 text-white rounded-2xl flex items-center justify-center shadow-2xl shadow-blue-200">
                   <Briefcase className="w-6 h-6" />
                </div>
                <h2 className="text-3xl font-black text-slate-900 tracking-tight">Full-Time Positions</h2>
@@ -89,8 +89,8 @@ export default async function CompanyPage({
               {fresherJobs.length > 0 ? (
                 fresherJobs.map(job => <JobCard key={job.id} job={job} />)
               ) : (
-                <div className="col-span-full py-20 text-center bg-slate-50 rounded-[2.5rem] border-2 border-dashed border-slate-200">
-                   <p className="text-slate-500 font-medium">No full-time fresher jobs currently listed.</p>
+                <div className="col-span-full py-24 text-center bg-slate-50 rounded-[3rem] border border-dashed border-slate-200">
+                   <p className="text-slate-500 font-bold uppercase tracking-widest text-xs">No full-time jobs currently listed</p>
                 </div>
               )}
             </div>
@@ -99,7 +99,7 @@ export default async function CompanyPage({
           {/* Internships Section */}
           <section>
             <div className="flex items-center gap-4 mb-10">
-               <div className="w-12 h-12 bg-indigo-600 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-100">
+               <div className="w-14 h-14 bg-indigo-600 text-white rounded-2xl flex items-center justify-center shadow-2xl shadow-indigo-200">
                   <GraduationCap className="w-6 h-6" />
                </div>
                <h2 className="text-3xl font-black text-slate-900 tracking-tight">Internship Opportunities</h2>
@@ -109,8 +109,8 @@ export default async function CompanyPage({
               {internshipJobs.length > 0 ? (
                 internshipJobs.map(job => <JobCard key={job.id} job={job} />)
               ) : (
-                <div className="col-span-full py-20 text-center bg-slate-50 rounded-[2.5rem] border-2 border-dashed border-slate-200">
-                   <p className="text-slate-500 font-medium">No internship opportunities currently listed.</p>
+                <div className="col-span-full py-24 text-center bg-slate-50 rounded-[3rem] border border-dashed border-slate-200">
+                   <p className="text-slate-500 font-bold uppercase tracking-widest text-xs">No internships currently listed</p>
                 </div>
               )}
             </div>
@@ -122,42 +122,43 @@ export default async function CompanyPage({
            <div className="sticky top-32 space-y-8">
               
               {/* Salary Insights */}
-              <div className="bg-slate-900 rounded-[2.5rem] p-10 text-white shadow-2xl shadow-slate-200">
+              <div className="bg-slate-900 rounded-[3rem] p-10 text-white shadow-2xl shadow-slate-200">
                  <h3 className="text-2xl font-black mb-8 flex items-center gap-3">
                     <DollarSign className="w-6 h-6 text-blue-400" />
                     Salary Insights
                  </h3>
-                 <div className="space-y-6">
+                 <div className="space-y-8">
                     {salaries.map((salary, idx) => (
-                      <div key={idx} className="pb-6 border-b border-slate-800 last:border-0 last:pb-0">
-                        <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mb-1">Standard Package</p>
-                        <p className="text-2xl font-black text-blue-400">{salary}</p>
+                      <div key={idx} className="pb-8 border-b border-white/5 last:border-0 last:pb-0">
+                        <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.2em] mb-2">Standard Package</p>
+                        <p className="text-3xl font-black text-blue-400 tracking-tight">{salary}</p>
                       </div>
                     ))}
-                    {salaries.length === 0 && <p className="text-slate-500 italic">Data not available yet.</p>}
+                    {salaries.length === 0 && <p className="text-slate-500 font-medium italic opacity-50">Data not available yet.</p>}
                  </div>
 
-                 <div className="mt-12 pt-12 border-t border-slate-800">
+                 <div className="mt-12 pt-12 border-t border-white/5">
                     <h3 className="text-2xl font-black mb-8 flex items-center gap-3">
                        <MessageCircle className="w-6 h-6 text-indigo-400" />
-                       Interview Tips
+                       Preparation
                     </h3>
-                    <div className="space-y-4">
+                    <div className="space-y-6">
                       {interviewTips.slice(0, 2).map((tip, idx) => (
-                        <div key={idx} className="bg-slate-800/50 p-6 rounded-2xl border border-slate-700 text-sm text-slate-300 leading-relaxed italic">
-                          "{tip.slice(0, 150)}..."
+                        <div key={idx} className="bg-white/5 p-6 rounded-[1.5rem] border border-white/5 text-sm text-slate-300 leading-relaxed font-medium">
+                          <p className="line-clamp-4 italic">"{tip}"</p>
                         </div>
                       ))}
+                      {interviewTips.length === 0 && <p className="text-slate-500 font-medium italic opacity-50 text-sm">No interview tips available.</p>}
                     </div>
                  </div>
               </div>
 
               {/* Promo Slot */}
               <SidebarPromo 
-                 title={`Preparation Guide for ${companyName}`}
-                 description={`Learn how to crack the ${companyName} selection process with real interview experiences.`}
-                 ctaText="Watch on YouTube"
-                 youtubeLink="https://youtube.com"
+                 title={`Cracking ${companyName}`}
+                 description={`Learn how to navigate the selection process with real interview experiences and expert tips.`}
+                 ctaText="Watch Roadmap"
+                 youtubeLink="https://youtube.com/@buggedbrain25"
                  thumbnail="https://images.unsplash.com/photo-1486312338219-ce68d2c6f44d?auto=format&fit=crop&q=80&w=2072"
               />
 

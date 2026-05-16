@@ -1,23 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { MapPin, DollarSign, Calendar, ArrowUpRight, ShieldCheck, Zap } from "lucide-react";
+import { MapPin, DollarSign, Calendar, ArrowUpRight, ShieldCheck, Zap, Briefcase } from "lucide-react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 
-interface Job {
-  id: string;
-  title: string;
-  company: string;
-  location: string;
-  salary: string;
-  slug: string;
-  created_at?: string;
-}
+import { Job } from "@/types/job";
 
 export default function JobCard({ job }: { job: Job }) {
   // Simple logic for company initials or logo placeholder
-  const initials = job.company?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+  const initials = job.company_name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
   
   return (
     <motion.div
@@ -25,7 +17,7 @@ export default function JobCard({ job }: { job: Job }) {
       transition={{ duration: 0.3, ease: "easeOut" }}
     >
       <Link 
-        href={`/jobs/${job.slug}`} 
+        href={`/jobs/${job.drive_slug}`} 
         className="group block bg-white p-8 rounded-[2rem] border border-slate-100 hover:border-blue-200 shadow-sm hover:shadow-2xl hover:shadow-blue-500/10 transition-all relative overflow-hidden"
       >
         {/* Decorative background element */}
@@ -34,13 +26,17 @@ export default function JobCard({ job }: { job: Job }) {
         <div className="relative z-10 flex flex-col gap-6">
           <div className="flex justify-between items-start">
             <div className="flex items-center gap-4">
-              <div className="w-14 h-14 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center text-white font-black text-xl shadow-lg shadow-blue-100 group-hover:rotate-6 transition-transform">
-                {initials}
-              </div>
+              {job.company_logo ? (
+                <img src={job.company_logo} alt={job.company_name} className="w-14 h-14 rounded-2xl object-contain bg-slate-50 p-2 shadow-lg shadow-blue-100 group-hover:rotate-6 transition-transform" />
+              ) : (
+                <div className="w-14 h-14 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center text-white font-black text-xl shadow-lg shadow-blue-100 group-hover:rotate-6 transition-transform">
+                  {initials}
+                </div>
+              )}
               <div>
                 <div className="flex items-center gap-2 mb-1">
                   <h3 className="text-xl font-black text-slate-900 leading-tight group-hover:text-blue-600 transition-colors">
-                    {job.title}
+                    {job.drive_title}
                   </h3>
                   {job.location?.toLowerCase().includes("remote") && (
                     <div className="p-1 bg-green-50 text-green-600 rounded-lg" title="Remote">
@@ -49,7 +45,7 @@ export default function JobCard({ job }: { job: Job }) {
                   )}
                 </div>
                 <div className="flex items-center gap-2 text-slate-500 font-bold text-sm uppercase tracking-wider">
-                  <span className="hover:text-slate-900 transition-colors cursor-pointer">{job.company}</span>
+                  <span className="hover:text-slate-900 transition-colors cursor-pointer">{job.company_name}</span>
                   <ShieldCheck className="w-4 h-4 text-blue-400" />
                 </div>
               </div>
@@ -66,8 +62,14 @@ export default function JobCard({ job }: { job: Job }) {
              </div>
              <div className="flex items-center gap-2 px-4 py-2 bg-blue-50/50 border border-blue-100/50 rounded-xl text-blue-700 text-xs font-bold uppercase tracking-widest group-hover:bg-blue-50 transition-colors">
                 <DollarSign className="w-3.5 h-3.5 text-blue-400" />
-                {job.salary}
+                {job.salary_range}
              </div>
+             {job.job_type && (
+               <div className="flex items-center gap-2 px-4 py-2 bg-indigo-50/50 border border-indigo-100/50 rounded-xl text-indigo-700 text-xs font-bold uppercase tracking-widest group-hover:bg-indigo-50 transition-colors">
+                  <Briefcase className="w-3.5 h-3.5 text-indigo-400" />
+                  {job.job_type}
+               </div>
+             )}
           </div>
 
           <div className="pt-6 border-t border-slate-50 flex items-center justify-between">
@@ -84,3 +86,4 @@ export default function JobCard({ job }: { job: Job }) {
     </motion.div>
   );
 }
+
