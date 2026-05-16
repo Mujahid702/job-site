@@ -1,24 +1,30 @@
 "use client";
 
 import Link from "next/link";
-import { MapPin, DollarSign, Calendar, ArrowUpRight, ShieldCheck, Zap, Briefcase } from "lucide-react";
+import { MapPin, DollarSign, Calendar, ArrowUpRight, ShieldCheck, Zap, Briefcase, Heart } from "lucide-react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { useSavedJobs } from "@/lib/context/SavedJobsContext";
 
 import { Job } from "@/types/job";
 
 export default function JobCard({ job }: { job: Job }) {
+  const { toggleSaveJob, isJobSaved } = useSavedJobs();
+  const saved = isJobSaved(job.id);
+
   // Simple logic for company initials or logo placeholder
   const initials = job.company_name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
   
   return (
     <motion.div
-      whileHover={{ y: -8 }}
-      transition={{ duration: 0.3, ease: "easeOut" }}
+      initial={{ opacity: 0, y: 20 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true }}
+      transition={{ duration: 0.5, ease: "easeOut" }}
     >
       <Link 
         href={`/jobs/${job.drive_slug}`} 
-        className="group block bg-white p-8 rounded-[2rem] border border-slate-100 hover:border-blue-200 shadow-sm hover:shadow-2xl hover:shadow-blue-500/10 transition-all relative overflow-hidden"
+        className="group block p-8 rounded-[2rem] glass-card hover-lift transition-all relative overflow-hidden"
       >
         {/* Decorative background element */}
         <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50/50 rounded-full -mr-16 -mt-16 group-hover:scale-150 transition-transform duration-500"></div>
@@ -35,7 +41,7 @@ export default function JobCard({ job }: { job: Job }) {
               )}
               <div>
                 <div className="flex items-center gap-2 mb-1">
-                  <h3 className="text-xl font-black text-slate-900 leading-tight group-hover:text-blue-600 transition-colors">
+                  <h3 className="text-xl font-black text-slate-900 leading-tight group-hover:text-blue-600 transition-colors font-display">
                     {job.drive_title}
                   </h3>
                   {job.location?.toLowerCase().includes("remote") && (
@@ -50,8 +56,23 @@ export default function JobCard({ job }: { job: Job }) {
                 </div>
               </div>
             </div>
-            <div className="bg-slate-50 p-3 rounded-2xl group-hover:bg-blue-600 group-hover:text-white transition-all duration-300">
-               <ArrowUpRight className="w-5 h-5" />
+            <div className="flex gap-2">
+              <button 
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  toggleSaveJob(job);
+                }}
+                className={cn(
+                  "p-3 rounded-2xl transition-all duration-300 border border-slate-100",
+                  saved ? "bg-red-50 text-red-500 border-red-100" : "bg-slate-50 text-slate-400 hover:text-red-500 hover:bg-red-50"
+                )}
+              >
+                <Heart className={cn("w-5 h-5", saved && "fill-red-500")} />
+              </button>
+              <div className="bg-slate-50 p-3 rounded-2xl group-hover:bg-blue-600 group-hover:text-white transition-all duration-300 border border-slate-100">
+                 <ArrowUpRight className="w-5 h-5" />
+              </div>
             </div>
           </div>
           

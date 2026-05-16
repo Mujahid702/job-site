@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Search, Video, MessageSquare } from "lucide-react";
+import { Search, Video, MessageSquare, ArrowRight } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 export default async function Sidebar() {
@@ -11,6 +11,21 @@ export default async function Sidebar() {
 
   return (
     <aside className="space-y-16">
+      {/* Quick Access Tools */}
+      <div className="bg-slate-900 p-8 rounded-[2rem] text-white shadow-2xl shadow-slate-200">
+        <h3 className="sidebar-header !text-white !border-slate-800">Career Tools</h3>
+        <div className="space-y-4">
+          <Link href="/prep-hub" className="flex items-center justify-between p-4 bg-white/5 border border-white/10 rounded-xl hover:bg-blue-600 transition-all group">
+            <span className="text-sm font-black uppercase tracking-widest">Prep Hub</span>
+            <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+          </Link>
+          <Link href="/salary-insights" className="flex items-center justify-between p-4 bg-white/5 border border-white/10 rounded-xl hover:bg-emerald-600 transition-all group">
+            <span className="text-sm font-black uppercase tracking-widest">Salary Data</span>
+            <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+          </Link>
+        </div>
+      </div>
+
       {/* Search Widget */}
       <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
         <h3 className="sidebar-header">Search Opportunities</h3>

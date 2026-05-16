@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { Menu, LogOut, LayoutDashboard } from "lucide-react";
+import { Menu, LogOut, LayoutDashboard, Heart } from "lucide-react";
+import { useSavedJobs } from "@/lib/context/SavedJobsContext";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
@@ -11,6 +12,7 @@ export default function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const { savedJobs } = useSavedJobs();
   const supabase = createClient();
 
   useEffect(() => {
@@ -39,9 +41,10 @@ export default function Header() {
 
   const navLinks = [
     { href: "/", label: "Home" },
-    { href: "/exam-clearance", label: "Exam Clearance Service" },
+    { href: "/dashboard", label: "My Dashboard" },
+    { href: "/prep-hub", label: "Prep Hub" },
     { href: "/latest-jobs", label: "Latest Jobs" },
-    { href: "/testimonials", label: "Testimonials" },
+    { href: "/salary-insights", label: "Salary" },
   ];
 
   return (
@@ -65,6 +68,17 @@ export default function Header() {
               {link.label}
             </Link>
           ))}
+          <Link href="/saved" className="flex items-center gap-2 group/saved">
+             <div className="relative">
+               <Heart className={cn("w-5 h-5 text-slate-700 group-hover/saved:text-red-500 transition-colors", savedJobs.length > 0 && "fill-red-500 text-red-500")} />
+               {savedJobs.length > 0 && (
+                 <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center border-2 border-white">
+                   {savedJobs.length}
+                 </span>
+               )}
+             </div>
+             <span className="text-sm font-extrabold text-slate-700 group-hover/saved:text-red-500 transition-colors">Saved</span>
+          </Link>
           <div className="flex items-center gap-4 ml-4 pl-8 border-l border-slate-100">
             {user ? (
               <>
@@ -122,6 +136,21 @@ export default function Header() {
               {link.label}
             </Link>
           ))}
+          <Link 
+            href="/saved" 
+            className="flex items-center justify-between py-3 text-sm font-bold text-slate-700 hover:text-accent"
+            onClick={() => setIsMenuOpen(false)}
+          >
+            <div className="flex items-center gap-2">
+              <Heart className={cn("w-5 h-5", savedJobs.length > 0 && "fill-red-500 text-red-500")} />
+              Saved Jobs
+            </div>
+            {savedJobs.length > 0 && (
+              <span className="bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">
+                {savedJobs.length}
+              </span>
+            )}
+          </Link>
           <div className="grid grid-cols-2 gap-4 mt-6 pt-6 border-t border-slate-50">
             {user ? (
               <>

@@ -7,6 +7,8 @@ import { UserPlus, Mail, Lock, Loader2, Sparkles, ArrowRight } from "lucide-reac
 import { motion } from "framer-motion";
 import Link from "next/link";
 
+import { getSiteUrl } from "@/lib/utils/url";
+
 export default function SignUpPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -25,7 +27,7 @@ export default function SignUpPage() {
       email,
       password,
       options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        emailRedirectTo: `${getSiteUrl()}/auth/callback`,
       },
     });
 
