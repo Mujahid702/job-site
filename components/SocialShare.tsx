@@ -1,6 +1,6 @@
 "use client";
 
-import { Share2, Linkedin, Twitter, MessageCircle, Link2, Check } from "lucide-react";
+import { Share2, MessageCircle, Link2, Check, ExternalLink } from "lucide-react";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -20,13 +20,13 @@ export default function SocialShare({ url, title }: { url: string; title: string
     },
     { 
       name: "LinkedIn", 
-      icon: <Linkedin className="w-5 h-5" />, 
+      icon: <ExternalLink className="w-5 h-5" />, 
       href: `https://www.linkedin.com/shareArticle?mini=true&url=${encodedUrl}&title=${encodedTitle}`,
       color: "hover:bg-blue-600 hover:text-white"
     },
     { 
       name: "Twitter", 
-      icon: <Twitter className="w-5 h-5" />, 
+      icon: <Share2 className="w-5 h-5" />, 
       href: `https://twitter.com/intent/tweet?text=${encodedTitle}&url=${encodedUrl}`,
       color: "hover:bg-slate-900 hover:text-white"
     }
