@@ -90,25 +90,28 @@ export default function NewJob() {
   const handleSubmit = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/admin/create-job', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
-      });
+      const jobData = { ...form };
+      // Clean up empty date to prevent PostgreSQL parsing errors
+      if (!jobData.expiry_date) {
+        delete (jobData as any).expiry_date;
+      }
 
-      const json = await res.json();
+      const { data, error } = await supabase
+        .from("job_postings")
+        .insert([jobData])
+        .select();
 
-      if (!res.ok) {
-        alert(json?.error?.message || 'Failed to publish job');
-        console.error('Publish error:', json);
+      if (error) {
+        alert(error.message || 'Failed to publish job');
+        console.error('Publish error:', error);
         setLoading(false);
         return;
       }
 
       router.push('/admin/jobs');
     } catch (err: any) {
-      console.error('Network error while publishing job:', err);
-      alert(err?.message || 'Network error: Failed to publish job');
+      console.error('Error while publishing job:', err);
+      alert(err?.message || 'Error: Failed to publish job');
       setLoading(false);
     }
   };

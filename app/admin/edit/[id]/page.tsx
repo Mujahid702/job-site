@@ -112,9 +112,16 @@ export default function EditJob() {
 
   const handleSubmit = async () => {
     setSaving(true);
+    
+    const jobData = { ...form };
+    // Clean up empty date to prevent PostgreSQL parsing errors
+    if (!jobData.expiry_date) {
+      jobData.expiry_date = null as any;
+    }
+
     const { error } = await supabase
       .from("job_postings")
-      .update(form)
+      .update(jobData)
       .eq("id", params.id);
 
     if (error) {

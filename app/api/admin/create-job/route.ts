@@ -5,9 +5,15 @@ export async function POST(request: Request) {
   try {
     const body = await request.json()
 
+    // Clean up empty date string to avoid database type parsing errors
+    const cleanedBody = { ...body }
+    if (cleanedBody.expiry_date === "") {
+      cleanedBody.expiry_date = null
+    }
+
     const supabase = await createClient()
 
-    const { data, error } = await supabase.from('job_postings').insert([body]).select()
+    const { data, error } = await supabase.from('job_postings').insert([cleanedBody]).select()
 
     if (error) {
       return NextResponse.json({ error: { message: error.message, details: error } }, { status: 400 })
