@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { Lock, Mail, Loader2, Rocket, ArrowRight } from "lucide-react";
 import { motion } from "framer-motion";
@@ -13,30 +12,33 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
-  const supabase = createClient();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
+
     try {
-      console.log("Supabase client:", supabase);
-      console.log("Supabase auth:", supabase?.auth);
-      
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
       });
 
-      if (error) {
-        setError(error.message);
+      const result = await response.json();
+
+      if (!response.ok) {
+        setError(result?.error?.message || 'Login failed. Please try again.');
         setLoading(false);
-      } else {
-        router.push("/");
-        router.refresh();
+        return;
       }
+
+      router.push('/');
+      router.refresh();
     } catch (err: any) {
-      console.error("Login crash:", err);
+      console.error('Login crash:', err);
       const msg = String(err?.message || err);
       if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('fetch failed')) {
         setError('Network error connecting to auth service. Check your connection or try again later.');
