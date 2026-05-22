@@ -37,7 +37,12 @@ export default function LoginPage() {
       }
     } catch (err: any) {
       console.error("Login crash:", err);
-      setError(err.message || "An unexpected error occurred");
+      const msg = String(err?.message || err);
+      if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('fetch failed')) {
+        setError('Network error connecting to auth service. Check your connection or try again later.');
+      } else {
+        setError(msg || 'An unexpected error occurred');
+      }
       setLoading(false);
     }
   };
