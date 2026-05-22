@@ -20,7 +20,6 @@ import {
 } from "lucide-react";
 import Sidebar from "@/components/Sidebar";
 import ViewTracker from "@/components/ViewTracker";
-import FloatingApplyBar from "@/components/FloatingApplyBar";
 import PrepChecklist from "@/components/PrepChecklist";
 import SalaryBenchmark from "@/components/SalaryBenchmark";
 import SocialShare from "@/components/SocialShare";
@@ -63,12 +62,6 @@ export default async function JobPage({
 
   return (
     <div className="bg-white min-h-screen pb-20 font-sans">
-      <FloatingApplyBar 
-        jobTitle={job.drive_title} 
-        companyName={job.company_name} 
-        applyLink={job.apply_link}
-        jobId={job.id}
-      />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
           
