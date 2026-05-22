@@ -61,7 +61,7 @@ export default function LoginPage() {
           <p className="text-slate-500 mt-3 font-medium">Sign in to manage your career journey.</p>
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-6">
+        <form suppressHydrationWarning onSubmit={handleLogin} className="space-y-6">
           <div className="space-y-2">
             <label className="block text-xs font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Email Address</label>
             <div className="relative group">
