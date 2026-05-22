@@ -89,14 +89,27 @@ export default function NewDrive() {
 
   const handleSubmit = async () => {
     setLoading(true);
-    // Use the job_postings table as per the new schema
-    const { error } = await supabase.from("job_postings").insert([form]);
+    try {
+      const res = await fetch('/api/admin/create-job', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      });
 
-    if (error) {
-      alert(error.message);
+      const json = await res.json();
+
+      if (!res.ok) {
+        alert(json?.error?.message || 'Failed to publish drive');
+        console.error('Publish error:', json);
+        setLoading(false);
+        return;
+      }
+
+      router.push('/admin/jobs');
+    } catch (err: any) {
+      console.error('Network error while publishing drive:', err);
+      alert(err?.message || 'Network error: Failed to publish drive');
       setLoading(false);
-    } else {
-      router.push("/admin/jobs");
     }
   };
 
