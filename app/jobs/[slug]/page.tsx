@@ -36,10 +36,26 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
   if (!job) return {};
 
+  const titleText = job.meta_title || `${job.company_name} Hiring ${job.drive_title} 2026 | Eligibility, Salary & Apply`;
+  const descText = job.meta_description || `Apply for ${job.drive_title} at ${job.company_name}. Check eligibility, salary details, selection process and interview questions for 2026 graduates.`;
+
   return {
-    title: job.meta_title || `${job.company_name} Hiring ${job.drive_title} 2026 | Eligibility, Salary & Apply`,
-    description: job.meta_description || `Apply for ${job.drive_title} at ${job.company_name}. Check eligibility, salary details, selection process and interview questions for 2026 graduates.`,
+    title: titleText,
+    description: descText,
     keywords: job.keywords,
+    openGraph: {
+      title: titleText,
+      description: descText,
+      images: [
+        {
+          url: job.company_logo || "",
+          width: 800,
+          height: 600,
+          alt: `${job.company_name} Logo`
+        }
+      ],
+      type: "website"
+    }
   };
 }
 
@@ -59,6 +75,33 @@ export default async function JobPage({
   const job = jobData as Job;
 
   if (!job) return <div className="p-10 text-center">Job not found</div>;
+
+  // Inactive listings are drafts; prevent public views (Automation Level 7)
+  if (!job.is_active) {
+    return (
+      <div className="max-w-4xl mx-auto p-12 my-24 text-center bg-slate-50 rounded-[3rem] border border-dashed border-slate-200">
+        <AlertCircle className="w-16 h-16 text-amber-500 mx-auto mb-6" />
+        <h3 className="text-3xl font-black text-slate-900">Opportunity Under Review</h3>
+        <p className="text-slate-500 font-medium mt-4 max-w-md mx-auto leading-relaxed">
+          This opportunity is currently in **Draft Mode** and is undergoing review. It is not currently visible to the public.
+        </p>
+        <div className="mt-8">
+          <Link href="/" className="px-6 py-3.5 bg-slate-900 hover:bg-blue-600 text-white font-black rounded-xl text-xs uppercase tracking-widest transition-colors shadow-lg">
+            Return to Home
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  // Dynamic Related Jobs Query (Automation Level 8)
+  const { data: relatedJobs } = await supabase
+    .from("job_postings")
+    .select("id, drive_title, drive_slug, company_name, company_logo, location, salary_range, category, job_type")
+    .eq("is_active", true)
+    .neq("id", job.id)
+    .or(`company_name.ilike.%${job.company_name}%,category.eq.${job.category}`)
+    .limit(3);
 
   return (
     <div className="bg-white min-h-screen pb-20 font-sans">
@@ -412,6 +455,52 @@ export default async function JobPage({
                     </div>
                  </div>
               </section>
+
+              {/* Dynamic Related Jobs (Automation Level 8) */}
+              {relatedJobs && relatedJobs.length > 0 && (
+                <section className="py-16 border-t border-slate-100 space-y-10">
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-black text-blue-600 uppercase tracking-[0.2em]">Recommendations</p>
+                    <h3 className="text-3xl font-black text-slate-900 tracking-tight font-display">Related Opportunities</h3>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {relatedJobs.map((rJob) => (
+                      <Link 
+                        key={rJob.id}
+                        href={`/jobs/${rJob.drive_slug}`}
+                        className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100 hover:border-blue-200 transition-all flex flex-col justify-between group h-full shadow-sm hover:shadow"
+                      >
+                        <div className="space-y-4">
+                          <div className="flex justify-between items-start gap-4">
+                            {rJob.company_logo ? (
+                              <img src={rJob.company_logo} alt={rJob.company_name} className="w-10 h-10 rounded-xl object-contain bg-white border border-slate-100 p-1" />
+                            ) : (
+                              <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-slate-400 border border-slate-100">
+                                <Briefcase className="w-5 h-5" />
+                              </div>
+                            )}
+                            <span className="px-2.5 py-1 bg-blue-50 text-blue-600 text-[9px] font-black uppercase tracking-widest rounded-md">{rJob.category}</span>
+                          </div>
+                          
+                          <div className="space-y-1">
+                            <h4 className="font-extrabold text-slate-900 group-hover:text-blue-600 transition-colors line-clamp-2 leading-snug">{rJob.drive_title}</h4>
+                            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{rJob.company_name}</p>
+                          </div>
+                        </div>
+
+                        <div className="pt-6 mt-6 border-t border-slate-200/50 flex flex-wrap gap-y-2 justify-between items-center text-[10px] font-black text-slate-400 uppercase tracking-wider">
+                          <span className="flex items-center gap-1">
+                            <MapPin className="w-3.5 h-3.5 text-slate-300" />
+                            {rJob.location?.split('/')[0]?.split(',')[0]?.trim() || 'Remote'}
+                          </span>
+                          <span className="text-green-600 bg-green-50 px-2 py-0.5 rounded font-mono font-bold">{rJob.salary_range || 'Competitive'}</span>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                </section>
+              )}
 
               {/* Post Navigation */}
               <div className="flex justify-between items-center py-10 border-t border-slate-100">

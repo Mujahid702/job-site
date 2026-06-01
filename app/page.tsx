@@ -13,6 +13,7 @@ export default async function Home() {
   const { data: jobs } = await supabase
     .from("job_postings")
     .select("*")
+    .eq("is_active", true)
     .order("created_at", { ascending: false });
 
   if (!jobs) return null;

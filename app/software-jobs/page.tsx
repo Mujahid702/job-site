@@ -12,6 +12,7 @@ export default async function SoftwareJobs() {
   const { data: jobs } = await supabase
     .from("job_postings")
     .select("*")
+    .eq("is_active", true)
     .or("drive_title.ilike.%software%,drive_title.ilike.%developer%,drive_title.ilike.%engineer%,drive_title.ilike.%it%")
     .order("created_at", { ascending: false });
 

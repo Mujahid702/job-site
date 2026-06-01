@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { 
@@ -23,7 +23,15 @@ import {
   Calendar as CalendarIcon,
   ShieldCheck,
   Zap,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Sparkles,
+  ChevronDown,
+  ChevronUp,
+  Loader2,
+  AlertTriangle,
+  Settings,
+  Key,
+  Wand2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -68,9 +76,154 @@ export default function NewJob() {
   const router = useRouter();
   const supabase = createClient();
 
+  // AI Autopilot State
+  const [autopilotOpen, setAutopilotOpen] = useState(true);
+  const [rawJd, setRawJd] = useState("");
+  const [geminiKey, setGeminiKey] = useState("");
+  const [autopilotStatus, setAutopilotStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [loadingStep, setLoadingStep] = useState("");
+  const [activeStepIndex, setActiveStepIndex] = useState(0);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const savedKey = localStorage.getItem("gemini_api_key") || "";
+      setGeminiKey(savedKey);
+    }
+  }, []);
+
+  const handleSaveKey = (key: string) => {
+    setGeminiKey(key);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("gemini_api_key", key);
+    }
+  };
+
+  const checkDuplicate = async (slug: string, companyName: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("job_postings")
+        .select("id, drive_title, company_name")
+        .eq("drive_slug", slug)
+        .maybeSingle();
+        
+      if (error) {
+        console.error("Duplicate check error:", error);
+        return;
+      }
+      
+      if (data) {
+        setDuplicateWarning(
+          `Warning: A job posting with slug "${slug}" already exists for "${data.company_name}" (${data.drive_title}). Please update the slug to prevent overwrites or duplicate entries.`
+        );
+      }
+    } catch (err) {
+      console.error("Error in duplicate check:", err);
+    }
+  };
+
+  const handleGenerateJob = async () => {
+    if (!rawJd.trim()) {
+      alert("Please paste a job description first.");
+      return;
+    }
+    
+    setAutopilotStatus("loading");
+    setErrorMessage("");
+    setDuplicateWarning(null);
+    setActiveStepIndex(0);
+    
+    const steps = [
+      "Analyzing raw job description...",
+      "Extracting basic role & company details...",
+      "Creating SEO slug and metadata...",
+      "Generating criteria & skills...",
+      "Polishing interview prep & resume tips...",
+      "Structuring output into form fields..."
+    ];
+    
+    let currentStep = 0;
+    setLoadingStep(steps[0]);
+    
+    const interval = setInterval(() => {
+      if (currentStep < steps.length - 1) {
+        currentStep++;
+        setActiveStepIndex(currentStep);
+        setLoadingStep(steps[currentStep]);
+      }
+    }, 1500);
+    
+    try {
+      const response = await fetch("/api/admin/generate-job", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-gemini-api-key": geminiKey,
+        },
+        body: JSON.stringify({ rawText: rawJd }),
+      });
+      
+      clearInterval(interval);
+      
+      const resData = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(resData?.error?.message || "Failed to parse job description.");
+      }
+      
+      const jobData = resData.data;
+      
+      // Auto-populate the form state!
+      setForm({
+        drive_title: jobData.drive_title || "",
+        drive_slug: jobData.drive_slug || "",
+        company_name: jobData.company_name || "",
+        company_logo: jobData.company_logo || "",
+        company_website: jobData.company_website || "",
+        location: jobData.location || "",
+        job_type: jobData.job_type || "Full Time",
+        experience_level: jobData.experience_level || "Fresher",
+        salary_range: jobData.salary_range || "",
+        apply_link: jobData.apply_link || "",
+        drive_description: jobData.drive_description || "",
+        eligibility_criteria: jobData.eligibility_criteria || "",
+        key_responsibilities: jobData.key_responsibilities || "",
+        required_skills: jobData.required_skills || "",
+        selection_process: jobData.selection_process || "",
+        resume_tips: jobData.resume_tips || "",
+        interview_questions_tips: jobData.interview_questions_tips || "",
+        meta_title: jobData.meta_title || "",
+        meta_description: jobData.meta_description || "",
+        keywords: jobData.keywords || "",
+        category: jobData.category || "Software",
+        tags: Array.isArray(jobData.tags) ? jobData.tags : [],
+        is_featured: false,
+        is_active: true,
+        expiry_date: jobData.expiry_date || "",
+      });
+      
+      setAutopilotStatus("success");
+      setAutopilotOpen(false); // Collapse on success so they see the populated fields!
+      
+      // Proactively check for duplicate postings!
+      if (jobData.drive_slug) {
+        await checkDuplicate(jobData.drive_slug, jobData.company_name);
+      }
+    } catch (err: any) {
+      clearInterval(interval);
+      setAutopilotStatus("error");
+      setErrorMessage(err.message || "An unexpected error occurred during AI processing.");
+    }
+  };
+
   const handleChange = (e: any) => {
     const { name, value, type, checked } = e.target;
     setForm({ ...form, [name]: type === 'checkbox' ? checked : value });
+    if (name === "drive_slug") {
+      setDuplicateWarning(null);
+    }
   };
 
   const handleAddTag = (e: React.KeyboardEvent) => {
@@ -150,6 +303,191 @@ export default function NewJob() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
           <div className="lg:col-span-2 space-y-10">
             
+            {/* AI Autopilot Section */}
+            <section className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white p-8 rounded-[2.5rem] border border-slate-800 shadow-xl relative overflow-hidden">
+              {/* Subtle background glow */}
+              <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/10 rounded-full filter blur-[80px] pointer-events-none" />
+              <div className="absolute bottom-0 left-0 w-64 h-64 bg-purple-500/10 rounded-full filter blur-[80px] pointer-events-none" />
+              
+              <div className="flex justify-between items-center relative z-10">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-indigo-500/20 text-indigo-400 rounded-xl flex items-center justify-center border border-indigo-500/30">
+                    <Sparkles className="w-5 h-5 animate-pulse" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black tracking-tight flex items-center gap-2">
+                      AI Job Autopilot
+                      <span className="text-[10px] font-black uppercase tracking-widest bg-indigo-600 text-white px-2.5 py-0.5 rounded-full border border-indigo-400/30">
+                        Agent Mode
+                      </span>
+                    </h3>
+                    <p className="text-xs font-semibold text-slate-400 mt-0.5">
+                      Extract structure from raw JD text automatically
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowSettings(!showSettings)}
+                    className={cn(
+                      "p-2.5 rounded-xl transition-all border cursor-pointer",
+                      showSettings 
+                        ? "bg-indigo-600 border-indigo-400 text-white" 
+                        : "bg-slate-800/80 border-slate-700 text-slate-400 hover:text-slate-200"
+                    )}
+                    title="Settings"
+                  >
+                    <Settings className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setAutopilotOpen(!autopilotOpen)}
+                    className="p-2.5 bg-slate-800/80 border border-slate-700 rounded-xl text-slate-400 hover:text-slate-200 transition-all cursor-pointer"
+                  >
+                    {autopilotOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Collapsible content */}
+              {autopilotOpen && (
+                <div className="mt-6 space-y-6 relative z-10 transition-all">
+                  
+                  {/* Settings Panel */}
+                  {showSettings && (
+                    <div className="p-5 bg-slate-800/50 border border-slate-700/80 rounded-2xl space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-sm font-bold flex items-center gap-2 text-indigo-300">
+                          <Key className="w-4 h-4" />
+                          Gemini API Credentials
+                        </h4>
+                        <a 
+                          href="https://aistudio.google.com/app/apikey" 
+                          target="_blank" 
+                          rel="noopener noreferrer" 
+                          className="text-xs font-black text-blue-400 hover:underline flex items-center gap-1"
+                        >
+                          Get Free Key <ChevronRight className="w-3 h-3" />
+                        </a>
+                      </div>
+                      <p className="text-xs text-slate-400 leading-relaxed">
+                        To run job extraction, you can use your own Google Gemini API key. It is saved securely inside your browser's local storage and is never sent to any third-party servers.
+                      </p>
+                      
+                      <div className="flex gap-2">
+                        <input
+                          type="password"
+                          value={geminiKey}
+                          onChange={(e) => handleSaveKey(e.target.value)}
+                          placeholder="AIzaSy..."
+                          className="flex-1 p-3 bg-slate-900 border border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-semibold tracking-wider placeholder:text-slate-600 text-indigo-200"
+                        />
+                        <div className="px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-xs text-green-400 font-bold flex items-center gap-1.5">
+                          <CheckCircle2 className="w-4 h-4" />
+                          Auto-Saved
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Warning banner */}
+                  {duplicateWarning && (
+                    <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-amber-200 text-sm flex items-start gap-3">
+                      <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                      <div className="space-y-1">
+                        <span className="font-bold">Slug Conflict Detected</span>
+                        <p className="text-xs opacity-90">{duplicateWarning}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Input JD Panel */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center justify-between">
+                      <span>Raw Job Description (Copy-paste from careers page)</span>
+                      <span className="text-[10px] lowercase text-slate-500 font-normal">Supports long JDs</span>
+                    </label>
+                    <textarea
+                      value={rawJd}
+                      onChange={(e) => setRawJd(e.target.value)}
+                      placeholder="Paste your raw JD text here... Company, Role, Responsibilities, Requirements, etc."
+                      rows={6}
+                      className="w-full p-4 bg-slate-950 border border-slate-800 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none text-slate-200 placeholder:text-slate-600 text-sm font-medium resize-none transition-all"
+                      disabled={autopilotStatus === "loading"}
+                    />
+                  </div>
+
+                  {/* API Actions */}
+                  <div className="flex flex-wrap gap-4 items-center justify-between">
+                    <div>
+                      {autopilotStatus === "success" && (
+                        <div className="flex items-center gap-2 text-green-400 text-sm font-bold">
+                          <CheckCircle2 className="w-5 h-5 text-green-400" />
+                          Successfully filled! Review form below.
+                        </div>
+                      )}
+                      {autopilotStatus === "error" && (
+                        <div className="text-red-400 text-xs font-semibold max-w-[400px] flex items-start gap-1.5">
+                          <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                          <span>{errorMessage}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex gap-3">
+                      {autopilotStatus === "success" && (
+                        <button
+                          onClick={() => {
+                            setRawJd("");
+                            setAutopilotStatus("idle");
+                            setAutopilotOpen(true);
+                          }}
+                          className="px-5 py-3.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-bold rounded-2xl transition-all border border-slate-700 cursor-pointer"
+                        >
+                          Clear
+                        </button>
+                      )}
+                      
+                      <button
+                        onClick={handleGenerateJob}
+                        disabled={autopilotStatus === "loading"}
+                        className="px-6 py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-sm font-black rounded-2xl shadow-lg shadow-indigo-900/30 disabled:opacity-50 transition-all flex items-center gap-2 border border-indigo-400/20 active:scale-[0.98] cursor-pointer"
+                      >
+                        {autopilotStatus === "loading" ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin text-white" />
+                            <span>Extracting...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Wand2 className="w-4 h-4" />
+                            <span>{autopilotStatus === "success" ? "Regenerate Content" : "Analyze & Auto-fill"}</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Loading step tracker */}
+                  {autopilotStatus === "loading" && (
+                    <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-3">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-bold text-slate-400">Autopilot Extraction Status</span>
+                        <span className="text-xs font-black text-indigo-400 animate-pulse">{loadingStep}</span>
+                      </div>
+                      <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full transition-all duration-500 ease-out" 
+                          style={{ width: `${(activeStepIndex + 1) * 16.6}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                </div>
+              )}
+            </section>
+
             {/* 1. Basic Information */}
             <section className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm space-y-8">
               <h3 className="text-xl font-black text-slate-900 flex items-center gap-3">

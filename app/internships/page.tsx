@@ -12,6 +12,7 @@ export default async function Internships() {
   const { data: jobs } = await supabase
     .from("job_postings")
     .select("*")
+    .eq("is_active", true)
     .ilike("drive_title", "%intern%")
     .order("created_at", { ascending: false });
 

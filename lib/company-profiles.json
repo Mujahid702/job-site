@@ -1,0 +1,37 @@
+{
+  "IBM": {
+    "company_overview": "IBM (International Business Machines Corporation) is a global technology and consulting giant known for its pioneering innovations in cloud computing, artificial intelligence (Watson), and quantum research.",
+    "hiring_process": "Includes an IPAT cognitive assessment, standard tech coding round, followed by technical and managerial round panels focusing on algorithmic problems and professional adaptability.",
+    "interview_process": "Mainly tests data structures, algorithms, problem-solving skills, basic cloud systems, database operations, and behavioral questions focusing on alignment with client success.",
+    "work_culture": "Fosters a collaborative, flexible work environment that rewards innovative spirit, promotes continuous education and micro-credentialing, and values diversity and inclusive team dynamics.",
+    "salary_trends": "Typically offers stipends of ₹25,000 - ₹40,000 for interns. Full-time fresher roles (Associate System Engineers) start from ₹4.5 LPA up to ₹8.5 LPA for premium tracks."
+  },
+  "TCS": {
+    "company_overview": "Tata Consultancy Services (TCS) is one of the world's largest IT service providers, known for its extensive global delivery model, deep industry verticals, and massive fresher hiring channels like TCS NQT.",
+    "hiring_process": "Generally coordinated via the National Qualifier Test (NQT) assessing numerical, verbal, and reasoning skills, followed by a Technical Interview, Managerial, and HR interview round.",
+    "interview_process": "Evaluates foundational core concepts including C/Java syntax, OOPs paradigms, database management queries (SQL), basic software methodologies, and personal background.",
+    "work_culture": "Emphasizes long-term career stability, comprehensive training bootcamps, community-focused projects, and structured progression milestones inside a massive corporate ecosystem.",
+    "salary_trends": "Offers tiered fresher packages: TCS Ninja (₹3.36 LPA), TCS Digital (₹7.0 LPA), and TCS Prime (₹9.0 - ₹11.5 LPA) for exceptional coding talent."
+  },
+  "Infosys": {
+    "company_overview": "Infosys is a global leader in next-generation digital services and consulting, renowned for its state-of-the-art training campus in Mysore and standardized engineering onboarding models.",
+    "hiring_process": "Conducted through the Infosys Certification exam (InfyTQ) or standard off-campus drives containing a technical programming test followed by web-proctored technical and HR interviews.",
+    "interview_process": "Focuses on clean programming practices in Python/Java, logical debugging puzzles, standard SQL joins, operating system foundations, and communication skills.",
+    "work_culture": "Prioritizes rigorous technical training, structured project assignments, strong corporate governance, and modern campus-based recreational workspaces.",
+    "salary_trends": "Fresher packages are segmented: System Engineer (₹3.6 LPA), Specialist Programmer (₹6.25 LPA), and Power Programmer (₹9.5 LPA) targeting advanced engineering roles."
+  },
+  "Wipro": {
+    "company_overview": "Wipro Limited is a leading technology services and consulting company, known for its extensive digital transformation consulting, sustainable infrastructure, and fresher incubation schemes.",
+    "hiring_process": "Typically leverages the Elite National Talent Hunt (ENTH) test covering aptitude, quantitative logic, and coding, succeeded by one-on-one technical and HR interviews.",
+    "interview_process": "Validates basic object-oriented programming concepts, simple string/array algorithms, project explanations, standard tech definitions, and adaptability questions.",
+    "work_culture": "Champions sustainability, collaborative engineering communities, practical hands-on continuous learning programs, and diverse project assignment opportunities.",
+    "salary_trends": "Standard Elite fresher packages start at ₹3.5 LPA, and specialized Turbo tracks start at ₹6.5 LPA for advanced developers."
+  },
+  "EY": {
+    "company_overview": "EY (Ernst & Young) is a global leader in assurance, consulting, law, strategy, tax, and transactions services. With a presence in over 150 countries, EY is dedicated to building a better working world by helping clients grow, transform, and operate, while fostering trust in capital markets. EY Global Delivery Services (GDS) is a crucial part of this network, operating from six countries and sixteen cities, including multiple locations across India. GDS provides innovative and strategic business solutions to EY member firms worldwide, playing a vital role in the firm's growth strategy. EY's Consulting practice focuses on leveraging disruptive technologies to solve complex business problems, making a meaningful impact through the application of cutting-edge innovations.",
+    "hiring_process": "IBM's hiring process includes an IPAT cognitive assessment, standard tech coding round, followed by technical and managerial round panels focusing on algorithmic problems and professional adaptability.",
+    "interview_process": "IBM's interview process mainly tests data structures, algorithms, problem-solving skills, basic cloud systems, database operations, and behavioral questions focusing on alignment with client success.",
+    "work_culture": "IBM fosters a collaborative, flexible work environment that rewards innovative spirit, promotes continuous education and micro-credentialing, and values diversity and inclusive team dynamics.",
+    "salary_trends": "IBM typically offers stipends of ₹25,000 - ₹40,000 for interns. Full-time fresher roles (Associate System Engineers) start from ₹4.5 LPA up to ₹8.5 LPA for premium tracks."
+  }
+}

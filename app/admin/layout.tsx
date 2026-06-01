@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LayoutDashboard, PlusCircle, Briefcase, LogOut, ChevronRight } from "lucide-react";
+import { LayoutDashboard, PlusCircle, Briefcase, LogOut, ChevronRight, Sparkles } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 
@@ -36,6 +36,14 @@ export default async function AdminLayout({
           </Link>
 
           <Link 
+            href="/admin/automation" 
+            className="flex items-center gap-3 px-4 py-3 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all font-bold"
+          >
+            <Sparkles className="w-5 h-5 text-indigo-500" />
+            Content Automation
+          </Link>
+
+          <Link 
             href="/admin/drives/new" 
             className="flex items-center gap-3 px-4 py-3 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all font-bold"
           >
@@ -50,6 +58,7 @@ export default async function AdminLayout({
             Manage Jobs
           </Link>
         </nav>
+
 
         <div className="p-6 border-t border-slate-100">
            <form action="/auth/logout" method="post">

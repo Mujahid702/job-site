@@ -12,6 +12,7 @@ export default async function LatestJobsPage() {
   const { data: jobs } = await supabase
     .from("job_postings")
     .select("*")
+    .eq("is_active", true)
     .order("created_at", { ascending: false });
 
   return (

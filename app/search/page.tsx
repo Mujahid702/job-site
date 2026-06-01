@@ -13,6 +13,7 @@ async function SearchResults({ query }: { query: string }) {
   const { data: jobs } = await supabase
     .from("job_postings")
     .select("*")
+    .eq("is_active", true)
     .or(`drive_title.ilike.%${query}%,company_name.ilike.%${query}%,drive_description.ilike.%${query}%`)
     .order("created_at", { ascending: false });
 

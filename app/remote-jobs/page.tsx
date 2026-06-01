@@ -12,6 +12,7 @@ export default async function RemoteJobs() {
   const { data: jobs } = await supabase
     .from("job_postings")
     .select("*")
+    .eq("is_active", true)
     .ilike("location", "%remote%")
     .order("created_at", { ascending: false });
 
