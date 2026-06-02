@@ -28,6 +28,8 @@ import {
   Trash2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { WhatsAppPublisher } from "@/lib/publishers";
+
 
 const TABS = ["Edit", "Preview"];
 
@@ -63,6 +65,7 @@ export default function EditJob() {
     is_featured: false,
     is_active: true,
     expiry_date: "",
+    approval_status: "",
   });
 
   const [tagInput, setTagInput] = useState("");
@@ -113,7 +116,49 @@ export default function EditJob() {
   const handleSubmit = async () => {
     setSaving(true);
     
-    const jobData = { ...form };
+    // Parse existing approval status metadata safely
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let parsedStatus: any = {};
+    try {
+      if (form.approval_status) {
+        parsedStatus = JSON.parse(form.approval_status);
+      }
+    } catch {
+      // ignore
+    }
+
+    // Auto-regenerate WhatsApp copy on edit/save to keep content in sync
+    const templateId = parsedStatus.template_used || 'B';
+    const publisher = new WhatsAppPublisher();
+    const siteUrl = typeof window !== "undefined"
+      ? `${window.location.origin}/jobs/${form.drive_slug}`
+      : `https://mywebsite.com/jobs/${form.drive_slug}`;
+
+    const generatedMessage = publisher.generate(form, {
+      websiteUrl: siteUrl,
+      templateId
+    });
+
+    const updatedStatus = {
+      ...parsedStatus,
+      whatsapp_message: generatedMessage,
+      template_used: templateId,
+      whatsapp_generated_at: new Date().toISOString()
+    };
+
+    const jobData = { 
+      ...form,
+      approval_status: JSON.stringify(updatedStatus)
+    };
+
+    // Remove raw fields to avoid PostgreSQL / schema cache exceptions if table isn't migrated
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    delete (jobData as any).whatsapp_message;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    delete (jobData as any).template_used;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    delete (jobData as any).whatsapp_generated_at;
+
     // Clean up empty date to prevent PostgreSQL parsing errors
     if (!jobData.expiry_date) {
       jobData.expiry_date = null as any;

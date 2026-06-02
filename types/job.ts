@@ -46,6 +46,11 @@ export interface Job {
   posted_date?: string;
   expiry_date?: string;
 
+  // WhatsApp Promotion
+  whatsapp_message?: string;
+  template_used?: string;
+  whatsapp_generated_at?: string;
+
   // Timestamps
   created_at: string;
   updated_at: string;

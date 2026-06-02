@@ -64,20 +64,83 @@ INSTRUCTION: Reuse these details exactly for any company overview, culture, hiri
       }
     }
 
-    const prompt = `You are an expert ATS copywriter, technical recruiter, and SEO specialist. Analyze the following raw job description text and write a highly detailed, professional, and SEO-optimized job posting.
-The output MUST be extensive, targetting **800-1200 words** of extremely high-value, comprehensive content. Format rich text sections using clean bullet points and professional paragraphs (HTML lists, subheadings, or plain linebreaks are acceptable).
+    const prompt = `You are an expert ATS copywriter, technical recruiter, and SEO specialist. Analyze the following raw job description text and write a highly professional, well-structured, and SEO-optimized job posting.
+The output must have high readability, clear visual hierarchy, and use whitespace effectively. Every single section must be easy to scan.
+Follow these strict content formatting rules:
+- Avoid long paragraphs. The maximum length of any paragraph is 3-4 lines. Never generate huge blocks of text.
+- Use clean headings, bullet points, and numbered lists as requested for each section.
+- Incorporate appropriate professional emojis to enhance readability.
 
-You must generate detailed information for all 10 required sections:
-1. **Recruitment Overview**: Introduction to the company, their mission, operations, and what makes this specific role exciting (min 150 words).
-2. **Eligibility Section**: Clear requirements on degrees, graduation batches (e.g. 2026, 2025, 2024), branches, CGPA, and backlog rules.
-3. **Salary Insights**: Breakdown of the salary package, stipends (if internship), bonuses, or benchmark trends.
-4. **Selection Process**: Step-by-step breakdown of the hiring rounds (assessments, technical rounds, managerial/HR panel).
-5. **Key Responsibilities**: Deep list of day-to-day duties, tech stacks, and team interactions.
-6. **Required Skills**: Comprehensive list of required technical skills, optional tools, soft skills, and academic competencies.
-7. **Resume Tips**: Tailored advice on how to customize an ATS-friendly resume specifically for this job description, highlighting keywords.
-8. **Interview Questions/Tips**: 3-5 realistic technical/HR questions candidates might face for this role, complete with model answers.
-9. **How To Apply**: A structured step-by-step walkthrough explaining how to complete the application process successfully.
-10. **Company Insights & Work Culture**: Deep-dive into company core values, learning environment, work-life balance, and employee perks.
+Generate detailed information for the following fields and sections in the schema:
+
+1. **drive_description** (Strictly follow this internal sub-structure, using subheadings and double newlines for spacing):
+   ### Recruitment Overview
+   A short, engaging introduction to the company, their mission, operations, and what makes this specific role exciting (100–150 words). Break it into short paragraphs (3-4 lines max).
+   
+   ### Job Highlights
+   Format exactly as bullet points with emojis:
+   ✅ **Company:** [Insert Company Name]
+   ✅ **Role:** [Insert Job Title]
+   ✅ **Salary:** [Insert Salary Range / CTC]
+   ✅ **Location:** [Insert Location / Remote / Hybrid]
+   ✅ **Job Type:** [Insert Job Type, e.g., Full Time, Internship]
+   ✅ **Batch Eligible:** [Insert Eligible Graduation Batches, e.g., 2024/2025/2026]
+   ✅ **Experience Required:** [Insert Experience Level, e.g., Freshers / 0-1 Years]
+   
+   ### Salary Details
+   A short, clean paragraph (3-4 lines max) describing the salary package/CTC, expected compensation or stipend details, bonuses, and potential growth opportunities in the role.
+   
+   ### Company Insights
+   A short, clean paragraph (3-4 lines max) describing the company's background, work culture, learning environment, perks, and hiring trends.
+   
+   ### How To Apply
+   Format exactly as a numbered list:
+   1. Click on the official apply link below to access the career portal.
+   2. Create or sign in to your applicant account.
+   3. Complete the application form with accurate personal and professional details.
+   4. Upload your optimized resume and submit your application.
+
+2. **eligibility_criteria**:
+   Must format as a clean list of bullet points starting with the '•' character. DO NOT use paragraphs.
+   Example structure:
+   • Any Bachelor's Degree in [relevant fields]
+   • [Eligible Batches, e.g., 2024/2025/2026 Batch]
+   • [Minimum CGPA or Percentage requirements, or no active backlogs]
+   • [Additional requirements / prerequisites]
+
+3. **key_responsibilities**:
+   Must format as bullet points starting with '•' only. NO paragraphs. Keep each point short, punchy, and highly descriptive.
+   Example structure:
+   • Develop and maintain software applications using modern tech stacks
+   • Collaborate with cross-functional teams to define and design new features
+   • Participate in code reviews and troubleshoot engineering issues
+
+4. **required_skills**:
+   Must format as categorized bullet points starting with '•' with clear headers.
+   Example structure:
+   Technical Skills:
+   • [Tech Skill 1]
+   • [Tech Skill 2]
+   
+   Soft Skills:
+   • [Soft Skill A]
+   • [Soft Skill B]
+
+5. **selection_process**:
+   Must format strictly as a numbered list showing the stages of recruitment. Keep it very concise.
+   Example structure:
+   1. Resume Screening & Shortlisting
+   2. Online Aptitude / Technical Assessment
+   3. Technical Interview Rounds
+   4. Managerial / HR Panel Discussion
+
+6. **resume_tips**:
+   Must format as a bulleted list starting with '•'.
+   Provide exactly 5–7 highly actionable, customized tips on tailoring a resume specifically for this job description (e.g., highlighting key ATS keywords, tech stack, and layout formatting).
+
+7. **interview_questions_tips**:
+   Must format as a bulleted list starting with '•'.
+   Provide exactly 5–7 practical, actionable interview preparation tips, including 3-5 specific questions candidates might face for this role along with brief model answers.
 
 ${knownCompanyContext}
 
@@ -89,7 +152,7 @@ INSTRUCTIONS FOR METADATA GENERATION:
 - **meta_description**: Catchy SEO summary including company, role, stipend/salary, and basic eligibility (max 160 chars).
 - **keywords**: Comma-separated list of high-traffic keywords (e.g. "IBM hiring, IBM 2026 drive, Associate Engineer jobs").
 - **company_profile**: If the company was NOT in the provided knowledge base, extract its profile (overview, hiring process, interview process, work culture, salary trends) so it can be cached in our system.`;
-
+ 
     const schema = {
       type: "OBJECT",
       properties: {
@@ -105,14 +168,35 @@ INSTRUCTIONS FOR METADATA GENERATION:
         category: { type: "STRING" },
         expiry_date: { type: "STRING" },
         
-        // 10 Detailed Content Fields mapped to DB columns
-        drive_description: { type: "STRING", description: "Detailed 150+ words Recruitment Overview, including How to Apply and Company Insights." },
-        eligibility_criteria: { type: "STRING", description: "Bullet points detailing graduation years, degrees, branches, and GPA." },
-        key_responsibilities: { type: "STRING", description: "Comprehensive bullet points of responsibilities." },
-        required_skills: { type: "STRING", description: "Bullet points of required technologies and soft skills." },
-        selection_process: { type: "STRING", description: "Detailed steps of the selection rounds." },
-        resume_tips: { type: "STRING", description: "Custom ATS resume optimization and formatting advice." },
-        interview_questions_tips: { type: "STRING", description: "3-5 specific practice questions and expert model answers." },
+        // Detailed Content Fields mapped to DB columns with strict formatting instructions
+        drive_description: { 
+          type: "STRING", 
+          description: "Recruitment Overview, Job Highlights, Salary Details, Company Insights, and How to Apply. Must be divided into clear sections with subheadings like '### Recruitment Overview', '### Job Highlights' (with ✅ bullet points), '### Salary Details', '### Company Insights', and '### How to Apply'. Keep all paragraphs under 3-4 lines max. Use whitespace." 
+        },
+        eligibility_criteria: { 
+          type: "STRING", 
+          description: "List of eligibility criteria starting with • bullet points. Include degree, graduation batches, CGPA, and backlog details." 
+        },
+        key_responsibilities: { 
+          type: "STRING", 
+          description: "List of key job responsibilities using ONLY bullet points starting with •. Keep items concise and punchy. No long paragraphs." 
+        },
+        required_skills: { 
+          type: "STRING", 
+          description: "Categorized list of skills with 'Technical Skills:' and 'Soft Skills:' sub-headers. Use • bullet points." 
+        },
+        selection_process: { 
+          type: "STRING", 
+          description: "Concise recruitment rounds structured as a numbered list (1., 2., 3., 4.)." 
+        },
+        resume_tips: { 
+          type: "STRING", 
+          description: "Exactly 5-7 customized ATS resume tips using • bullet points." 
+        },
+        interview_questions_tips: { 
+          type: "STRING", 
+          description: "Exactly 5-7 actionable interview prep tips and practice questions with model answers, using • bullet points." 
+        },
         
         // SEO Fields
         meta_title: { type: "STRING" },

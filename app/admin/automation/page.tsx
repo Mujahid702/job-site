@@ -21,9 +21,16 @@ import {
   ArrowRight,
   TrendingUp,
   RefreshCw,
-  FolderSync
+  FolderSync,
+  Share2,
+  Copy,
+  Globe,
+  Link2,
+  Eye
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { WhatsAppPublisher } from "@/lib/publishers";
+import PublishSuccessModal from "@/components/PublishSuccessModal";
 
 // Job Types & Categories matching the existing DB schemas
 const CATEGORIES = ["Software", "Core", "Finance", "AI", "Marketing", "Sales", "Design", "Management"];
@@ -39,9 +46,25 @@ interface ImportItem {
 }
 
 export default function ContentAutomation() {
-  const [activeTab, setActiveTab] = useState<"single" | "bulk" | "drafts" | "published" | "failed">("single");
+  const [activeTab, setActiveTab] = useState<"single" | "bulk" | "drafts" | "published" | "failed" | "whatsapp">("single");
   const [supabase] = useState(() => createClient());
   const router = useRouter();
+
+  // Publish Success Modal State
+  const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
+  const [successModalData, setSuccessModalData] = useState({
+    jobTitle: "",
+    companyName: "",
+    whatsappMessage: "",
+    jobUrl: ""
+  });
+
+  // WhatsApp Distribution Tab State
+  const [selectedJobId, setSelectedJobId] = useState<string>("");
+  const [selectedTemplate, setSelectedTemplate] = useState<'A' | 'B' | 'C'>('B');
+  const [whatsappMessagePreview, setWhatsappMessagePreview] = useState("");
+  const [copiedMessageTab, setCopiedMessageTab] = useState(false);
+  const [copiedUrlTab, setCopiedUrlTab] = useState(false);
 
   // Single Import State
   const [singleUrl, setSingleUrl] = useState("");
@@ -71,6 +94,82 @@ export default function ContentAutomation() {
     }
     fetchQueues();
   }, []);
+
+  // Safe helper to extract WhatsApp message from database columns or JSON metadata
+  const getWhatsAppMessage = (job: any): string => {
+    if (job?.whatsapp_message) return job.whatsapp_message;
+    try {
+      if (job?.approval_status) {
+        const metadata = JSON.parse(job.approval_status);
+        return metadata.whatsapp_message || "";
+      }
+    } catch (e) {}
+    return "";
+  };
+
+  // Safe helper to extract Template Used from database columns or JSON metadata
+  const getTemplateUsed = (job: any): 'A' | 'B' | 'C' => {
+    if (job?.template_used === 'A' || job?.template_used === 'B' || job?.template_used === 'C') {
+      return job.template_used;
+    }
+    try {
+      if (job?.approval_status) {
+        const metadata = JSON.parse(job.approval_status);
+        if (metadata.template_used === 'A' || metadata.template_used === 'B' || metadata.template_used === 'C') {
+          return metadata.template_used;
+        }
+      }
+    } catch (e) {}
+    return 'B'; // default
+  };
+
+  // Pre-populate template selection when a job is selected
+  useEffect(() => {
+    if (!selectedJobId) return;
+    const job = publishedJobs.find(j => j.id === selectedJobId) || draftJobs.find(j => j.id === selectedJobId);
+    if (!job) return;
+    
+    setSelectedTemplate(getTemplateUsed(job));
+  }, [selectedJobId, publishedJobs, draftJobs]);
+
+  // Trigger real-time template generation when selected job or template changes
+  useEffect(() => {
+    if (!selectedJobId) {
+      setWhatsappMessagePreview("");
+      return;
+    }
+    const job = publishedJobs.find(j => j.id === selectedJobId) || draftJobs.find(j => j.id === selectedJobId);
+    if (!job) return;
+
+    const publisher = new WhatsAppPublisher();
+    const siteUrl = typeof window !== "undefined"
+      ? `${window.location.origin}/jobs/${job.drive_slug}`
+      : `https://mywebsite.com/jobs/${job.drive_slug}`;
+
+    const message = publisher.generate(job, {
+      websiteUrl: siteUrl,
+      templateId: selectedTemplate
+    });
+    setWhatsappMessagePreview(message);
+  }, [selectedJobId, selectedTemplate, publishedJobs, draftJobs]);
+
+  // If a job is selected for the first time, auto-select it
+  useEffect(() => {
+    if (activeTab === "whatsapp" && !selectedJobId && publishedJobs.length > 0) {
+      setSelectedJobId(publishedJobs[0].id);
+    }
+  }, [activeTab, publishedJobs, selectedJobId]);
+
+  const formatWhatsAppText = (text: string) => {
+    if (!text) return "";
+    let escaped = text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+    escaped = escaped.replace(/\*([^*]+)\*/g, "<strong>$1</strong>");
+    escaped = escaped.replace(/_([^_]+)_/g, "<em>$1</em>");
+    return escaped.replace(/\n/g, "<br />");
+  };
 
   // Fetch Jobs from Supabase and classify into Draft, Published, Failed queues
   const fetchQueues = async () => {
@@ -128,11 +227,25 @@ export default function ContentAutomation() {
         }
       } catch (e) {}
 
+      // Generate WhatsApp copy for modal & database storage
+      const publisher = new WhatsAppPublisher();
+      const siteUrl = typeof window !== "undefined"
+        ? `${window.location.origin}/jobs/${currentJob.drive_slug}`
+        : `https://mywebsite.com/jobs/${currentJob.drive_slug}`;
+
+      const generatedMessage = publisher.generate(currentJob, {
+        websiteUrl: siteUrl,
+        templateId: "B" // Default Template
+      });
+
       const updatedStatus = {
         ...parsedStatus,
         status: "published",
         publish_date: new Date().toISOString(),
-        last_updated_date: new Date().toISOString()
+        last_updated_date: new Date().toISOString(),
+        whatsapp_message: generatedMessage,
+        template_used: "B",
+        whatsapp_generated_at: new Date().toISOString()
       };
 
       const { error } = await supabase
@@ -146,8 +259,55 @@ export default function ContentAutomation() {
 
       if (error) throw error;
       await fetchQueues();
+
+      // Show WhatsApp Success Modal
+      setSuccessModalData({
+        jobTitle: currentJob.drive_title,
+        companyName: currentJob.company_name,
+        whatsappMessage: generatedMessage,
+        jobUrl: siteUrl
+      });
+      setIsSuccessModalOpen(true);
     } catch (err: any) {
       alert("Failed to publish: " + err.message);
+    }
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handleCopyMessageFromTab = async (job: any) => {
+    if (!whatsappMessagePreview) return;
+    try {
+      // 1. Copy to clipboard
+      await navigator.clipboard.writeText(whatsappMessagePreview);
+      setCopiedMessageTab(true);
+      setTimeout(() => setCopiedMessageTab(false), 2000);
+
+      // 2. Save/Sync to Supabase inside approval_status to prevent schema cache errors
+      let parsedStatus: any = {};
+      try {
+        if (job.approval_status) {
+          parsedStatus = JSON.parse(job.approval_status);
+        }
+      } catch (e) {}
+
+      const updatedStatus = {
+        ...parsedStatus,
+        whatsapp_message: whatsappMessagePreview,
+        template_used: selectedTemplate,
+        whatsapp_generated_at: new Date().toISOString()
+      };
+
+      await supabase
+        .from("job_postings")
+        .update({
+          approval_status: JSON.stringify(updatedStatus)
+        })
+        .eq("id", job.id);
+        
+      // Refresh queues to keep lists in sync
+      await fetchQueues();
+    } catch (err) {
+      console.error("Failed to copy/save message:", err);
     }
   };
 
@@ -216,10 +376,29 @@ export default function ContentAutomation() {
       });
 
       if (!scrapeRes.ok) {
-        const err = await scrapeRes.json();
-        throw new Error(err.error || "Scraping failed");
+        let errMsg = "Scraping failed";
+        try {
+          const err = await scrapeRes.json();
+          errMsg = err.error || errMsg;
+        } catch (_) {
+          try {
+            const html = await scrapeRes.text();
+            const match = html.match(/<title>([^<]+)<\/title>/i);
+            const pageTitle = match ? match[1].trim() : "";
+            errMsg = `Scraping failed (HTTP ${scrapeRes.status})${pageTitle ? `: ${pageTitle}` : ""}`;
+          } catch (_) {
+            errMsg = `Scraping failed (HTTP ${scrapeRes.status})`;
+          }
+        }
+        throw new Error(errMsg);
       }
-      const scrapeData = await scrapeRes.json();
+
+      let scrapeData;
+      try {
+        scrapeData = await scrapeRes.json();
+      } catch (e) {
+        throw new Error(`Scraper API returned invalid response (HTTP ${scrapeRes.status})`);
+      }
 
       // Step 2: AI Generation
       onProgress("generating", "AI extracting and generating rich SEO content...");
@@ -236,10 +415,29 @@ export default function ContentAutomation() {
       });
 
       if (!genRes.ok) {
-        const err = await genRes.json();
-        throw new Error(err.error?.message || "AI Extraction failed");
+        let errMsg = "AI Extraction failed";
+        try {
+          const err = await genRes.json();
+          errMsg = err.error?.message || err.error || errMsg;
+        } catch (_) {
+          try {
+            const html = await genRes.text();
+            const match = html.match(/<title>([^<]+)<\/title>/i);
+            const pageTitle = match ? match[1].trim() : "";
+            errMsg = `AI Extraction failed (HTTP ${genRes.status})${pageTitle ? `: ${pageTitle}` : ""}`;
+          } catch (_) {
+            errMsg = `AI Extraction failed (HTTP ${genRes.status})`;
+          }
+        }
+        throw new Error(errMsg);
       }
-      const genData = await genRes.json();
+
+      let genData;
+      try {
+        genData = await genRes.json();
+      } catch (e) {
+        throw new Error(`AI Generation API returned invalid response (HTTP ${genRes.status})`);
+      }
       const jobObject = genData.data;
 
       // Step 3: Save to Supabase
@@ -576,6 +774,18 @@ export default function ContentAutomation() {
         >
           <AlertTriangle className="w-4 h-4" />
           Failed Logs ({failedJobs.length})
+        </button>
+        <button
+          onClick={() => { setActiveTab("whatsapp"); fetchQueues(); }}
+          className={cn(
+            "px-6 py-3.5 font-black text-sm uppercase tracking-wider border-b-2 transition-all flex items-center gap-2",
+            activeTab === "whatsapp"
+              ? "border-green-600 text-green-600 font-extrabold"
+              : "border-transparent text-slate-500 hover:text-slate-800"
+          )}
+        >
+          <Share2 className="w-4 h-4" />
+          WhatsApp Distribution
         </button>
       </div>
 
@@ -1103,7 +1313,244 @@ export default function ContentAutomation() {
             </div>
           </div>
         )}
+
+        {/* TAB 6: WhatsApp Distribution Tab */}
+        {activeTab === "whatsapp" && (
+          <div className="space-y-6">
+            <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-black text-slate-900 tracking-tight">WhatsApp Broadcast Distribution</h3>
+                <p className="text-xs text-slate-500 mt-1">Select any published listing, choose your promotion template format, and preview or copy it instantly.</p>
+              </div>
+              <div className="px-4 py-2 bg-green-50 text-green-700 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse" />
+                Semi-Automated Workflow Active
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+              {/* Left Column: Job Selection & Template Tuning */}
+              <div className="lg:col-span-5 space-y-6">
+                <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm space-y-6">
+                  {/* Select Opportunity Dropdown */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest block pl-1">
+                      1. Select Opportunity
+                    </label>
+                    {publishedJobs.length === 0 ? (
+                      <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold text-slate-500 text-center">
+                        No active live opportunities found. Publish a draft first!
+                      </div>
+                    ) : (
+                      <select
+                        value={selectedJobId}
+                        onChange={(e) => setSelectedJobId(e.target.value)}
+                        className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-green-500 outline-none font-bold text-slate-800 text-sm appearance-none select-custom"
+                      >
+                        {publishedJobs.map((job) => (
+                          <option key={job.id} value={job.id}>
+                            {job.company_name} — {job.drive_title}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+
+                  {/* Select Broadcast Template */}
+                  <div className="space-y-3">
+                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest block pl-1">
+                      2. Choose Promotion Format
+                    </label>
+                    
+                    <div className="grid grid-cols-1 gap-3">
+                      {[
+                        { id: 'A', name: 'Template A: Short & Punchy', desc: 'Saves vertical height, focuses purely on essentials.' },
+                        { id: 'B', name: 'Template B: Detailed & Modern (Default)', desc: 'Branded layout featuring comprehensive steps and callouts.' },
+                        { id: 'C', name: 'Template C: High Engagement', desc: 'Focuses on drive scope and includes a custom overview paragraph.' }
+                      ].map((tpl) => (
+                        <label 
+                          key={tpl.id}
+                          className={cn(
+                            "p-4 rounded-2xl border transition-all cursor-pointer flex items-start gap-3",
+                            selectedTemplate === tpl.id 
+                              ? "bg-green-50/50 border-green-200 text-green-900" 
+                              : "bg-slate-50/50 border-slate-200 hover:bg-slate-50 text-slate-700"
+                          )}
+                        >
+                          <input 
+                            type="radio" 
+                            name="whatsapp_template"
+                            checked={selectedTemplate === tpl.id}
+                            onChange={() => setSelectedTemplate(tpl.id as 'A' | 'B' | 'C')}
+                            className="mt-1 accent-green-600 shrink-0"
+                          />
+                          <div>
+                            <span className="font-extrabold text-xs block">{tpl.name}</span>
+                            <span className="text-[10px] text-slate-400 font-semibold block mt-0.5 leading-relaxed">{tpl.desc}</span>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Database Synchronization Status Box */}
+                {selectedJobId && (
+                  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-start gap-4">
+                    <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center shrink-0">
+                      <FolderSync className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="font-extrabold text-xs text-slate-800">Database Sync Status</p>
+                      <p className="text-[10px] text-slate-400 mt-1 font-semibold leading-relaxed">
+                        Copying the message from this panel will automatically update the database record (`whatsapp_message` and `template_used`) to keep your channels highly tracked and unified.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Right Column: WhatsApp Live View Phone Preview */}
+              <div className="lg:col-span-7">
+                {selectedJobId ? (
+                  <div className="space-y-4">
+                    <div className="border border-slate-200 rounded-[2.5rem] overflow-hidden shadow-md flex flex-col bg-white">
+                      {/* Mockup WhatsApp Top Bar */}
+                      <div className="bg-[#075e54] text-white px-6 py-4 flex items-center justify-between shrink-0">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-emerald-800 flex items-center justify-center text-xs font-black select-none">
+                            {publishedJobs.find(j => j.id === selectedJobId)?.company_name?.substring(0, 2).toUpperCase() || 'JD'}
+                          </div>
+                          <div>
+                            <h5 className="font-black text-sm tracking-tight">Placement Drives & Jobs</h5>
+                            <p className="text-[10px] text-emerald-100 opacity-90 font-semibold">Channel Broadcast</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3 text-emerald-100 font-semibold text-xs">
+                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                          <span>Broadcast Live</span>
+                        </div>
+                      </div>
+
+                      {/* Mockup WhatsApp Chat Field */}
+                      <div className="p-6 bg-[#efeae2] min-h-[300px] max-h-[#420px] overflow-y-auto relative flex flex-col">
+                        <div className="absolute inset-0 opacity-[0.04] pointer-events-none bg-[radial-gradient(#000_1px,transparent_1px)] [background-size:16px_16px]" />
+                        
+                        {/* Light Green Speech Bubble */}
+                        <div className="bg-[#d9fdd3] text-[#111b21] max-w-[85%] rounded-2xl rounded-tl-none p-5 shadow-sm text-xs md:text-sm font-normal leading-relaxed relative self-start z-10">
+                          <div className="absolute top-0 -left-2 w-0 h-0 border-[8px] border-transparent border-t-[#d9fdd3] border-r-[#d9fdd3]" />
+                          <p 
+                            className="whitespace-pre-wrap break-words"
+                            dangerouslySetInnerHTML={{ __html: formatWhatsAppText(whatsappMessagePreview) }}
+                          />
+                          <span className="text-[9px] text-slate-400 font-semibold float-right mt-2 ml-4">
+                            {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Control Panel Buttons */}
+                      <div className="p-6 bg-slate-50 border-t border-slate-100 flex flex-wrap gap-4 shrink-0 justify-between items-center">
+                        <div className="flex flex-wrap gap-3">
+                          {/* Copy Message Action */}
+                          <button
+                            onClick={() => {
+                              const job = publishedJobs.find(j => j.id === selectedJobId) || draftJobs.find(j => j.id === selectedJobId);
+                              if (job) handleCopyMessageFromTab(job);
+                            }}
+                            className={cn(
+                              "py-3.5 px-6 rounded-xl font-black text-xs uppercase tracking-widest transition-all flex items-center gap-2 shadow-md cursor-pointer",
+                              copiedMessageTab 
+                                ? "bg-green-600 hover:bg-green-700 text-white shadow-green-100" 
+                                : "bg-slate-900 hover:bg-slate-800 text-white shadow-slate-200"
+                            )}
+                          >
+                            {copiedMessageTab ? (
+                              <>
+                                <CheckCircle2 className="w-4 h-4" />
+                                <span>Copied Message!</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-4 h-4" />
+                                <span>Copy Message</span>
+                              </>
+                            )}
+                          </button>
+
+                          {/* Copy Job URL Action */}
+                          <button
+                            onClick={async () => {
+                              const job = publishedJobs.find(j => j.id === selectedJobId) || draftJobs.find(j => j.id === selectedJobId);
+                              if (job) {
+                                const url = `${window.location.origin}/jobs/${job.drive_slug}`;
+                                try {
+                                  await navigator.clipboard.writeText(url);
+                                  setCopiedUrlTab(true);
+                                  setTimeout(() => setCopiedUrlTab(false), 2000);
+                                } catch (err) {
+                                  console.error("Failed to copy URL:", err);
+                                }
+                              }
+                            }}
+                            className={cn(
+                              "py-3.5 px-5 rounded-xl font-black text-xs uppercase tracking-widest border transition-all flex items-center gap-2 cursor-pointer",
+                              copiedUrlTab 
+                                ? "bg-green-50 border-green-200 text-green-700" 
+                                : "bg-white hover:bg-slate-100 border-slate-200 text-slate-700"
+                            )}
+                          >
+                            {copiedUrlTab ? (
+                              <>
+                                <CheckCircle2 className="w-4 h-4 text-green-600" />
+                                <span>Copied URL!</span>
+                              </>
+                            ) : (
+                              <>
+                                <Link2 className="w-4 h-4" />
+                                <span>Copy Job URL</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+
+                        {/* View Live Link */}
+                        <a
+                          href={`/jobs/${publishedJobs.find(j => j.id === selectedJobId)?.drive_slug}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="py-3.5 px-5 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl font-black text-xs text-slate-700 hover:text-slate-800 uppercase tracking-widest transition-all flex items-center gap-2"
+                        >
+                          <Eye className="w-4 h-4" />
+                          <span>View Page</span>
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="h-full min-h-[300px] border-2 border-dashed border-slate-200 rounded-[2.5rem] flex flex-col items-center justify-center text-slate-400 p-8 text-center bg-white shadow-sm">
+                    <Share2 className="w-12 h-12 text-slate-300 animate-bounce mb-3" />
+                    <p className="font-extrabold text-sm text-slate-500 uppercase tracking-wider">No Active Selection</p>
+                    <p className="text-xs text-slate-400 mt-1 font-semibold leading-relaxed max-w-xs">
+                      Publish a draft or select an active opportunity in the left menu to preview or format it for WhatsApp.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Success Broadcast Copy Modal Overlay */}
+      <PublishSuccessModal 
+        isOpen={isSuccessModalOpen}
+        onClose={() => setIsSuccessModalOpen(false)}
+        jobTitle={successModalData.jobTitle}
+        companyName={successModalData.companyName}
+        whatsappMessage={successModalData.whatsappMessage}
+        jobUrl={successModalData.jobUrl}
+      />
 
     </div>
   );
