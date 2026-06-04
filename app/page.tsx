@@ -88,6 +88,108 @@ export default async function Home() {
         </div>
       </section>
 
+      {/* Premium Career & Placement OS Section */}
+      <section className="py-24 bg-gradient-to-br from-slate-900 via-slate-950 to-indigo-950 text-white rounded-[3rem] sm:rounded-[4rem] mx-4 sm:mx-8 px-6 sm:px-12 relative overflow-hidden shadow-2xl">
+        <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-blue-500/10 blur-[130px] rounded-full pointer-events-none"></div>
+        <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-purple-500/10 blur-[120px] rounded-full pointer-events-none"></div>
+
+        <div className="max-w-7xl mx-auto relative z-10 space-y-20">
+          <div className="text-center space-y-6 max-w-3xl mx-auto">
+            <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-500/10 text-blue-400 rounded-full text-xs font-black uppercase tracking-[0.25em] mb-4">
+              <Sparkles className="w-4 h-4 fill-blue-400" />
+              BuggedBrain Placement OS
+            </div>
+            <h2 className="text-4xl md:text-7xl font-black tracking-tighter leading-[0.95] font-display">
+              Ace Your Placement. <br />
+              <span className="bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent font-extrabold">From Zero to Offer.</span>
+            </h2>
+            <p className="text-lg md:text-xl text-slate-400 font-medium leading-relaxed">
+              Don't just apply. Build an ATS-friendly resume, master role-specific roadmaps, practice company prep sets, and track your placement readiness index with our all-in-one Career Operating System.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Card 1: Resume Builder */}
+            <div className="p-8 sm:p-10 bg-white/5 border border-white/10 rounded-[2.5rem] backdrop-blur-xl flex flex-col justify-between hover:border-blue-500/30 hover:bg-white/10 transition-all group">
+              <div className="space-y-6">
+                <div className="w-12 h-12 bg-blue-500/10 text-blue-400 rounded-xl flex items-center justify-center font-black">1</div>
+                <h3 className="text-2xl font-black tracking-tight">Build ATS-Friendly Resume</h3>
+                <p className="text-slate-400 text-sm font-medium leading-relaxed">
+                  Analyze your keyword relevance, readability, skills alignment, and formatting instantly. Avoid critical resume errors and boost recruiter visibility.
+                </p>
+                <div className="space-y-3">
+                  {["Simulated 7-parameter ATS score", "Recruiter-friendliness checklist", "Role & skills matching suggestions"].map((item, idx) => (
+                    <div key={idx} className="flex items-center gap-2 text-xs font-bold text-slate-300">
+                      <span className="text-blue-400 font-black">✓</span> {item}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <Link href="/dashboard?tab=resume" className="mt-8 py-4 bg-white text-slate-900 text-center font-black text-xs uppercase tracking-widest rounded-xl hover:bg-blue-500 hover:text-white transition-all shadow-lg flex items-center justify-center gap-2">
+                Analyze My Resume <ChevronRight className="w-4 h-4" />
+              </Link>
+            </div>
+
+            {/* Card 2: Roadmaps */}
+            <div className="p-8 sm:p-10 bg-white/5 border border-white/10 rounded-[2.5rem] backdrop-blur-xl flex flex-col justify-between hover:border-indigo-500/30 hover:bg-white/10 transition-all group">
+              <div className="space-y-6">
+                <div className="w-12 h-12 bg-indigo-500/10 text-indigo-400 rounded-xl flex items-center justify-center font-black">2</div>
+                <h3 className="text-2xl font-black tracking-tight">Role-Based Connected Roadmaps</h3>
+                <p className="text-slate-400 text-sm font-medium leading-relaxed">
+                  Interactive learning paths for Software Developer, AI/ML, Full Stack, Data Analyst, DevOps, and more. Track your progress with visual flowchart interfaces.
+                </p>
+                <div className="space-y-3">
+                  {["Beginner to advanced sequences", "Recommended tools & tech stacks", "Placement preparation strategies"].map((item, idx) => (
+                    <div key={idx} className="flex items-center gap-2 text-xs font-bold text-slate-300">
+                      <span className="text-indigo-400 font-black">✓</span> {item}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <Link href="/dashboard?tab=roadmap" className="mt-8 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-center font-black text-xs uppercase tracking-widest rounded-xl hover:opacity-90 transition-all shadow-lg flex items-center justify-center gap-2">
+                Start My Roadmap <ChevronRight className="w-4 h-4" />
+              </Link>
+            </div>
+
+            {/* Card 3: Mentorship */}
+            <div className="p-8 sm:p-10 bg-white/5 border border-white/10 rounded-[2.5rem] backdrop-blur-xl flex flex-col justify-between hover:border-purple-500/30 hover:bg-white/10 transition-all group">
+              <div className="space-y-6">
+                <div className="w-12 h-12 bg-purple-500/10 text-purple-400 rounded-xl flex items-center justify-center font-black">3</div>
+                <h3 className="text-2xl font-black tracking-tight">One-to-One Expert Guidance</h3>
+                <p className="text-slate-400 text-sm font-medium leading-relaxed">
+                  Book direct placement strategy slots, ATS resume review calls, mock coding rounds, and interview coaching with elite engineering mentors.
+                </p>
+                <div className="space-y-3">
+                  {["Personalized session slots booking", "Direct dashboard calendar tracking", "Curated coding prep coaching"].map((item, idx) => (
+                    <div key={idx} className="flex items-center gap-2 text-xs font-bold text-slate-300">
+                      <span className="text-purple-400 font-black">✓</span> {item}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <Link href="/dashboard?tab=mentorship" className="mt-8 py-4 bg-white/10 border border-white/20 text-white text-center font-black text-xs uppercase tracking-widest rounded-xl hover:bg-white/20 transition-all flex items-center justify-center gap-2">
+                Book Mentorship <ChevronRight className="w-4 h-4" />
+              </Link>
+            </div>
+          </div>
+
+          {/* Connected OS Footer stats */}
+          <div className="pt-12 border-t border-white/5 grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
+            {[
+              { title: "Placement Readiness Index", value: "Real-time Metrics" },
+              { title: "Smart Project Recommendation", value: "Beginner → Advanced" },
+              { title: "LinkedIn Recruiter Visibility", value: "Headline & About Builder" },
+              { title: "Streak Counter & Badges", value: "Gamified Streaks" }
+            ].map((stat, i) => (
+              <div key={i} className="space-y-1">
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{stat.value}</p>
+                <p className="text-base font-black text-slate-200">{stat.title}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* Main Content Layout */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 content-padding section-spacing">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-16">
