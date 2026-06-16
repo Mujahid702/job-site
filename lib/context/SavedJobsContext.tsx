@@ -2,6 +2,8 @@
 
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { Job } from "@/types/job";
+import { supabase } from "@/lib/supabase";
+import { getSavedJobs, saveJob, unsaveJob } from "@/lib/db/jobs";
 
 interface SavedJobsContextType {
   savedJobs: Job[];
@@ -13,33 +15,74 @@ const SavedJobsContext = createContext<SavedJobsContextType | undefined>(undefin
 
 export function SavedJobsProvider({ children }: { children: React.ReactNode }) {
   const [savedJobs, setSavedJobs] = useState<Job[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
 
-  // Load from localStorage on mount
+  // Initialize offline sync triggers
   useEffect(() => {
-    const stored = localStorage.getItem("saved_jobs");
-    if (stored) {
-      try {
-        setSavedJobs(JSON.parse(stored));
-      } catch (e) {
-        console.error("Failed to parse saved jobs", e);
-      }
-    }
+    import("@/lib/db/sync").then(({ initOfflineSyncListeners, syncQueue }) => {
+      initOfflineSyncListeners();
+      syncQueue();
+    });
   }, []);
 
-  // Save to localStorage whenever savedJobs changes
+  // Listen to Auth State
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) setUserId(user.id);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUserId(session?.user?.id || null);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  // Load saved jobs
+  useEffect(() => {
+    async function loadJobs() {
+      if (userId) {
+        const dbJobs = await getSavedJobs(userId);
+        setSavedJobs(dbJobs);
+      } else {
+        const stored = localStorage.getItem("saved_jobs");
+        if (stored) {
+          try {
+            setSavedJobs(JSON.parse(stored));
+          } catch (e) {
+            console.error("Failed to parse saved jobs", e);
+          }
+        }
+      }
+    }
+    loadJobs();
+  }, [userId]);
+
+  // Keep localStorage as temporary fallback
   useEffect(() => {
     localStorage.setItem("saved_jobs", JSON.stringify(savedJobs));
   }, [savedJobs]);
 
-  const toggleSaveJob = (job: Job) => {
+  const toggleSaveJob = async (job: Job) => {
+    const isSaved = savedJobs.some((j) => j.id === job.id);
+    
     setSavedJobs((prev) => {
-      const isSaved = prev.some((j) => j.id === job.id);
       if (isSaved) {
         return prev.filter((j) => j.id !== job.id);
       } else {
         return [...prev, job];
       }
     });
+
+    if (userId) {
+      if (isSaved) {
+        await unsaveJob(userId, job.id);
+      } else {
+        await saveJob(userId, job.id);
+      }
+    }
   };
 
   const isJobSaved = (jobId: string) => {
@@ -60,3 +103,4 @@ export function useSavedJobs() {
   }
   return context;
 }
+

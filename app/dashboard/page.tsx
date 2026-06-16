@@ -1,8 +1,18 @@
 "use client";
 
 import { useSavedJobs } from "@/lib/context/SavedJobsContext";
-import JobCard from "@/components/JobCard";
-import AtsResumeAnalyzer from "@/components/AtsResumeAnalyzer";
+import ResumeOS from "@/components/ResumeOS";
+import PortfolioOS from "@/components/PortfolioOS";
+import LinkedInOS from "@/components/LinkedInOS";
+import CoverLetterOS from "@/components/CoverLetterOS";
+import CareerRoadmapNavigator from "@/components/CareerRoadmapNavigator";
+import AiInterviewPrep from "@/components/AiInterviewPrep";
+import PlacementTrackerOS from "@/components/PlacementTrackerOS";
+import PlacementCopilot from "@/components/PlacementCopilot";
+import ProjectOS from "@/components/ProjectOS";
+import MentorshipOS from "@/components/MentorshipOS";
+import CommunityHubOS from "@/components/CommunityHubOS";
+import { COMPANY_PREP_LIST } from "@/lib/company-prep-data";
 import { 
   LayoutDashboard, 
   Heart, 
@@ -11,33 +21,32 @@ import {
   User as UserIcon,
   ChevronRight,
   TrendingUp,
-  Clock,
   Sparkles,
-  Search,
-  BookOpen,
   Award,
-  AlertTriangle,
-  UploadCloud,
-  FileText,
-  HelpCircle,
   ShieldCheck,
   Calendar as CalendarIcon,
   MessageSquare,
-  Lock,
-  Zap,
-  Star,
-  Users,
   Compass,
-  ArrowRight,
   CheckCircle,
-  FileCheck
+  FileCheck,
+  Layers,
+  Bot,
+  Zap,
+  Globe,
+  FileText,
+  Users,
+  Trophy,
+  BookOpen,
+  Send
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { User } from "@supabase/supabase-js";
+import { upsertUserProfile } from "@/lib/db/profiles";
 
 // Categories & Roles for dynamic Tailoring
 const TARGET_ROLES = [
@@ -53,24 +62,73 @@ const TARGET_ROLES = [
   "Cybersecurity Analyst"
 ];
 
-const COMPANIES = [
-  { name: "Deloitte", rounds: ["Online Cognitive Test", "Technical Interview", "Partner Round"], time: "2-3 Weeks" },
-  { name: "IBM", rounds: ["Coding Test (HackerRank)", "Technical Interview", "Managerial & HR Round"], time: "3-4 Weeks" },
-  { name: "TCS", rounds: ["NQT Aptitude Exam", "Technical Interview", "HR Round"], time: "4 Weeks" },
-  { name: "Accenture", rounds: ["Cognitive & Technical Assessment", "Communication Test", "HR Interview"], time: "2 Weeks" },
-  { name: "Wipro", rounds: ["Aptitude & Coding Test", "Technical Round", "HR Round"], time: "3 Weeks" },
-  { name: "Capgemini", rounds: ["Pseudo-code & Aptitude Test", "Technical Round", "HR Interview"], time: "3 Weeks" },
-  { name: "Cognizant", rounds: ["Aptitude & Technical MCQ", "Technical Interview", "HR Round"], time: "3-4 Weeks" }
-];
+
+
+interface BookingItem {
+  id: string | number;
+  type?: string;
+  sessionType?: string;
+  date: string;
+  time: string;
+  status: string;
+}
+
+interface AdminRequestItem {
+  id: number;
+  student: string;
+  type: string;
+  status: string;
+}
 
 export default function DashboardPage() {
   const { savedJobs } = useSavedJobs();
   const [user, setUser] = useState<User | null>(null);
-  const [activeTab, setActiveTab] = useState<string>("dashboard");
   const supabase = createClient();
 
+  // Parse URL tab parameter helper for lazy initializers
+  const getInitialActiveTab = () => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get("tab");
+      if (tabParam) {
+        if (["resume", "enhancer", "jd-match", "builder"].includes(tabParam)) {
+          return "resume-os";
+        }
+        if (tabParam === "projects") {
+          return "projects-os";
+        }
+        if (tabParam === "mentorship") {
+          return "mentorship-os";
+        }
+        return tabParam;
+      }
+    }
+    return "dashboard";
+  };
+
+  const getInitialResumeSubTab = () => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get("tab");
+      if (tabParam) {
+        if (tabParam === "resume") return "ats";
+        if (tabParam === "enhancer") return "enhancer";
+        if (tabParam === "jd-match") return "jd-match";
+        if (tabParam === "builder") return "builder";
+      }
+    }
+    return "overview";
+  };
+
+  const [activeTab, setActiveTab] = useState<string>(getInitialActiveTab);
+
   // Premium Membership State (Simulated)
-  const [isPremium, setIsPremium] = useState<boolean>(false);
+  const [isPremium, setIsPremium] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("member_is_premium") === "true";
+    }
+    return false;
+  });
   const [showCheckoutModal, setShowCheckoutModal] = useState<boolean>(false);
 
   // Profile Customization & Skill states
@@ -78,14 +136,22 @@ export default function DashboardPage() {
   const [techStack, setTechStack] = useState<string>("React, Node.js, TypeScript");
   
   // Streak counter (Simulated & Persisted)
-  const [streakCount, setStreakCount] = useState<number>(3);
-  const [streakClaimed, setStreakClaimed] = useState<boolean>(false);
-
-  // Placement Readiness Index Metrics (Dynamically Calculated)
-  const [readinessScore, setReadinessScore] = useState<number>(45);
+  const [streakCount, setStreakCount] = useState<number>(() => {
+    if (typeof window !== "undefined") {
+      return parseInt(localStorage.getItem("member_learning_streak") || "3");
+    }
+    return 3;
+  });
+  const [streakClaimed, setStreakClaimed] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("member_claimed_today") === "true";
+    }
+    return false;
+  });
 
   // Resume Analyzer States
   const [atsScore, setAtsScore] = useState<number | null>(null);
+  const [resumeSubTab, setResumeSubTab] = useState<string>(getInitialResumeSubTab);
 
   // Checklists (Interactive items)
   const [completedGoals, setCompletedGoals] = useState<Record<string, boolean>>({
@@ -94,90 +160,213 @@ export default function DashboardPage() {
     "goal-3": false,
     "goal-4": false
   });
+  const [onboardingTasks, setOnboardingTasks] = useState<string[]>([]);
 
-  const [completedRoadmapSteps, setCompletedRoadmapSteps] = useState<Record<string, boolean>>({
-    "step-1": true,
-    "step-2": false,
-    "step-3": false,
-    "step-4": false
-  });
 
-  const [linkedinChecklist, setLinkedinChecklist] = useState<Record<string, boolean>>({
-    "li-1": false,
-    "li-2": false,
-    "li-3": false,
-    "li-4": false
-  });
+
+
 
   // Mentorship Bookings States
-  const [bookings, setBookings] = useState<any[]>([
-    { id: 1, type: "Resume Review", date: "2026-06-10", time: "11:00 AM", status: "Approved" }
-  ]);
-  const [bookingType, setBookingType] = useState<string>("Resume Review");
-  const [bookingDate, setBookingDate] = useState<string>("2026-06-12");
-  const [bookingTime, setBookingTime] = useState<string>("03:00 PM");
+  const [bookings, setBookings] = useState<BookingItem[]>([]);
 
-  // Project Filter
-  const [projectDifficulty, setProjectDifficulty] = useState<string>("all");
+  // Admin aggregates statistics
+  const [adminStats, setAdminStats] = useState<{
+    totalApplications: number;
+    totalActiveUsers: number;
+    mostAppliedCompanies: Array<{ company: string; count: number }>;
+    averageOfferRate: number;
+    mostPopularRoles: Array<{ role: string; count: number }>;
+  } | null>(null);
 
-  // Company selected
-  const [selectedCompany, setSelectedCompany] = useState<string>("Deloitte");
+  useEffect(() => {
+    if (activeTab === "admin" && isPremium) {
+      import("@/lib/db/applications").then(({ getAdminAnalytics }) => {
+        getAdminAnalytics().then(setAdminStats);
+      });
+    }
+  }, [activeTab, isPremium]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("placement_mentorship_bookings");
+      setTimeout(() => {
+        if (stored) {
+          try {
+            setBookings(JSON.parse(stored));
+          } catch {}
+        } else {
+          setBookings([
+            { id: "booking-1", sessionType: "Resume Review", date: "2026-06-10", time: "11:00 AM", status: "Upcoming" }
+          ]);
+        }
+      }, 0);
+    }
+  }, [activeTab]);
+
+
+
+
+
+  const router = useRouter();
 
   // Admin Mock Database
-  const [adminRequests, setAdminRequests] = useState<any[]>([
+  const [adminRequests, setAdminRequests] = useState<AdminRequestItem[]>([
     { id: 101, student: "Amit Sharma", type: "Mock Interview", status: "Pending" },
     { id: 102, student: "Rohan Varma", type: "Resume Review", status: "Approved" }
   ]);
 
   useEffect(() => {
-    // Load persisted values
-    if (typeof window !== "undefined") {
-      const savedPremium = localStorage.getItem("member_is_premium") === "true";
-      setIsPremium(savedPremium);
-      
-      const savedStreak = parseInt(localStorage.getItem("member_learning_streak") || "5");
-      setStreakCount(savedStreak);
-
-      const savedClaimed = localStorage.getItem("member_claimed_today") === "true";
-      setStreakClaimed(savedClaimed);
-    }
-
-    const getUser = async () => {
+    const checkUserProfile = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       setUser(user);
+      if (user) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        if (!profile || !profile.onboarding_completed || (profile.profile_completion !== undefined && profile.profile_completion < 50)) {
+          router.push("/onboarding");
+        } else {
+          if (profile.target_role) setTargetRole(profile.target_role);
+          if (profile.skills) setTechStack(profile.skills.join(", "));
+          
+          // Load onboarding action tasks
+          const raw = profile.raw_profile_data || {};
+          if (raw.actionPlanTasks && Array.isArray(raw.actionPlanTasks)) {
+            setOnboardingTasks(raw.actionPlanTasks);
+            const initGoals: Record<string, boolean> = {};
+            raw.actionPlanTasks.forEach((_: any, idx: number) => {
+              initGoals[`goal-${idx}`] = false;
+            });
+            setCompletedGoals(initGoals);
+          }
+        }
+      }
     };
-    getUser();
-  }, []);
+    checkUserProfile();
+  }, [supabase.auth, router]);
 
-  // Update dynamic readiness score based on actions
-  useEffect(() => {
+  const handleUpdateTargetSettings = async (newRole: string, newStack: string) => {
+    setTargetRole(newRole);
+    setTechStack(newStack);
+    if (user) {
+      const skillsArray = newStack.split(",").map(s => s.trim()).filter(Boolean);
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("raw_profile_data")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      
+      const rawData = profile?.raw_profile_data || {};
+      const updatedPayload = {
+        ...rawData,
+        targetRole: newRole,
+        skills: skillsArray
+      };
+      await upsertUserProfile(user.id, updatedPayload);
+    }
+  };
+
+  // Derived Placement Readiness Index Metrics
+  const readinessScore = (() => {
     let score = 30;
     // Streak contribution
     score += Math.min(streakCount * 3, 20);
     // Goals checked
     const checkedGoals = Object.values(completedGoals).filter(Boolean).length;
     score += checkedGoals * 5;
-    // Roadmap checked
-    const checkedSteps = Object.values(completedRoadmapSteps).filter(Boolean).length;
-    score += checkedSteps * 8;
+    // Roadmap checked (computed dynamically from actual learning steps checked in localStorage)
+    let checkedSteps = 0;
+    if (typeof window !== "undefined") {
+      const savedProgress = localStorage.getItem("roadmap_progress_states");
+      if (savedProgress) {
+        try {
+          const parsed = JSON.parse(savedProgress);
+          checkedSteps = Object.values(parsed).filter(Boolean).length;
+        } catch {}
+      }
+    }
+    score += Math.min(checkedSteps * 2, 25); // cap at 25% contribution
     // ATS Scan contribution
     if (atsScore) {
       score += Math.round(atsScore * 0.25);
     }
-    // Limit to 100
-    setReadinessScore(Math.min(score, 100));
-  }, [completedGoals, completedRoadmapSteps, streakCount, atsScore]);
-
-  // Handle URL tabs query
-  useEffect(() => {
+    // CRM application track contribution
+    let crmAppsCount = 0;
+    let crmHasOffer = false;
     if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      const tabParam = params.get("tab");
-      if (tabParam) {
-        setActiveTab(tabParam);
+      const stored = localStorage.getItem("placement_crm_applications");
+      if (stored) {
+        try {
+          const parsedApps = JSON.parse(stored);
+          crmAppsCount = parsedApps.filter((a: { status: string }) => a.status !== "Saved").length;
+          crmHasOffer = parsedApps.some((a: { status: string }) => ["Offer Received", "Joined"].includes(a.status));
+        } catch {}
       }
     }
-  }, []);
+    score += Math.min(crmAppsCount * 2, 10);
+    if (crmHasOffer) {
+      score += 15;
+    }
+    return Math.min(score, 100);
+  })();
+
+  const [liveReadinessScore, setLiveReadinessScore] = useState<number>(60);
+  
+  useEffect(() => {
+    if (user) {
+      import("@/lib/db/placement-readiness").then(({ getPlacementReadiness }) => {
+        getPlacementReadiness(user.id).then(res => {
+          if (res) setLiveReadinessScore(res.pri_score);
+        });
+      });
+    } else {
+      const stored = localStorage.getItem("placement_readiness_score");
+      if (stored) {
+        setLiveReadinessScore(parseInt(stored, 10) || 60);
+      }
+    }
+  }, [user]);
+
+  const handleTabTransition = (tabId: string) => {
+    if (tabId === "placement-readiness") {
+      router.push("/dashboard/placement-readiness");
+    } else if (tabId === "placement-missions") {
+      router.push("/dashboard/missions");
+    } else if (tabId === "recommended") {
+      router.push("/dashboard/recommended");
+    } else if (tabId === "actions") {
+      router.push("/dashboard/actions");
+    } else if (tabId === "recruiters") {
+      router.push("/dashboard/recruiters");
+    } else if (tabId === "resume") {
+      setActiveTab("resume-os");
+      setResumeSubTab("ats");
+    } else if (tabId === "enhancer") {
+      setActiveTab("resume-os");
+      setResumeSubTab("enhancer");
+    } else if (tabId === "jd-match") {
+      setActiveTab("resume-os");
+      setResumeSubTab("jd-match");
+    } else if (tabId === "builder") {
+      setActiveTab("resume-os");
+      setResumeSubTab("builder");
+    } else if (tabId === "mentorship") {
+      setActiveTab("mentorship-os");
+    } else if (tabId === "community-hub" || tabId === "community") {
+      router.push("/dashboard/community");
+    } else if (tabId === "leaderboard") {
+      router.push("/dashboard/leaderboard");
+    } else if (tabId === "digest") {
+      router.push("/dashboard/digest");
+    } else if (tabId === "whatsapp-admin") {
+      router.push("/admin/whatsapp");
+    } else {
+      setActiveTab(tabId);
+    }
+  };
+
 
   // Claim learning streak
   const handleClaimStreak = () => {
@@ -199,35 +388,13 @@ export default function DashboardPage() {
     }));
   };
 
-  const toggleRoadmapStep = (id: string) => {
-    setCompletedRoadmapSteps(prev => ({
-      ...prev,
-      [id]: !prev[id]
-    }));
-  };
-
-  const toggleLinkedIn = (id: string) => {
-    setLinkedinChecklist(prev => ({
-      ...prev,
-      [id]: !prev[id]
-    }));
-  };
 
 
 
-  // Book placement slot
-  const bookMentorshipSlot = (e: React.FormEvent) => {
-    e.preventDefault();
-    const newBooking = {
-      id: Date.now(),
-      type: bookingType,
-      date: bookingDate,
-      time: bookingTime,
-      status: "Approved" // Instant approval for visual delight
-    };
-    setBookings(prev => [...prev, newBooking]);
-    alert(`Success! Your 1-to-1 ${bookingType} session has been confirmed.`);
-  };
+
+
+
+
 
   // Toggle premium membership
   const togglePremiumPlan = () => {
@@ -251,13 +418,27 @@ export default function DashboardPage() {
   // Navigation Items
   const menuItems = [
     { id: "dashboard", label: "My Dashboard", icon: <LayoutDashboard className="w-5 h-5" /> },
-    { id: "resume", label: "ATS Resume Analyzer", icon: <FileCheck className="w-5 h-5 text-indigo-500" /> },
+    { id: "placement-readiness", label: "Readiness Index (PRI)", icon: <Award className="w-5 h-5 text-emerald-600" /> },
+    { id: "placement-missions", label: "Missions Dashboard", icon: <Trophy className="w-5 h-5 text-amber-500" /> },
+    { id: "placement-copilot", label: "AI Placement Copilot", icon: <Bot className="w-5 h-5 text-indigo-500" /> },
+    { id: "recommended", label: "Job Recommendations", icon: <Sparkles className="w-5 h-5 text-indigo-500 animate-pulse" /> },
+    { id: "actions", label: "Action Center", icon: <CalendarIcon className="w-5 h-5 text-rose-500" /> },
+    { id: "resume-os", label: "Resume OS", icon: <FileCheck className="w-5 h-5 text-indigo-500" /> },
+    { id: "portfolio-os", label: "Portfolio OS", icon: <Globe className="w-5 h-5 text-indigo-500" /> },
+    { id: "linkedin-os", label: "LinkedIn OS", icon: <TrendingUp className="w-5 h-5 text-blue-500" /> },
+    { id: "cover-letter-os", label: "Cover Letter OS", icon: <FileText className="w-5 h-5 text-indigo-500" /> },
+    { id: "recruiters", label: "Recruiter CRM", icon: <Users className="w-5 h-5 text-indigo-500" /> },
+    { id: "placement-tracker", label: "Placement Tracker OS", icon: <Layers className="w-5 h-5 text-teal-500" /> },
     { id: "roadmap", label: "Career Roadmaps", icon: <Compass className="w-5 h-5 text-emerald-500" /> },
-    { id: "projects", label: "Smart Project Advisor", icon: <Sparkles className="w-5 h-5 text-amber-500" /> },
-    { id: "linkedin", label: "LinkedIn Optimizer", icon: <TrendingUp className="w-5 h-5 text-blue-500" /> },
+    { id: "projects-os", label: "Project Advisor OS", icon: <Sparkles className="w-5 h-5 text-amber-500" /> },
     { id: "company", label: "Company Preparation", icon: <Briefcase className="w-5 h-5 text-purple-500" /> },
-    { id: "mentorship", label: "Mentorship Booking", icon: <CalendarIcon className="w-5 h-5 text-pink-500" /> },
+    { id: "interview-prep", label: "AI Interview Prep", icon: <MessageSquare className="w-5 h-5 text-indigo-500" /> },
+    { id: "mentorship-os", label: "Mentorship OS", icon: <CalendarIcon className="w-5 h-5 text-pink-500" /> },
+    { id: "community-hub", label: "Community Hub OS", icon: <Users className="w-5 h-5 text-indigo-500" /> },
+    { id: "leaderboard", label: "Leaderboard", icon: <Trophy className="w-5 h-5 text-amber-500" /> },
+    { id: "digest", label: "Daily Digest", icon: <BookOpen className="w-5 h-5 text-indigo-500" /> },
     { id: "membership", label: "Premium Plans", icon: <Award className="w-5 h-5 text-rose-500" /> },
+    { id: "whatsapp-admin", label: "WhatsApp Campaigns", icon: <Send className="w-5 h-5 text-slate-500" />, adminOnly: true },
     { id: "admin", label: "Admin Console", icon: <ShieldCheck className="w-5 h-5 text-slate-500" />, adminOnly: true }
   ];
 
@@ -286,7 +467,7 @@ export default function DashboardPage() {
               return (
                 <button
                   key={item.id}
-                  onClick={() => setActiveTab(item.id)}
+                  onClick={() => handleTabTransition(item.id)}
                   className={cn(
                     "w-full flex items-center gap-4 px-4 py-3 rounded-2xl text-sm font-bold transition-all text-left",
                     activeTab === item.id 
@@ -382,25 +563,27 @@ export default function DashboardPage() {
 
               {/* Stats Widgets */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                
-                {/* Visual circular progress index */}
-                <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200/60 shadow-sm flex items-center justify-between gap-6">
-                  <div className="space-y-2">
-                    <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Placement Readiness Index</p>
-                    <p className="text-xs text-slate-400 font-bold max-w-[150px]">Mark roadmap items and goals as complete to increase score.</p>
-                  </div>
-                  <div className="relative w-24 h-24 shrink-0 flex items-center justify-center">
-                    <svg className="w-full h-full transform -rotate-90">
-                      <circle cx="48" cy="48" r="38" className="text-slate-100" strokeWidth="8" stroke="currentColor" fill="transparent" />
-                      <circle cx="48" cy="48" r="38" className="text-indigo-600" strokeWidth="8" stroke="currentColor" fill="transparent"
-                        strokeDasharray={2 * Math.PI * 38}
-                        strokeDashoffset={2 * Math.PI * 38 * (1 - readinessScore / 100)} 
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                    <span className="absolute text-xl font-black text-slate-900">{readinessScore}%</span>
-                  </div>
-                </div>
+                     {/* Visual circular progress index */}
+                 <Link 
+                   href="/dashboard/placement-readiness" 
+                   className="bg-white p-8 rounded-[2.5rem] border border-slate-200/60 shadow-sm flex items-center justify-between gap-6 hover:shadow-md hover:border-emerald-300 transition-all cursor-pointer w-full"
+                 >
+                   <div className="space-y-2 text-left">
+                     <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Placement Readiness Index</p>
+                     <p className="text-xs text-slate-400 font-bold max-w-[150px]">Mark roadmap items and goals as complete to increase score.</p>
+                   </div>
+                   <div className="relative w-24 h-24 shrink-0 flex items-center justify-center">
+                     <svg className="w-full h-full transform -rotate-90">
+                       <circle cx="48" cy="48" r="38" className="text-slate-100" strokeWidth="8" stroke="currentColor" fill="transparent" />
+                       <circle cx="48" cy="48" r="38" className="text-emerald-600" strokeWidth="8" stroke="currentColor" fill="transparent"
+                         strokeDasharray={2 * Math.PI * 38}
+                         strokeDashoffset={2 * Math.PI * 38 * (1 - liveReadinessScore / 100)} 
+                         strokeLinecap="round"
+                       />
+                     </svg>
+                     <span className="absolute text-xl font-black text-slate-900">{liveReadinessScore}%</span>
+                   </div>
+                 </Link>
 
                 <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200/60 shadow-sm flex items-center justify-between">
                   <div className="space-y-1">
@@ -423,7 +606,7 @@ export default function DashboardPage() {
                       {bookings.length > 0 ? `${bookings.length} Session Booked` : "No sessions booked"}
                     </p>
                     <button 
-                      onClick={() => setActiveTab("mentorship")} 
+                      onClick={() => handleTabTransition("mentorship")} 
                       className="mt-2 text-[10px] font-black text-blue-400 uppercase tracking-widest hover:underline flex items-center gap-1 text-left"
                     >
                       Book 1-on-1 Mentorship <ChevronRight className="w-3.5 h-3.5" />
@@ -447,7 +630,7 @@ export default function DashboardPage() {
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Target Career Role</label>
                       <select 
                         value={targetRole}
-                        onChange={(e) => setTargetRole(e.target.value)}
+                        onChange={(e) => handleUpdateTargetSettings(e.target.value, techStack)}
                         className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
                       >
                         {TARGET_ROLES.map(role => (
@@ -461,7 +644,7 @@ export default function DashboardPage() {
                       <input 
                         type="text" 
                         value={techStack} 
-                        onChange={(e) => setTechStack(e.target.value)}
+                        onChange={(e) => handleUpdateTargetSettings(targetRole, e.target.value)}
                         placeholder="React, Node.js, Python"
                         className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
                       />
@@ -483,12 +666,15 @@ export default function DashboardPage() {
                   <h3 className="text-xl font-black text-slate-900 font-display">Daily Career Goals</h3>
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {[
-                      { id: "goal-1", text: "Create / scan ATS-friendly Resume" },
-                      { id: "goal-2", text: "Practice 1 DSA problem round" },
-                      { id: "goal-3", text: "Complete 1 Section in Roadmap" },
-                      { id: "goal-4", text: "Review Deloitte/IBM prep questions" }
-                    ].map(goal => (
+                    {(onboardingTasks.length > 0 
+                      ? onboardingTasks.map((t, idx) => ({ id: `goal-${idx}`, text: t }))
+                      : [
+                          { id: "goal-1", text: "Create / scan ATS-friendly Resume" },
+                          { id: "goal-2", text: "Practice 1 DSA problem round" },
+                          { id: "goal-3", text: "Complete 1 Section in Roadmap" },
+                          { id: "goal-4", text: "Review Deloitte/IBM prep questions" }
+                        ]
+                    ).map(goal => (
                       <div 
                         key={goal.id} 
                         onClick={() => toggleGoal(goal.id)}
@@ -515,7 +701,7 @@ export default function DashboardPage() {
                       <h4 className="text-lg font-black font-display">Need specialized assistance with your resume?</h4>
                     </div>
                     <button 
-                      onClick={() => setActiveTab("resume")}
+                      onClick={() => handleTabTransition("resume")}
                       className="px-6 py-3 bg-white text-indigo-900 text-xs font-black uppercase tracking-widest rounded-xl hover:bg-slate-50 transition-all shrink-0 cursor-pointer shadow-lg"
                     >
                       Run ATS Analyzer
@@ -526,15 +712,69 @@ export default function DashboardPage() {
             </motion.div>
           )}
 
-          {/* TAB 2: ATS RESUME ANALYZER */}
-          {activeTab === "resume" && (
+          {/* TAB 2: RESUME OS */}
+          {activeTab === "resume-os" && (
             <motion.div
-              key="resume"
+              key="resume-os"
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -15 }}
             >
-              <AtsResumeAnalyzer onScoreUpdate={setAtsScore} />
+              <ResumeOS onScoreUpdate={setAtsScore} subTab={resumeSubTab} onSubTabChange={setResumeSubTab} />
+            </motion.div>
+          )}
+
+          {/* TAB: PORTFOLIO OS */}
+          {activeTab === "portfolio-os" && (
+            <motion.div
+              key="portfolio-os"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+            >
+              <PortfolioOS />
+            </motion.div>
+          )}
+
+          {/* TAB: AI INTERVIEW PREP */}
+          {activeTab === "interview-prep" && (
+            <motion.div
+              key="interview-prep"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+            >
+              <AiInterviewPrep />
+            </motion.div>
+          )}
+
+          {/* TAB: PLACEMENT TRACKER OS */}
+          {activeTab === "placement-tracker" && (
+            <motion.div
+              key="placement-tracker"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+            >
+              <PlacementTrackerOS />
+            </motion.div>
+          )}
+
+          {/* TAB: PLACEMENT COPILOT */}
+          {activeTab === "placement-copilot" && (
+            <motion.div
+              key="placement-copilot"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+            >
+              <PlacementCopilot
+                activeTab={activeTab}
+                setActiveTab={handleTabTransition}
+                setResumeSubTab={setResumeSubTab}
+                targetRole={targetRole}
+                techStack={techStack}
+              />
             </motion.div>
           )}
 
@@ -545,337 +785,44 @@ export default function DashboardPage() {
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -15 }}
-              className="space-y-12"
             >
-              <div className="max-w-3xl space-y-4">
-                <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-[10px] font-black uppercase tracking-widest">
-                  <Compass className="w-3.5 h-3.5 fill-indigo-100" />
-                  Role-Based Learning Paths
-                </div>
-                <h1 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tighter leading-tight font-display">
-                  Connected Learning Roadmaps
-                </h1>
-                <p className="text-slate-500 font-medium text-base max-w-xl">
-                  Step-by-step career sequences with progress tracking to take you from a confused beginner to a placement-ready candidate.
-                </p>
-              </div>
-
-              {/* Target Role details and Flowchart */}
-              <div className="bg-white p-8 md:p-12 rounded-[2.5rem] border border-slate-200/60 shadow-xl shadow-slate-100/50 space-y-10">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-slate-100">
-                  <div className="space-y-1">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Target Role Roadmap</p>
-                    <h3 className="text-2xl font-black text-slate-900 tracking-tight">{targetRole} Path</h3>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Change Target Role:</span>
-                    <select 
-                      value={targetRole}
-                      onChange={(e) => setTargetRole(e.target.value)}
-                      className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    >
-                      {TARGET_ROLES.map(role => (
-                        <option key={role} value={role}>{role}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                {/* Timeline and flowchart flow */}
-                <div className="relative border-l-2 border-indigo-100 ml-4 pl-8 space-y-12 py-4">
-                  {[
-                    {
-                      id: "step-1",
-                      level: "Phase 1: Beginner (Programming Basics)",
-                      duration: "Week 1",
-                      title: "Programming Fundamentals & Tech Foundations",
-                      items: ["Core Syntax & Variables", "Control Flows (Loops, Conditionals)", "Functions & Recursions", "Basic Complexity Analysis"]
-                    },
-                    {
-                      id: "step-2",
-                      level: "Phase 2: Intermediate (DSA & Frameworks)",
-                      duration: "Week 2-3",
-                      title: "Advanced Arrays, Strings & Dynamic Web Frameworks",
-                      items: ["Object-Oriented Programming", "Array Traversal & Sorting", "RESTful API Integration", "State Management & React Routing"]
-                    },
-                    {
-                      id: "step-3",
-                      level: "Phase 3: Advanced (System Architectures)",
-                      duration: "Week 4",
-                      title: "System Design, Databases & Scalable Architecture",
-                      items: ["SQL Schema Design", "Index Caching & Performance", "REST APIs vs GraphQL", "Basic Cloud Server Deployment"]
-                    },
-                    {
-                      id: "step-4",
-                      level: "Phase 4: Placement Preparation",
-                      duration: "Interview Prep",
-                      title: "Recruiters Targeting, Resume ATS, & Mock Interviews",
-                      items: ["ATS Resume Scans & Edits", "Deloitte/IBM Aptitude Practice", "1-on-1 Mentorship Strategy Session", "Behavioral HR Mock Round"]
-                    }
-                  ].map((phase, idx) => (
-                    <div key={phase.id} className="relative group">
-                      
-                      {/* Timeline Dot */}
-                      <div className={cn(
-                        "absolute -left-[41px] top-1.5 w-6 h-6 rounded-full border-4 border-white shadow flex items-center justify-center transition-all",
-                        completedRoadmapSteps[phase.id] ? "bg-indigo-600" : "bg-slate-300"
-                      )} />
-
-                      <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 group-hover:border-indigo-200 transition-all flex flex-col md:flex-row md:items-start justify-between gap-6">
-                        <div className="space-y-4">
-                          <div className="flex items-center gap-3">
-                            <span className="px-2.5 py-1 bg-indigo-50 text-indigo-600 text-[10px] font-black uppercase tracking-widest rounded-lg">
-                              {phase.level}
-                            </span>
-                            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">{phase.duration}</span>
-                          </div>
-                          <h4 className="text-lg font-black text-slate-800">{phase.title}</h4>
-                          <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs font-bold text-slate-500 pt-2">
-                            {phase.items.map((item, itemIdx) => (
-                              <span key={itemIdx} className="flex items-center gap-1.5">
-                                <span className="h-1.5 w-1.5 rounded-full bg-slate-300"></span>
-                                {item}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Interactive toggle */}
-                        <button
-                          onClick={() => toggleRoadmapStep(phase.id)}
-                          className={cn(
-                            "px-5 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shrink-0 cursor-pointer self-start md:self-center",
-                            completedRoadmapSteps[phase.id]
-                              ? "bg-emerald-50 border border-emerald-100 text-emerald-600"
-                              : "bg-slate-900 text-white hover:bg-indigo-600 shadow-md shadow-indigo-100"
-                          )}
-                        >
-                          {completedRoadmapSteps[phase.id] ? "Completed ✓" : "Mark Complete"}
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <CareerRoadmapNavigator targetRole={targetRole} onRoleChange={setTargetRole} />
             </motion.div>
           )}
 
-          {/* TAB 4: SMART PROJECT ADVISOR */}
-          {activeTab === "projects" && (
+          {/* TAB 4: PROJECT ADVISOR OS */}
+          {activeTab === "projects-os" && (
             <motion.div
-              key="projects"
+              key="projects-os"
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -15 }}
-              className="space-y-12"
             >
-              <div className="max-w-3xl space-y-4">
-                <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-[10px] font-black uppercase tracking-widest">
-                  <Sparkles className="w-3.5 h-3.5 fill-indigo-100" />
-                  Smart Recommendation Engine
-                </div>
-                <h1 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tighter leading-tight font-display">
-                  Project Recommendations
-                </h1>
-                <p className="text-slate-500 font-medium text-base max-w-xl">
-                  Build impressive developer projects customized to your target role: <strong className="text-slate-800">{targetRole}</strong>. Boost your resume impact index instantly.
-                </p>
-              </div>
-
-              {/* Filters */}
-              <div className="flex flex-wrap gap-2 pb-2">
-                {[
-                  { id: "all", label: "All Suggestions" },
-                  { id: "beginner", label: "Beginner Projects" },
-                  { id: "intermediate", label: "Intermediate Projects" },
-                  { id: "advanced", label: "Advanced Projects" },
-                  { id: "hackathon", label: "Hackathon-Ready Ideas" }
-                ].map(filter => (
-                  <button
-                    key={filter.id}
-                    onClick={() => setProjectDifficulty(filter.id)}
-                    className={cn(
-                      "px-5 py-2.5 rounded-full text-xs font-black uppercase tracking-widest transition-all cursor-pointer border",
-                      projectDifficulty === filter.id
-                        ? "bg-slate-900 border-slate-900 text-white shadow-xl shadow-slate-900/10"
-                        : "bg-white border-slate-200 text-slate-500 hover:text-slate-900 hover:border-slate-300"
-                    )}
-                  >
-                    {filter.label}
-                  </button>
-                ))}
-              </div>
-
-              {/* Projects Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                {[
-                  {
-                    title: "Real-time Collaborative Whiteboard",
-                    role: "Software Developer",
-                    difficulty: "intermediate",
-                    impact: "88%",
-                    attractiveness: "High",
-                    tech: "WebSocket, React, Node.js, Canvas API",
-                    desc: "An interactive workspace allowing multi-user drawing, chat, and sticky notes with sub-second synchronization. Excellent to showcase concurrent network streams."
-                  },
-                  {
-                    title: "Serverless E-Commerce Gateway",
-                    role: "Software Developer",
-                    difficulty: "advanced",
-                    impact: "94%",
-                    attractiveness: "Extreme",
-                    tech: "AWS Lambda, TypeScript, Redis, DynamoDB",
-                    desc: "Cloud-native payment checkout pipeline simulating flash sale inventory locks using Redis. Demonstrates distributed systems knowledge to FAANG recruiters."
-                  },
-                  {
-                    title: "Automated Financial Tracker dashboard",
-                    role: "Software Developer",
-                    difficulty: "beginner",
-                    impact: "70%",
-                    attractiveness: "Moderate",
-                    tech: "React, Chart.js, Express, PostgreSQL",
-                    desc: "A neat dashboard tracking family expense indices and visualizing historical budgets. Highlights clean UI design and standard DB schema mapping."
-                  },
-                  {
-                    title: "Placement Predictive Analytics Engine",
-                    role: "Data Analyst",
-                    difficulty: "intermediate",
-                    impact: "85%",
-                    attractiveness: "High",
-                    tech: "Python, Pandas, Streamlit, Scikit-learn",
-                    desc: "Data tool parsing college placement metrics to predict student hiring categories based on test ranks and backlogs. Visualized as interactive map plots."
-                  },
-                  {
-                    title: "Decentralized Voting Ledger",
-                    role: "Software Developer",
-                    difficulty: "hackathon",
-                    impact: "90%",
-                    attractiveness: "High",
-                    tech: "Ethereum, Solidity, Web3.js, React",
-                    desc: "Tamper-proof voting system built for college elections to secure identity checks and ballot counting. Great for hackathon highlight portfolios."
-                  }
-                ].filter(p => {
-                  if (projectDifficulty === "all") return true;
-                  return p.difficulty === projectDifficulty;
-                }).map((proj, idx) => (
-                  <div key={idx} className="bg-white p-8 rounded-[2.5rem] border border-slate-200/60 shadow-sm flex flex-col justify-between hover:border-indigo-300 transition-all group">
-                    <div className="space-y-6">
-                      <div className="flex flex-wrap justify-between items-start gap-4">
-                        <span className="px-2.5 py-1 bg-slate-50 text-slate-500 text-[9px] font-black uppercase tracking-widest rounded-lg border border-slate-100">
-                          {proj.difficulty}
-                        </span>
-                        <div className="flex gap-2 text-[9px] font-black uppercase tracking-widest text-slate-400">
-                          <span>Impact: <strong className="text-slate-800 font-black">{proj.impact}</strong></span>
-                          <span>•</span>
-                          <span>Attractiveness: <strong className="text-indigo-600 font-black">{proj.attractiveness}</strong></span>
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <h4 className="text-xl font-black text-slate-900 group-hover:text-indigo-600 transition-colors leading-tight">
-                          {proj.title}
-                        </h4>
-                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{proj.tech}</p>
-                      </div>
-
-                      <p className="text-slate-500 font-medium text-sm leading-relaxed">{proj.desc}</p>
-                    </div>
-
-                    <div className="pt-6 mt-6 border-t border-slate-100 flex items-center justify-between">
-                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Recruiter Attractiveness Index</span>
-                       <div className="flex gap-1">
-                          {[1,2,3,4].map(starIdx => (
-                            <Star key={starIdx} className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                          ))}
-                          <Star className="w-3.5 h-3.5 text-slate-200" />
-                       </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <ProjectOS />
             </motion.div>
           )}
 
-          {/* TAB 5: LINKEDIN OPTIMIZER */}
-          {activeTab === "linkedin" && (
+          {/* TAB 5: LINKEDIN OS */}
+          {activeTab === "linkedin-os" && (
             <motion.div
-              key="linkedin"
+              key="linkedin-os"
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -15 }}
-              className="space-y-12"
             >
-              <div className="max-w-3xl space-y-4">
-                <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-[10px] font-black uppercase tracking-widest">
-                  <TrendingUp className="w-3.5 h-3.5 fill-indigo-100" />
-                  Recruiter Visibility Suite
-                </div>
-                <h1 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tighter leading-tight font-display">
-                  LinkedIn Optimization
-                </h1>
-                <p className="text-slate-500 font-medium text-base max-w-xl">
-                  Construct a high-ranking student profile to catch the eye of tech recruiters. Generate search-optimized summaries and track profile strengths.
-                </p>
-              </div>
+              <LinkedInOS />
+            </motion.div>
+          )}
 
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                
-                {/* Profile optimizations generator */}
-                <div className="lg:col-span-7 bg-white p-8 rounded-[2.5rem] border border-slate-200/60 shadow-sm space-y-6">
-                  <h3 className="text-xl font-black text-slate-900 font-display">Copywriting Generator</h3>
-                  
-                  <div className="space-y-4">
-                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Search-Optimized Headline Suggestion</p>
-                     <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl relative group">
-                        <p className="text-sm font-bold text-slate-800">
-                          {targetRole} | {techStack} | Aspiring Placement Candidate 2026 | Open Source Enthusiast
-                        </p>
-                     </div>
-
-                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">AI Generated "About Me" Section</p>
-                     <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl relative text-slate-600 text-xs font-semibold leading-relaxed whitespace-pre-wrap">
-                       "Passionate computer science graduate targeting {targetRole} placements. Experienced in building full-stack applications with {techStack}.\n\nDeeply interested in software engineering, API development, and distributed systems. Starred on GitHub for open-source widgets. Open to freshers off-campus hiring drives."
-                     </div>
-                  </div>
-                </div>
-
-                {/* Profile Strength Checklist */}
-                <div className="lg:col-span-5 bg-white p-8 rounded-[2.5rem] border border-slate-200/60 shadow-sm space-y-6">
-                  <h3 className="text-xl font-black text-slate-900 font-display">Recruiter Visibility Checklist</h3>
-                  
-                  <div className="space-y-4">
-                    {[
-                      { id: "li-1", text: "Professional profile picture & banner" },
-                      { id: "li-2", text: "Include GitHub links in Contact info" },
-                      { id: "li-3", text: "Toggle 'Open To Work' visible to recruiters" },
-                      { id: "li-4", text: "Post project demo videos (High Engagement)" }
-                    ].map(item => (
-                      <div 
-                        key={item.id} 
-                        onClick={() => toggleLinkedIn(item.id)}
-                        className={cn(
-                          "p-4 border rounded-2xl cursor-pointer flex items-center justify-between transition-all select-none",
-                          linkedinChecklist[item.id] 
-                            ? "bg-blue-50/50 border-blue-200 text-blue-900 font-bold"
-                            : "bg-slate-50 border-slate-200 hover:border-slate-300 text-slate-600"
-                        )}
-                      >
-                        <span className="text-sm font-semibold">{item.text}</span>
-                        {linkedinChecklist[item.id] ? (
-                          <CheckCircle2 className="w-5 h-5 text-blue-600 shrink-0" />
-                        ) : (
-                          <div className="w-5 h-5 rounded-full border-2 border-slate-300 shrink-0" />
-                        )}
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="pt-6 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-slate-400">
-                    <span>Recruiter visibility rank</span>
-                    <span className="text-blue-600 uppercase tracking-widest font-black">Medium-High</span>
-                  </div>
-                </div>
-              </div>
+          {/* TAB: COVER LETTER OS */}
+          {activeTab === "cover-letter-os" && (
+            <motion.div
+              key="cover-letter-os"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+            >
+              <CoverLetterOS />
             </motion.div>
           )}
 
@@ -894,183 +841,155 @@ export default function DashboardPage() {
                   MNC Placement Playbooks
                 </div>
                 <h1 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tighter leading-tight font-display">
-                  Company Placement Playbook
+                  Company Preparation OS
                 </h1>
                 <p className="text-slate-500 font-medium text-base max-w-xl">
-                  Master specific selection processes, typical interview questions, and prep tips tailored directly for top companies.
+                  Centralized ecosystem for top-tier hiring drives. Master dynamic selection rounds, practice OA simulations, and evaluate matching indices.
                 </p>
               </div>
 
-              {/* Pick Company tabs */}
-              <div className="flex flex-wrap gap-2 pb-2">
-                {COMPANIES.map(company => (
-                  <button
-                    key={company.name}
-                    onClick={() => setSelectedCompany(company.name)}
-                    className={cn(
-                      "px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all cursor-pointer border",
-                      selectedCompany === company.name
-                        ? "bg-slate-900 border-slate-900 text-white shadow-xl shadow-slate-900/10"
-                        : "bg-white border-slate-200 text-slate-500 hover:text-slate-900 hover:border-slate-300"
-                    )}
-                  >
-                    {company.name}
-                  </button>
-                ))}
-              </div>
+              {/* Company Cards Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {COMPANY_PREP_LIST.map((company) => {
+                  // Calculate dynamic company compatibility score
+                  let compScore = 40; // base score
+                  if (atsScore) {
+                    compScore += Math.round(atsScore * 0.25);
+                  } else {
+                    compScore += 18;
+                  }
 
-              {/* Company Details view */}
-              <div className="bg-white p-8 md:p-12 rounded-[2.5rem] border border-slate-200/60 shadow-xl shadow-slate-100/50 space-y-8">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-slate-100">
-                  <div>
-                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Company Guide</p>
-                     <h3 className="text-3xl font-black text-slate-900 font-display">{selectedCompany}</h3>
-                  </div>
-                  <div>
-                    <span className="text-xs font-black text-slate-400 uppercase tracking-widest bg-slate-50 px-3 py-1.5 rounded-lg">
-                      Process timeline: {COMPANIES.find(c => c.name === selectedCompany)?.time || "2 Weeks"}
-                    </span>
-                  </div>
-                </div>
+                  // Local storage checklists
+                  if (typeof window !== "undefined") {
+                    const storedCheck = localStorage.getItem(`company_checklist_${company.slug}`);
+                    if (storedCheck) {
+                      try {
+                        const parsed = JSON.parse(storedCheck);
+                        const checkedCount = Object.values(parsed).filter(Boolean).length;
+                        compScore += Math.min(checkedCount * 5, 20); // up to 20%
+                      } catch {}
+                    }
+                  }
 
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                  {/* Hiring process flowchart */}
-                  <div className="lg:col-span-5 space-y-6">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Expected Recruitment Process</p>
-                    <div className="space-y-4">
-                      {COMPANIES.find(c => c.name === selectedCompany)?.rounds.map((round, index) => (
-                        <div key={index} className="flex items-center gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                           <div className="w-8 h-8 bg-indigo-600 text-white rounded-lg flex items-center justify-center text-xs font-black">
-                             {index + 1}
-                           </div>
-                           <span className="text-sm font-bold text-slate-700">{round}</span>
+                  const finalCompScore = Math.min(compScore, 100);
+
+                  // Unique custom gradient background colors per company slug
+                  const gradients: Record<string, string> = {
+                    google: "from-red-500 to-yellow-500 text-white",
+                    microsoft: "from-blue-500 to-teal-500 text-white",
+                    amazon: "from-orange-500 to-amber-600 text-white",
+                    adobe: "from-red-600 to-rose-700 text-white",
+                    salesforce: "from-sky-400 to-blue-600 text-white",
+                    oracle: "from-red-700 to-stone-800 text-white",
+                    ibm: "from-blue-600 to-indigo-800 text-white",
+                    deloitte: "from-emerald-500 to-teal-700 text-white",
+                    tcs: "from-indigo-500 to-purple-700 text-white",
+                    infosys: "from-sky-500 to-indigo-600 text-white",
+                    accenture: "from-purple-600 to-pink-700 text-white",
+                    capgemini: "from-cyan-500 to-blue-700 text-white",
+                    cognizant: "from-sky-600 to-slate-800 text-white",
+                    wipro: "from-violet-500 to-fuchsia-600 text-white",
+                    hcltech: "from-blue-600 to-slate-700 text-white",
+                    "tech-mahindra": "from-rose-500 to-red-700 text-white"
+                  };
+
+                  const gradColor = gradients[company.slug] || "from-slate-700 to-slate-900 text-white";
+
+                  return (
+                    <div
+                      key={company.slug}
+                      className="bg-white border border-slate-200/60 rounded-[2rem] p-6 flex flex-col justify-between hover:border-indigo-300 hover:shadow-xl hover:shadow-indigo-500/5 transition-all group"
+                    >
+                      <div className="space-y-5">
+                        {/* Card Header */}
+                        <div className="flex justify-between items-start">
+                          <div className={cn("w-12 h-12 rounded-2xl bg-gradient-to-tr flex items-center justify-center font-black text-xl shadow-md", gradColor)}>
+                            {company.name.charAt(0)}
+                          </div>
+                          <span className={cn(
+                            "px-2.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border",
+                            company.difficulty === "Extreme"
+                              ? "bg-rose-50 border-rose-100 text-rose-600"
+                              : company.difficulty === "Hard"
+                              ? "bg-amber-50 border-amber-100 text-amber-600"
+                              : "bg-emerald-50 border-emerald-100 text-emerald-600"
+                          )}>
+                            {company.difficulty}
+                          </span>
                         </div>
-                      ))}
+
+                        {/* Title and Overview */}
+                        <div className="space-y-1">
+                          <strong className="text-base font-black text-slate-800 group-hover:text-indigo-650 transition-colors block leading-tight">
+                            {company.name} Prep OS
+                          </strong>
+                          <span className="text-[9px] text-slate-400 font-bold block">
+                            Est. Salary: {company.salaryRange}
+                          </span>
+                        </div>
+
+                        {/* Readiness Score Indicator */}
+                        <div className="space-y-1.5 bg-slate-50 p-3 rounded-xl border border-slate-100/50">
+                          <div className="flex justify-between text-[9px] font-black uppercase tracking-widest text-slate-400">
+                            <span>Readiness Index</span>
+                            <span className="text-slate-800 font-black">{finalCompScore}%</span>
+                          </div>
+                          <div className="w-full bg-slate-200/60 h-1 rounded-full overflow-hidden">
+                            <div
+                              className="bg-indigo-650 h-full rounded-full transition-all duration-500"
+                              style={{ width: `${finalCompScore}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Stats bullet list */}
+                        <div className="space-y-1 pt-1 text-[10px] text-slate-500 font-bold leading-normal">
+                          <p>• {company.activeRounds} Interview Rounds</p>
+                          <p>• Cutoff threshold: {company.oaPattern.cutoff}</p>
+                          <p>• Expected prep: {company.prepTime}</p>
+                        </div>
+                      </div>
+
+                      {/* Launch Trigger Link */}
+                      <div className="pt-5 mt-5 border-t border-slate-100">
+                        <Link
+                          href={`/company-prep/${company.slug}`}
+                          className="w-full py-3 bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-indigo-650 transition-all flex items-center justify-center gap-1.5 shadow-sm"
+                        >
+                          <Zap className="w-3.5 h-3.5 text-yellow-300" />
+                          <span>Launch Prep OS</span>
+                        </Link>
+                      </div>
                     </div>
-                  </div>
-
-                  {/* Typical questions & tips */}
-                  <div className="lg:col-span-7 space-y-6">
-                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Typical Placement Questions & Tips</p>
-                     <div className="p-6 bg-slate-50 border border-slate-200 rounded-3xl space-y-4">
-                        <div>
-                          <strong className="text-sm font-black text-slate-800 block">Coding Pattern:</strong>
-                          <p className="text-xs text-slate-500 font-medium">Focus heavily on Array reversals, SQL Joins, and HashMap checks.</p>
-                        </div>
-                        <div>
-                          <strong className="text-sm font-black text-slate-800 block">Preferred Project:</strong>
-                          <p className="text-xs text-slate-500 font-medium">Full-stack REST API dashboard showing DB CRUD logic and clean layouts.</p>
-                        </div>
-                        <div>
-                          <strong className="text-sm font-black text-slate-800 block">Interview Tip:</strong>
-                          <p className="text-xs text-slate-500 font-medium">Practice explaining the time complexity (Big O) of your algorithms. Emojis and step explanations inside code count.</p>
-                        </div>
-                     </div>
-                  </div>
-                </div>
+                  );
+                })}
               </div>
             </motion.div>
           )}
 
-          {/* TAB 7: MENTORSHIP BOOKING SYSTEM */}
-          {activeTab === "mentorship" && (
+          {/* TAB 7: MENTORSHIP OS */}
+          {activeTab === "mentorship-os" && (
             <motion.div
-              key="mentorship"
+              key="mentorship-os"
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -15 }}
-              className="space-y-12"
             >
-              <div className="max-w-3xl space-y-4">
-                <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-[10px] font-black uppercase tracking-widest">
-                  <CalendarIcon className="w-3.5 h-3.5 fill-indigo-100" />
-                  1-on-1 Placement Coaching
-                </div>
-                <h1 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tighter leading-tight font-display">
-                  Book Mentorship Slots
-                </h1>
-                <p className="text-slate-500 font-medium text-base max-w-xl">
-                  Schedule direct strategy, resume review, or technical mock round consultations with elite placement coaches.
-                </p>
-              </div>
+              <MentorshipOS />
+            </motion.div>
+          )}
 
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-                {/* Booking Slots form */}
-                <div className="lg:col-span-7 bg-white p-8 rounded-[2.5rem] border border-slate-200/60 shadow-sm">
-                  <h3 className="text-xl font-black text-slate-900 font-display mb-6">Schedule Session</h3>
-                  
-                  <form onSubmit={bookMentorshipSlot} className="space-y-6">
-                    <div>
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Select Session Topic</label>
-                      <select 
-                        value={bookingType}
-                        onChange={(e) => setBookingType(e.target.value)}
-                        className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      >
-                        <option value="Resume Review">Resume Review & ATS Check</option>
-                        <option value="Mock Coding Interview">Mock Coding Interview</option>
-                        <option value="Placement Strategy Call">Placement Strategy Call</option>
-                        <option value="Behavioral HR Interview">Behavioral HR Interview</option>
-                      </select>
-                    </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Select Date</label>
-                        <input 
-                          type="date" 
-                          value={bookingDate}
-                          onChange={(e) => setBookingDate(e.target.value)}
-                          className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Select Slot Time</label>
-                        <select 
-                          value={bookingTime}
-                          onChange={(e) => setBookingTime(e.target.value)}
-                          className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        >
-                          <option value="11:00 AM">11:00 AM - 11:45 AM</option>
-                          <option value="01:00 PM">01:00 PM - 01:45 PM</option>
-                          <option value="03:00 PM">03:00 PM - 03:45 PM</option>
-                          <option value="05:00 PM">05:00 PM - 05:45 PM</option>
-                        </select>
-                      </div>
-                    </div>
 
-                    <button
-                      type="submit"
-                      className="w-full py-4 bg-slate-900 text-white font-black text-xs uppercase tracking-widest rounded-2xl hover:bg-indigo-600 transition-all shadow-lg"
-                    >
-                      Confirm Booking Slot
-                    </button>
-                  </form>
-                </div>
-
-                {/* Scheduled Bookings tracker */}
-                <div className="lg:col-span-5 bg-white p-8 rounded-[2.5rem] border border-slate-200/60 shadow-sm space-y-6">
-                  <h3 className="text-xl font-black text-slate-900 font-display">Active Bookings</h3>
-                  
-                  <div className="space-y-4">
-                    {bookings.map(booking => (
-                      <div key={booking.id} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between gap-4">
-                        <div className="space-y-1">
-                          <strong className="text-sm font-black text-slate-800">{booking.type}</strong>
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{booking.date} @ {booking.time}</p>
-                        </div>
-                        <span className="px-2 py-1 bg-emerald-50 text-emerald-600 text-[9px] font-black uppercase tracking-widest rounded border border-emerald-100">
-                          {booking.status}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100/50 text-center text-xs text-indigo-700 font-bold">
-                    🚀 All coaching sessions are conducted on Google Meet.
-                  </div>
-                </div>
-              </div>
+          {/* TAB 7.6: COMMUNITY HUB OS */}
+          {activeTab === "community-hub" && (
+            <motion.div
+              key="community-hub"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+            >
+              <CommunityHubOS />
             </motion.div>
           )}
 
@@ -1284,6 +1203,71 @@ export default function DashboardPage() {
                   </table>
                 </div>
               </div>
+
+              {/* BuggedBrain Placement CRM Global Aggregates (Admin Console) */}
+              {adminStats && (
+                <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200/60 shadow-sm space-y-6 text-left">
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest block font-mono">📊 CRM Aggregates Console</span>
+                    <h3 className="text-xl font-black text-slate-900 font-display">System-wide Analytics Dashboard</h3>
+                    <p className="text-slate-500 font-semibold text-xs">Anonymized statistics aggregated across all active student application cards.</p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="bg-slate-50 p-6 border border-slate-150 rounded-3xl text-center">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Total Applications Tracked</span>
+                      <strong className="text-4xl font-black text-slate-800 block mt-2">{adminStats.totalApplications}</strong>
+                      <span className="text-[9px] text-slate-400 font-bold block mt-1">Global submissions</span>
+                    </div>
+
+                    <div className="bg-slate-50 p-6 border border-slate-150 rounded-3xl text-center">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Total Active Users</span>
+                      <strong className="text-4xl font-black text-indigo-650 block mt-2">{adminStats.totalActiveUsers}</strong>
+                      <span className="text-[9px] text-slate-400 font-bold block mt-1">Unique candidate pipes</span>
+                    </div>
+
+                    <div className="bg-slate-50 p-6 border border-slate-150 rounded-3xl text-center">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Average Offer Rate</span>
+                      <strong className="text-4xl font-black text-emerald-600 block mt-2">{adminStats.averageOfferRate}%</strong>
+                      <span className="text-[9px] text-slate-400 font-bold block mt-1">Aggregate conversion rate</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4">
+                    {/* Top Companies */}
+                    <div className="space-y-3">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Most Applied Companies</span>
+                      <div className="bg-slate-50 border border-slate-150 rounded-2xl p-4 divide-y divide-slate-100 font-semibold text-xs text-slate-650">
+                        {adminStats.mostAppliedCompanies.map((c, idx) => (
+                          <div key={idx} className="flex justify-between py-2.5 first:pt-0 last:pb-0">
+                            <span className="text-slate-800">{idx + 1}. {c.company}</span>
+                            <span className="text-slate-500">{c.count} applications</span>
+                          </div>
+                        ))}
+                        {adminStats.mostAppliedCompanies.length === 0 && (
+                          <div className="py-2 text-slate-400 font-bold text-center">No companies logged yet.</div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Top Roles */}
+                    <div className="space-y-3">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Most Popular Roles</span>
+                      <div className="bg-slate-50 border border-slate-150 rounded-2xl p-4 divide-y divide-slate-100 font-semibold text-xs text-slate-650">
+                        {adminStats.mostPopularRoles.map((r, idx) => (
+                          <div key={idx} className="flex justify-between py-2.5 first:pt-0 last:pb-0">
+                            <span className="text-slate-800">{idx + 1}. {r.role}</span>
+                            <span className="text-slate-500">{r.count} students</span>
+                          </div>
+                        ))}
+                        {adminStats.mostPopularRoles.length === 0 && (
+                          <div className="py-2 text-slate-400 font-bold text-center">No roles logged yet.</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </motion.div>
           )}
 

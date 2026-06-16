@@ -24,6 +24,7 @@ export const metadata: Metadata = {
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import PageTransition from "@/components/PageTransition";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import { SavedJobsProvider } from "@/lib/context/SavedJobsContext";
 
 export default function RootLayout({
@@ -31,19 +32,35 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const orgSchema = {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "name": "BuggedBrain",
+    "url": "https://BuggedBrain.vercel.app",
+    "logo": "https://BuggedBrain.vercel.app/favicon.ico"
+  };
+
   return (
     <html
       lang="en"
       className={`${inter.variable} ${outfit.variable} h-full antialiased`}
       suppressHydrationWarning
     >
+      <head>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(orgSchema) }}
+        />
+      </head>
       <body className="min-h-full flex flex-col bg-slate-50 font-sans">
         <SavedJobsProvider>
           <Header />
           <main className="flex-grow">
-            <PageTransition>
-              {children}
-            </PageTransition>
+            <ErrorBoundary>
+              <PageTransition>
+                {children}
+              </PageTransition>
+            </ErrorBoundary>
           </main>
           <Footer />
         </SavedJobsProvider>

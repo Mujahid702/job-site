@@ -1,17 +1,48 @@
 import { NextResponse } from "next/server";
 import { getCompanyProfile, saveCompanyProfile, generateSlug, autoTag } from "@/lib/automation";
+import { verifyAdmin } from "@/lib/auth";
+import { rateLimit } from "@/lib/rate-limit";
+import { z } from "zod";
+import { generateResponse } from "@/lib/ai/router";
+
+const generateJobSchema = z.object({
+  rawText: z.string().trim().min(1, "Raw text is required").max(100000, "Raw text is too long"),
+  apiKey: z.string().optional().nullable(),
+  sourceUrl: z.string().url("Invalid source URL").or(z.string().length(0)).optional().nullable()
+});
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { rawText, apiKey: bodyApiKey, sourceUrl } = body;
-
-    if (!rawText || typeof rawText !== "string" || rawText.trim() === "") {
-      return NextResponse.json(
-        { error: { message: "Raw job description text is required." } },
-        { status: 400 }
+    // 1. Authenticate server-side admin role
+    const authResult = await verifyAdmin();
+    if (!authResult.authorized) {
+      return authResult.response || NextResponse.json(
+        { success: false, message: "Forbidden. Admin role required." },
+        { status: 403 }
       );
     }
+
+    // 2. Rate limiting check
+    const ip = request.headers.get("x-forwarded-for") || "127.0.0.1";
+    const limitResult = await rateLimit(ip, "scrape");
+    if (!limitResult.success) {
+      return NextResponse.json(
+        { success: false, message: "Rate limit exceeded. Please try again later." },
+        { status: 429, headers: limitResult.headers }
+      );
+    }
+
+    // 3. Zod input validation
+    const body = await request.json().catch(() => ({}));
+    const validation = generateJobSchema.safeParse(body);
+    if (!validation.success) {
+      return NextResponse.json(
+        { success: false, message: "Invalid input fields.", errors: validation.error.flatten() },
+        { status: 400, headers: limitResult.headers }
+      );
+    }
+
+    const { rawText, apiKey: bodyApiKey, sourceUrl } = validation.data;
 
     // Get API Key
     const headerApiKey = request.headers.get("x-gemini-api-key");
@@ -241,113 +272,43 @@ INSTRUCTIONS FOR METADATA GENERATION:
       ]
     };
 
-    const payload = {
-      contents: [
-        {
-          parts: [{ text: prompt }]
-        }
-      ],
-      generationConfig: {
-        responseMimeType: "application/json",
-        responseSchema: schema,
-        temperature: 0.15,
-      }
-    };
+    const gatewayResponse = await generateResponse({
+      provider: "gemini",
+      prompt,
+      apiKey,
+      responseMimeType: "application/json",
+      responseSchema: schema,
+      temperature: 0.15,
+      taskType: "admin_generate_job",
+    });
 
-    const models = ["gemini-3.5-flash", "gemini-2.5-flash"];
-    let lastErrorMsg = "";
-    let lastStatus = 500;
-    let response = null;
-
-    for (const model of models) {
-      console.log(`[AI Autopilot] Attempting content generation with model: ${model}`);
-      let attempts = 0;
-      const maxAttempts = 3;
-
-      while (attempts < maxAttempts) {
-        attempts++;
-        try {
-          const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-          const res = await fetch(endpoint, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify(payload),
-          });
-
-          if (res.ok) {
-            response = res;
-            console.log(`[AI Autopilot] Generation successful using model: ${model}`);
-            break;
-          }
-
-          // If request was not ok, capture status and error details
-          lastStatus = res.status;
-          const errorData = await res.json().catch(() => ({}));
-          lastErrorMsg = errorData?.error?.message || `Gemini API returned status ${res.status}`;
-          
-          console.warn(`[AI Autopilot] Model ${model} (attempt ${attempts}/${maxAttempts}) failed with status ${res.status}: ${lastErrorMsg}`);
-
-          // Fail fast on credential errors
-          if (res.status === 401 || res.status === 403) {
-            return NextResponse.json(
-              { error: { message: lastErrorMsg } },
-              { status: res.status }
-            );
-          }
-
-          // Backoff on transient / overloaded errors before retrying
-          if (attempts < maxAttempts) {
-            const backoffTime = attempts * 3000;
-            console.log(`[AI Autopilot] Retrying model ${model} in ${backoffTime}ms...`);
-            await new Promise((resolve) => setTimeout(resolve, backoffTime));
-          }
-        } catch (err) {
-          const errorMessage = err instanceof Error ? err.message : String(err);
-          lastErrorMsg = errorMessage;
-          lastStatus = 500;
-          console.error(`[AI Autopilot] Network error on model ${model} (attempt ${attempts}/${maxAttempts}):`, err);
-          if (attempts < maxAttempts) {
-            await new Promise((resolve) => setTimeout(resolve, 3000));
-          }
-        }
-      }
-
-      if (response && response.ok) {
-        break;
-      }
-    }
-
-    if (!response || !response.ok) {
-      let friendlyMessage = `AI Content Ingestion failed. Last error: ${lastErrorMsg}`;
+    if (!gatewayResponse.success) {
+      const errorMsg = gatewayResponse.error || "Unknown error";
+      let friendlyMessage = `AI Content Ingestion failed. Last error: ${errorMsg}`;
       
-      const isQuotaError = lastStatus === 429 || 
-                           lastErrorMsg.toLowerCase().includes("quota") || 
-                           lastErrorMsg.toLowerCase().includes("rate limit") || 
-                           lastErrorMsg.toLowerCase().includes("exhausted") ||
-                           lastErrorMsg.toLowerCase().includes("exceeded");
+      const isQuotaError = errorMsg.toLowerCase().includes("quota") || 
+                           errorMsg.toLowerCase().includes("rate limit") || 
+                           errorMsg.toLowerCase().includes("exhausted") ||
+                           errorMsg.toLowerCase().includes("exceeded");
 
       if (isQuotaError) {
-        // Try to extract exact wait time if present (e.g. Please retry in 42.931330458s)
-        const retryMatch = lastErrorMsg.match(/retry in ([\d\.]+\w*)/i);
+        const retryMatch = errorMsg.match(/retry in ([\d\.]+\w*)/i);
         if (retryMatch && retryMatch[1]) {
           friendlyMessage = `Gemini API Rate Limit Exceeded: Please wait ${retryMatch[1]} before retrying this operation. Your free tier API key allows up to 15 Requests Per Minute. To remove this limit, consider upgrading to a pay-as-you-go plan in Google AI Studio (https://aistudio.google.com/).`;
         } else {
           friendlyMessage = `Gemini API Rate Limit Exceeded: You have temporarily reached your free tier limits (15 Requests Per Minute / 1M Tokens Per Minute). Please wait 45-60 seconds before trying again, or configure a paid billing plan in Google AI Studio.`;
         }
-      } else if (lastStatus === 503 || lastErrorMsg.toLowerCase().includes("demand") || lastErrorMsg.toLowerCase().includes("temporary")) {
+      } else if (errorMsg.toLowerCase().includes("demand") || errorMsg.toLowerCase().includes("temporary") || errorMsg.includes("503")) {
         friendlyMessage = `Gemini API is currently experiencing extremely high demand. Please try again in 10-15 seconds.`;
       }
 
       return NextResponse.json(
         { error: { message: friendlyMessage } },
-        { status: lastStatus }
+        { status: 500 }
       );
     }
 
-    const data = await response.json();
-    const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    const textResponse = gatewayResponse.text;
 
     if (!textResponse) {
       return NextResponse.json(

@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase";
+import { createClient } from "@/lib/supabase/server";
 import JobCard from "@/components/JobCard";
 import Link from "next/link";
 import Sidebar from "@/components/Sidebar";
@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 
 export default async function Home() {
+  const supabase = await createClient();
   const { data: jobs } = await supabase
     .from("job_postings")
     .select("*")
@@ -18,7 +19,54 @@ export default async function Home() {
 
   if (!jobs) return null;
 
-  const latestJobs = jobs.slice(0, 10);
+  // Personalization of job feeds
+  let sortedJobs = [...jobs];
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("target_role, skills")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (profile) {
+        const target = (profile.target_role || "").toLowerCase().trim();
+        const skillsList = (profile.skills || []).map((s: string) => s.toLowerCase().trim());
+
+        sortedJobs.sort((a, b) => {
+          const aTitle = (a.drive_title || "").toLowerCase();
+          const aCompany = (a.company_name || "").toLowerCase();
+          const aJD = (a.job_description || "").toLowerCase();
+          
+          const bTitle = (b.drive_title || "").toLowerCase();
+          const bCompany = (b.company_name || "").toLowerCase();
+          const bJD = (b.job_description || "").toLowerCase();
+
+          // Target role matches
+          const aMatchRole = target && (aTitle.includes(target) || aCompany.includes(target));
+          const bMatchRole = target && (bTitle.includes(target) || bCompany.includes(target));
+
+          if (aMatchRole && !bMatchRole) return -1;
+          if (!aMatchRole && bMatchRole) return 1;
+
+          // Skills matches count
+          let aSkillsCount = 0;
+          let bSkillsCount = 0;
+          skillsList.forEach((skill: string) => {
+            if (aTitle.includes(skill) || aJD.includes(skill)) aSkillsCount++;
+            if (bTitle.includes(skill) || bJD.includes(skill)) bSkillsCount++;
+          });
+
+          return bSkillsCount - aSkillsCount;
+        });
+      }
+    }
+  } catch (err) {
+    console.error("Personalization failed in Home page:", err);
+  }
+
+  const latestJobs = sortedJobs.slice(0, 10);
 
   return (
     <div className="pb-32">

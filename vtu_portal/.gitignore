@@ -1,0 +1,31 @@
+# Environment Files
+infra/.env
+.env
+.env.local
+
+# Python Build and Cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+backend/dist/
+backend/build/
+backend/*.egg-info/
+.venv/
+env/
+venv/
+
+# Node.js
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+.npm
+npm-debug.log*
+
+# Docker
+.docker-sync/
+
+# OS Files
+.DS_Store
+Thumbs.db

@@ -173,6 +173,23 @@ export default function EditJob() {
       alert(error.message);
       setSaving(false);
     } else {
+      // Log audit action to analytics center
+      await fetch("/api/admin/analytics", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "log_action",
+          details: {
+            actionName: "Job Edited",
+            actionData: {
+              jobId: params.id,
+              title: jobData.drive_title,
+              company: jobData.company_name
+            }
+          }
+        })
+      }).catch(err => console.error("Failed to log job edit:", err));
+
       router.push("/admin/jobs");
     }
   };

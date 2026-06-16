@@ -24,6 +24,7 @@ import PrepChecklist from "@/components/PrepChecklist";
 import SalaryBenchmark from "@/components/SalaryBenchmark";
 import SocialShare from "@/components/SocialShare";
 import { Job } from "@/types/job";
+import JobPageActions from "@/components/JobPageActions";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -94,7 +95,6 @@ export default async function JobPage({
     );
   }
 
-  // Dynamic Related Jobs Query (Automation Level 8)
   const { data: relatedJobs } = await supabase
     .from("job_postings")
     .select("id, drive_title, drive_slug, company_name, company_logo, location, salary_range, category, job_type")
@@ -103,8 +103,77 @@ export default async function JobPage({
     .or(`company_name.ilike.%${job.company_name}%,category.eq.${job.category}`)
     .limit(3);
 
+  // Dynamic JobPosting schema
+  const jobSchema = {
+    "@context": "https://schema.org",
+    "@type": "JobPosting",
+    "title": job.drive_title,
+    "description": job.drive_description || `Apply for ${job.drive_title} at ${job.company_name}.`,
+    "datePosted": job.created_at,
+    "validThrough": job.expiry_date || new Date(new Date(job.created_at).getTime() + 60 * 24 * 60 * 60 * 1000).toISOString(),
+    "employmentType": job.job_type === "Internship" ? "INTERN" : (job.job_type === "Contract" ? "CONTRACTOR" : "FULL_TIME"),
+    "hiringOrganization": {
+      "@type": "Organization",
+      "name": job.company_name,
+      "logo": job.company_logo || undefined,
+      "sameAs": job.company_website || undefined
+    },
+    "jobLocation": {
+      "@type": "Place",
+      "address": {
+        "@type": "PostalAddress",
+        "addressLocality": job.location || "India",
+        "addressRegion": "IN",
+        "addressCountry": "IN"
+      }
+    },
+    "baseSalary": job.salary_range ? {
+      "@type": "MonetaryAmount",
+      "currency": "INR",
+      "value": {
+        "@type": "QuantitativeValue",
+        "value": job.salary_range,
+        "unitText": "YEAR"
+      }
+    } : undefined
+  };
+
+  // BreadcrumbList schema
+  const breadcrumbSchema = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "Home",
+        "item": "https://BuggedBrain.vercel.app"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": job.company_name,
+        "item": `https://BuggedBrain.vercel.app/company/${job.company_name.toLowerCase().replace(/\s+/g, '-')}`
+      },
+      {
+        "@type": "ListItem",
+        "position": 3,
+        "name": job.drive_title,
+        "item": `https://BuggedBrain.vercel.app/jobs/${job.drive_slug}`
+      }
+    ]
+  };
+
   return (
     <div className="bg-white min-h-screen pb-20 font-sans">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jobSchema) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
+      />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
           
@@ -172,6 +241,10 @@ export default async function JobPage({
             <div className="flex items-center gap-2 text-sm font-bold text-slate-500">
                <Eye className="w-4 h-4" />
                {job.views_count || 0} views
+            </div>
+
+            <div className="p-6 bg-slate-50 border border-slate-200/50 rounded-[2rem] flex flex-col md:flex-row items-center justify-between gap-6 shadow-sm">
+              <JobPageActions job={job} />
             </div>
 
             <ViewTracker jobId={job.id} />
@@ -432,6 +505,10 @@ export default async function JobPage({
                         <ChevronRight className="w-8 h-8" />
                       </button>
                     </a>
+
+                    <div className="w-full max-w-md">
+                      <JobPageActions job={job} />
+                    </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full">
                       <div className="flex gap-6 p-8 bg-slate-50 rounded-3xl border border-slate-100">

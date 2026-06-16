@@ -1,0 +1,196 @@
+# BuggedBrain Placement OS & VTU SmartPrep AI: Technical & Product Documentation
+
+Welcome to the comprehensive system documentation for the **BuggedBrain Placement OS** and **VTU SmartPrep AI** platform. This document outlines the application architecture, system workflows, target audience, core features, database design, and Gemini AI integration patterns.
+
+---
+
+## 🗺️ System Architecture Overview
+
+The codebase represents a robust, modern Next.js monorepo that houses two primary user-facing systems:
+1. **Placement OS (Career Workspace)**: A SaaS-grade portal enabling Class of 2026 students to build ATS-friendly resumes, optimize LinkedIn profiles, run mock interviews, check salary benchmarks, and track hiring applications.
+2. **VTU SmartPrep AI (Sub-System)**: A specialized platform for Visvesvaraya Technological University (VTU) engineering students. It uses a Python FastAPI backend + Celery workers to parse previous year question papers (PYQs), calculate syllabus priority metrics, and serve syllabus-aligned RAG study aids.
+
+### 🏗️ Monorepo Directory Layout
+```text
+job-site/
+├── app/                        # Next.js 16 App Router (Core UI Pages & API Routes)
+│   ├── api/                    # Serverless API routes (AI, auth, metrics, CRM sync)
+│   ├── dashboard/              # Placement Command Center & workspace modules
+│   │   ├── recommended/        # Smart Job Recommendations
+│   │   ├── missions/           # Gamified Daily/Weekly XP challenges
+│   │   ├── placement-readiness/# Detailed Placement Readiness Index (PRI) metrics
+│   │   └── resume-analytics/   # SVG-drawn resume performance trends
+│   ├── onboarding/             # 11-step interactive onboarding setup wizard
+│   └── page.tsx                # Public-facing landing page
+├── components/                 # Reusable React UI Components (ResumeOS, LinkedInOS, etc.)
+├── lib/                        # Shared libraries, database scripts, and logic
+│   ├── db/                     # Supabase CRUD APIs (profiles, applications, missions, PRI)
+│   └── queue.ts                # Client-side local task queue & worker thread
+├── vtu_portal/                 # VTU SmartPrep AI Sub-System
+│   ├── backend/                # Python 3.11+ FastAPI backend (relational models, OCR pipeline)
+│   ├── frontend/               # Isolated Next.js 14 frontend space
+│   ├── infra/                  # Docker Compose configuration and environment scripts
+│   └── shared/                 # Shared data schemas
+└── supabase_persistence.sql    # Relational Database schemas, triggers, and RLS policies
+```
+
+---
+
+## 🎯 Target Audience (For Whom It Is)
+
+The platform is purpose-built to address the transition from academic learning to professional employment:
+* **Class of 2026 Tech Graduates**: Seeking Software Development, Frontend/Backend, AI/ML, Cloud/DevOps, or Cybersecurity roles.
+* **Visvesvaraya Technological University (VTU) Students**: Looking for targeted exam preparation helpers (PYQ solutions, syllabus weighting metrics, AI tutoring).
+* **Off-Campus Applicants**: Students looking for automated matches to MNC recruitment drives (TCS, Wipro, Infosys, Deloitte, Accenture) and startups.
+
+---
+
+## 🔄 Core Platform Workflows
+
+The student journey is designed to progress from a raw profile to a finalized corporate offer through a series of automated loops:
+
+```mermaid
+graph TD
+    A[User Sign Up] --> B[11-Step Setup Onboarding Wizard]
+    B --> C{Profile Verification}
+    C -->|Upload Resume| D[Local Task Queue / api/resume/evaluate]
+    C -->|Scan LinkedIn| E[NLP Profile Audit & Keyword check]
+    D & E --> F[Initialize PRI Score & Personal Roadmap]
+    F --> G[Dashboard Command Center]
+    G --> H[Resume OS Commands]
+    G --> I[LinkedIn OS Branding]
+    G --> J[AI Mock Interview Simulation]
+    G --> K[Recruiter CRM Application Tracker]
+    J -->|Grades & Feedback| F
+    K -->|Hiring Updates| F
+```
+
+---
+
+## 🌟 Feature Breakdown
+
+### 1. 11-Step Onboarding Setup Wizard
+Before landing on the main workspace, candidates configure their preferences through a wizard:
+* **Academic Profiling**: Branch, current CGPA, college, graduation year.
+* **Path Definition**: Primary target engineering role (e.g. SDE, AI/ML) and target CTC.
+* **Automatic Resume Audit**: Uploading a PDF resume invokes a client task queue, sending it to the Gemini extraction pipeline to output an initial ATS score.
+* **LinkedIn SEO Check**: Scopes profile URL data to provide instant headline suggestions.
+* **Blueprint Generation**: Auto-compiles missing skills gap and suggests targeted SDE projects.
+* **Action Plan**: Issues 5 target goals to jumpstart readiness.
+
+### 2. Placement Readiness Index (PRI)
+A core gamified scoring engine (0-100%) tracking if a candidate is ready to get hired.
+* **Dynamic Synthesis Formula**: Combines resume health (40%), average mock interview score (30%), completed roadmap milestones (15%), and daily checklist goals (15%).
+* **Real-time Statuses**: Classifies users (e.g., *Placement Beginner*, *Interview Ready*, *Placement Elite*).
+
+### 3. Resume OS
+An advanced command center for CV optimization featuring:
+* **ATS Resume Analyzer**: Audits resumes on 7 parameters (completeness, keywords, skills, projects, readability, formatting, impact).
+* **JD Matcher**: Scans a resume against a target Job Description to highlight keywords coverage.
+* **AI Resume Enhancer**: Refactors weak accomplishments using high-impact recruiter verbs.
+* **Resume Builder**: Renders structured resume blueprints.
+* **Version Comparison Engine**: Direct side-by-side diff comparing structural changes and ATS score variance between iterations.
+* **Graphical SVG Analytics**: Visualizes score trends using client-side SVG coordinate plotting.
+
+### 4. AI Mock Interview Simulator
+An interactive tool simulating corporate interview environments:
+* **Modes**: *Practice Mode* (instant feedback per question) or *Exam Mode* (full test block evaluation).
+* **Media Integration**: Requests browser web-camera access to place the candidate in the frame, and integrates Speech-to-Text (STT) so candidates can speak their answers directly.
+* **Parameter Scoring**: Detailed evaluation across Technical Accuracy, Communication, Clarity, Completeness, and Confidence.
+* **STAR Analysis**: Scans behavioral answers to check for Situation, Task, Action, and Result formats.
+* **Filler Word Detector**: Measures frequency of speech crutches (*"um"*, *"like"*, *"so"*, *"basically"*).
+* **Model Study Answers**: Provides perfect corporate response structures.
+
+### 5. LinkedIn OS & Branding Growth Center
+Helps students stand out to recruiters on LinkedIn:
+* **Headline Generator**: Creates conservative, professional, or brand-specific variants.
+* **Outreach Assistant**: Generates templates for connection requests, cold pitches, or referral requests.
+* **Content Creator**: Drafts custom posts showing off project completions, hackathon participation, and daily coding streaks.
+* **Resume & Portfolio Sync**: Auto-imports details from Resume OS.
+
+### 6. Recruiter CRM & Application Tracker OS
+An application lifecycle tracker:
+* **Statuses**: Map roles from *Saved* -> *Applied* -> *Assessment Scheduled* -> *Interviews* -> *Offer Received*.
+* **Smart Apply Precheck**: Intercepts external applications. If a candidate's profile doesn't match the job criteria, an alert highlights missing skills and gives a warning before redirection.
+* **System-wide Admin Console**: Renders aggregated database telemetry (total submissions, conversion rates, popular target companies).
+
+### 7. VTU SmartPrep AI (Sub-System)
+* **PYQ Parser**: Python pipeline using OCR and Natural Language processing to ingest university exam PDFs.
+* **Importance Scoring Engine**: Auto-weights questions based on frequency, marks, recency, and syllabus modules coverage.
+* **RAG Tutoring**: Connects ChromaDB vector stores with Claude embeddings to answer exam questions with citation links.
+
+---
+
+## 💾 Database Schema & Persistence Design
+
+The system runs on a Supabase PostgreSQL backend with Row Level Security (RLS) policies enforcing tenant isolation.
+
+| Table Name | Primary Purpose | Key Columns / JSON Schemas |
+| :--- | :--- | :--- |
+| `profiles` | Stores student academic, target career parameters, and onboarding state | `user_id` (ref), `skills` (text[]), `raw_profile_data` (JSONB), `cgpa`, `graduation_year` |
+| `placement_readiness` | Tracks dynamic readiness metrics | `pri_score`, `resume_score`, `interview_score`, `linkedin_score`, `placement_level` |
+| `resume_scans` | Logs history of ATS evaluations | `user_id`, `resume_name`, `ats_score`, `role_fit_score`, `analysis` (JSONB) |
+| `applications` | Recruiter CRM pipeline cards | `job_id` (ref), `status`, `salary`, `details` (JSONB for schedules, matchScores) |
+| `roadmap_progress` | Interactive flowchart learning points | `roadmap_name`, `step_name`, `completed` (boolean) |
+| `mentor_bookings` | 1-on-1 expert coaching logs | `mentor_name`, `session_type`, `booking_date`, `status` |
+| `community_posts` | Student community forum | `title`, `content`, `upvotes`, `reports` |
+
+---
+
+## 🤖 AI Integration Mechanics (Gemini API)
+
+AI components leverage direct HTTP integrations to Gemini endpoints (`gemini-3.5-flash` or `gemini-2.5-flash`) utilizing the Gemini structured JSON schema configuration constraints to enforce strict API responses.
+
+### Example: Evaluator API Endpoint (`/app/api/resume/interview/route.ts`)
+```typescript
+const systemPrompt = `Evaluate the user's answer to the interview question below...
+Scores out of 10 for Technical Accuracy, Communication, Clarity, Completeness, Confidence.
+Perform a behavioral STAR method analysis. Output a study-grade Model Answer.`;
+
+const schema = {
+  type: "OBJECT",
+  properties: {
+    scores: {
+      type: "OBJECT",
+      properties: {
+        technicalAccuracy: { type: "INTEGER" },
+        communication: { type: "INTEGER" },
+        clarity: { type: "INTEGER" },
+        completeness: { type: "INTEGER" },
+        confidence: { type: "INTEGER" },
+        overall: { type: "INTEGER" }
+      },
+      required: ["technicalAccuracy", "communication", "clarity", "completeness", "confidence", "overall"]
+    },
+    starAnalysis: {
+      type: "OBJECT",
+      properties: {
+        hasSituation: { type: "BOOLEAN" },
+        hasTask: { type: "BOOLEAN" },
+        hasAction: { type: "BOOLEAN" },
+        hasResult: { type: "BOOLEAN" },
+        situationFeedback: { type: "STRING" }
+      },
+      required: ["hasSituation", "hasTask", "hasAction", "hasResult"]
+    },
+    idealAnswer: { type: "STRING" }
+  },
+  required: ["scores", "starAnalysis", "idealAnswer"]
+};
+
+const payload = {
+  contents: [{ parts: [{ text: systemPrompt }] }],
+  generationConfig: {
+    responseMimeType: "application/json",
+    responseSchema: schema,
+    temperature: 0.2
+  }
+};
+```
+
+### Async Task Processing Queue (`lib/queue.ts`)
+To prevent blocking main browser rendering threads during long AI processing cycles, the UI delegates tasks to a client-side queue:
+1. **Serialization**: File documents (PDF resumes) are serialized into Base64 strings.
+2. **Enqueue**: Task objects are added to a `localStorage` array with state `PENDING`.
+3. **Dispatch**: A `bb_task_queued` event triggers the queue worker thread (`startWorker()`).
+4. **Polling / API request**: The worker marks status as `PROCESSING`, starts a mock progress animation, makes the `/api/...` fetch, and finally updates status to `COMPLETED` or `FAILED` while firing custom event updates.

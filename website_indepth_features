@@ -1,0 +1,261 @@
+# BuggedBrain Placement OS & VTU SmartPrep AI: Deep Dive Technical & Product Documentation
+
+This document provides a highly detailed, comprehensive architectural and behavioral explanation of each feature within the **BuggedBrain Placement OS** and **VTU SmartPrep AI** systems.
+
+---
+
+## 🔄 1. Onboarding Setup Wizard (`app/onboarding/page.tsx`)
+
+The onboarding process is structured as an **11-Step Setup Wizard** that serves as the entry point for candidates. It compiles the baseline profile properties and initializes the dynamic placement readiness indicators.
+
+### Onboarding Steps Breakdown
+*   **Step 1: System Briefing**: Greets the candidate and sets up the guest vs. authenticated account routing templates.
+*   **Step 2: Core Academic Profiling**: Gathers Name, College, Semester, Degree, Branch, and CGPA. Essential for VTU syllabus matching.
+*   **Step 3: Target Role Selection**: The student selects their dream career path (e.g., *Software Developer*, *AI/ML Engineer*, *Data Analyst*). They must define a *Primary Target Role* which acts as the focal key for roadmaps and interview simulations.
+*   **Step 4: Skills Cataloging**: Presents a checklist of languages (Python, Java, C++) and frameworks (React, Next.js, Docker). Students can append custom skills which sync directly to their profiles.
+*   **Step 5: Dream Corporate Targets**: Collects target companies (e.g., Google, Amazon, TCS, Deloitte, Wipro) to customize corporate playbook recommendations.
+*   **Step 6: AI Resume Parser & ATS Audit**: Allows students to upload a PDF resume. The client serializes the file into a Base64 string, pushes it to the local client queue (`lib/queue.ts`), and runs a POST fetch to `/api/resume/evaluate` to compute a 7-parameter ATS score. Identified skills are automatically checked in the Step 4 dashboard.
+*   **Step 7: LinkedIn SEO Analysis**: Candidates input their LinkedIn handles. The system simulates an NLP crawl, outputting an optimization score and actionable recommendations (e.g., "Add quantified metrics to your bullet points").
+*   **Step 8: Career Preferences & Work Modes**: Gathers target CTC brackets (e.g., "5-8 LPA", "12+ LPA") and work style choices (Remote, Hybrid, Onsite).
+*   **Step 9: Personal Career Blueprint Compiling**: Combines all previous answers to compile a custom blueprint containing:
+    *   **Roadmap level mapping** (*Beginner*, *Intermediate*, *Advanced* based on current semester and skills count).
+    *   **Skills gap indicators** (evaluates target role needs against candidate's selections).
+    *   **Tailored project advice** (e.g., recommending a *Redis Cache API Gateway* project for backend candidates).
+*   **Step 10: Baseline PRI Allocation**: Synthesizes the initial **Placement Readiness Index (PRI)** score by combining the resume ATS score (25%), LinkedIn SEO audit (15%), skills coverage (20%), and baseline questionnaire completion (40%).
+*   **Step 11: Action Plan Activation**: Issues 5 custom checklist tasks (e.g., "Improve ATS Score to 75+", "Build Project #1") to guide the student's initial steps.
+
+---
+
+## 📈 2. Placement Readiness Index (PRI) Score Engine
+
+The **Placement Readiness Index (PRI)** is a core gamified indicator (0-100%) that tracks a candidate's readiness for hiring drives.
+
+### The PRI Mathematical Formula
+```typescript
+readinessScore = Math.min(
+  (atsScore * 0.25) +                     // Up to 25%: Resume ATS audit
+  (linkedinScore * 0.15) +                // Up to 15%: LinkedIn SEO Optimization 
+  (completedRoadmapStepsCount * 2) +      // Up to 25% (capped): Learning roadmap progress
+  (checkedDailyGoals * 5) +               // Up to 20%: Streak & daily tasks completion
+  (applicationsCount * 2) +               // Up to 10%: Job application volume in CRM
+  (hasOfferReceived ? 15 : 0) +           // 15% Bonus: Active offer letters secured
+  (missionBonusScore),                    // Variable: Gamified XP challenge rewards
+  100
+)
+```
+
+### Placement Levels
+*   **Placement Beginner**: Score < 30%
+*   **Emerging Candidate**: Score 30% - 50%
+*   **Interview Ready**: Score 51% - 70%
+*   **Strong Candidate**: Score 71% - 85%
+*   **Placement Elite**: Score > 85%
+
+*Trigger Hook:* Every time a user marks a roadmap step as complete, logs an application status change, clears an AI mock interview, or claims a mission reward, the system triggers `calculatePRIScore(userId)` in the background to dynamically update the score in Supabase and refresh the client dashboard visual circular gauges.
+
+---
+
+## 📄 3. Resume OS Commands (`components/ResumeOS.tsx`)
+
+The **Resume OS** is a central hub for resume optimization.
+
+```mermaid
+graph LR
+    A[Resume OS Hub] --> B[ATS Resume Analyzer]
+    A --> C[JD Matcher]
+    A --> D[AI Resume Enhancer]
+    A --> E[LaTeX Resume Builder]
+    A --> F[Version Comparison Engine]
+    A --> G[SVG Trend Analytics]
+```
+
+### Deep Feature Walkthrough
+*   **ATS Resume Analyzer**: Scans PDF/Docx files to output an ATS scorecard. It runs a 7-parameter check:
+    1.  *Completeness*: Verifies the presence of key sections (Contact, Skills, Projects, Experience, Education).
+    2.  *Keyword Coverage*: Matches terms against standard industry profiles.
+    3.  *Skills Relevance*: Evaluates skills against the target role.
+    4.  *Project Strength*: Checks for technical complexity.
+    5.  *Role Match*: Checks alignment with target role descriptions.
+    6.  *Readability*: Analyzes complexity and sentence structure.
+    7.  *Formatting*: Detects issues like columns or non-standard fonts.
+*   **JD Matcher**: Allows candidates to paste a target Job Description. The AI runs a semantic match against the active resume text, highlighting missing keywords, mapping core strengths, and calculating a compatibility percentage.
+*   **AI Resume Enhancer**: Allows users to rewrite weak bullet points. It refactors text to focus on quantitative metrics using the STAR framework.
+*   **LaTeX Resume Builder**: Generates LaTeX code templates matching corporate standards.
+*   **Version Comparison Engine**: Compiles a JSON diff of structural changes between two resume versions. It highlights:
+    *   *ATS Score Delta*: (e.g., `+14%` increase).
+    *   *Improvements list*: (e.g., "Added Docker deployment metrics").
+    *   *Regressions checklist*: (e.g., "Formatting became cluttered").
+*   **SVG Trend Analytics**: Client-side coordinate mapping that draws a custom SVG line chart tracking ATS scores over time:
+    ```typescript
+    // Point coordinate calculation
+    const x = padding + (idx / (snapshots.length - 1)) * (width - 2 * padding);
+    const y = height - padding - (snapshot.atsScore / 100) * (height - 2 * padding);
+    ```
+
+---
+
+## 🎙️ 4. AI Mock Interview Simulator (`components/AiInterviewPrep.tsx`)
+
+The **AI Mock Interview Simulator** provides timed, interactive interview practice.
+
+### Dual Modes
+1.  **Practice Mode**: Evaluates answers immediately, displaying hints, explanations, and model answers after each question.
+2.  **Exam Mode**: Runs a timed sequence of questions. Feedback and metrics are compiled and displayed only after all questions are completed.
+
+### Audio & Video Integration
+*   **Live Web-Camera Access**: Leverages the browser's `navigator.mediaDevices.getUserMedia` API to stream a web-camera view, simulating a live video call.
+*   **Browser Speech-to-Text (STT) Dictation**: Uses the browser's native `webkitSpeechRecognition` API. Students can dictate answers, which are transcribed in real-time.
+*   **Text-to-Speech (TTS) Voice Reader**: Uses `SpeechSynthesisUtterance` to read questions aloud with configurable voice options.
+
+### Evaluation Metrics (Graded 1-10)
+*   **Technical Accuracy**: Correctness of definitions and syntax.
+*   **Communication**: Professionalism, tone, and vocabulary.
+*   **Clarity**: Conciseness and answer structure.
+*   **Completeness**: Ensures all parts of the question are addressed.
+*   **Confidence**: Measures use of assertiveness indicators.
+*   **STAR Analysis Check**: Verifies if behavioral answers include:
+    *   `hasSituation`: Set context.
+    *   `hasTask`: Define responsibilities.
+    *   `hasAction`: Detail the execution.
+    *   `hasResult`: Highlight key outcomes.
+*   **Filler Word Counter Heuristic**: Scans answers for filler words:
+    ```typescript
+    const FILLER_WORDS = ["um", "uh", "like", "so", "basically", "actually", "you know", "ah"];
+    ```
+    Displays counts to help candidates identify speech habits.
+
+---
+
+## 💼 5. LinkedIn OS & Branding Growth Center (`components/LinkedInOS.tsx`)
+
+A personal branding utility designed to help students optimize their online presence:
+
+*   **Headline Generator**: Creates customized, SEO-friendly headlines based on target roles:
+    *   *Conservative*: e.g., "Full Stack Developer Graduate | Specializing in SQL and React."
+    *   *Recruiter-Optimized*: e.g., "Backend Developer | Node.js & AWS Associate | Open to Work."
+*   **About Section Writer**: Drafts summaries in different styles:
+    *   *Human*: Conversation-based.
+    *   *Founder*: Focuses on engineering achievements.
+    *   *Brand*: Focuses on tech stacks and optimization metrics.
+*   **Cold Outreach Assistant**: Generates templates for:
+    *   *Connection Request note*: Simple intro.
+    *   *Warm Referral request*: Highlighting credentials for a specific company referral.
+    *   *Cold Pitch email*: Direct message to recruiters.
+*   **Content Creator Feed Builder**: Drafts LinkedIn posts based on user achievements (e.g., hackathons, DSA streaks).
+*   **Resume & Portfolio Sync**: Syncs profile data directly from other workspace components.
+
+---
+
+## 📊 6. Recruiter CRM & Application Tracker OS (`components/PlacementTrackerOS.tsx`)
+
+A pipeline tracker connected directly to Supabase schemas (`applications`, `application_history`).
+
+### Key Workflow Features
+*   **Drag-and-Drop Kanban Board**: Allows candidates to drag job cards across pipeline stages:
+    ```text
+    [Saved] ➔ [Applied] ➔ [Assessment Scheduled] ➔ [Technical Interview] ➔ [HR Interview] ➔ [Offer Received]
+    ```
+    Updates update the database status and trigger a celebratory chime (confetti audio file) upon dragging a card to *Offer Received*.
+*   **Application Calendar Matrix**: Maps dates for upcoming tests and interviews in a monthly grid.
+*   **Assessment & Interview Logs**: Allows users to record questions asked, performance ratings, and areas for improvement.
+*   **Smart Apply Precheck**: Intercepts external application links. If the candidate's profile is missing required skills or has a low ATS score, a modal highlights failed criteria and recommends improvements before redirecting.
+*   **AI Offer Comparison**: Compares competing offers across parameters like CTC, location, base salary, signing bonus, and brand rating, using the Gemini API to recommend the best option.
+*   **Admin Console telemetry**: Provides aggregated, anonymized metrics for system administrators, such as average offer rates and popular target companies.
+
+---
+
+## 🛡️ 7. Recruiter Verification & Trust Index (`lib/db/verifications.ts`)
+
+A verification and rating system designed to protect students from fraudulent listings:
+
+```mermaid
+graph TD
+    A[Recruiter Account Created] --> B[Email OTP Verification]
+    B -->|Must be corporate domain| C[LinkedIn URL Authenticity Heuristics]
+    C --> D[Calculate Trust Score & Fraud Risk]
+    D -->|Trust Score >= 70| E[Verified Badge Unlocked]
+    D -->|Fraud Risk >= 70| F[Account Auto-Suspended & Locked]
+```
+
+### Key Verification Mechanisms
+*   **Corporate Email Verification**: Rejects public email providers (e.g., Gmail, Yahoo). The backend generates a 6-digit OTP, caches it in Redis for 5 minutes, and requires validation.
+*   **LinkedIn Authenticity Heuristics**: Analyzes profile URLs to calculate an authenticity score based on formatting and complexity:
+    ```typescript
+    // Heuristic Score Calculation
+    let score = 40; // baseline
+    if (url.includes("/in/")) score += 20;
+    if (slug.length >= 6) score += 15;
+    ```
+*   **Trust Score Formula (0-100)**: Combines verification markers:
+    *   Corporate Email Verified: `30 points`
+    *   LinkedIn Verified: `20 points`
+    *   Admin Manually Approved: `20 points`
+    *   Referrals Converted: `Up to 15 points` (3 pts per referral)
+    *   Interviews Generated: `Up to 10 points` (2 pts per interview)
+    *   Candidate Star Rating Average: `Up to 5 points`
+*   **Fraud Risk Score & Auto-Lock**: Automatically locks recruiter accounts if the fraud score exceeds `70`. Factors include public domain emails, low ratings (< 2.5 stars), and multiple pending scam reports.
+*   **Candidate Review Ratings**: Allows candidates to rate recruiters on Professionalism, Response Time, Helpfulness, Referral Quality, and Communication.
+
+---
+
+## 🏆 8. Gamified Missions & Leveling Engine (`lib/db/missions.ts`)
+
+A gamified task system connected to PostgreSQL tables (`placement_missions`, `user_missions`, `user_xp`).
+
+*   **Mission Types**:
+    *   *Daily*: (e.g., "Solve 2 DSA Problems", "Log 1 Job Application").
+    *   *Weekly*: (e.g., "Build 1 Project Feature").
+    *   *Career*: (e.g., "Reach ATS Score 80+").
+*   **XP Leveling Curve**: Updates candidate levels as they earn XP:
+    ```typescript
+    export function calculateLevel(xp: number): number {
+      if (xp < 100) return 1;
+      if (xp < 250) return 2;
+      if (xp < 500) return 3;
+      if (xp < 1000) return 4;
+      return 5 + Math.floor((xp - 1000) / 1000);
+    }
+    ```
+*   **Consistency Streak Tracking**: Tracks daily activity. Completing a daily mission increases the streak, and milestones (7-day, 30-day, etc.) grant bonus XP.
+*   **Reward Claim Side-Effects**: Claiming completed missions awards XP, increases levels, and adds a permanent PRI boost.
+
+---
+
+## 🕸️ 9. Client-Side Background Worker & Task Queue (`lib/queue.ts`)
+
+To handle intensive AI processing without blocking the browser UI, the system implements a client-side queue:
+
+1.  **Task Creation**: Actions like resume scans are added to `localStorage` with a `PENDING` status.
+2.  **Worker Thread**: A worker (`startWorker()`) processes tasks sequentially.
+3.  **UI Updates**: The worker simulates progress (10% to 90%) during processing to maintain a responsive UI.
+4.  **API Requests**: The worker executes the backend request and updates the task status to `COMPLETED` or `FAILED` upon completion.
+5.  **Event Notification**: Custom events (`bb_task_updated`) notify UI components to refresh data.
+
+---
+
+## ⚡ 10. Upstash Redis Caching & Cache Invalidation (`lib/redis.ts`)
+
+Integrates Redis to optimize performance for high-traffic endpoints:
+
+*   **Cached Objects**:
+    *   Job recommendations: `user_recommendations:${userId}`
+    *   User action lists: `user_action_center:${userId}`
+    *   Recruiter pipelines: `recruiter_pipeline:${userId}`
+    *   Recruiter trust scores: `recruiter_trust_score:${recruiterId}`
+*   **Fallback Cache**: If Redis is unavailable, the system uses a local, thread-safe in-memory cache to ensure continuous operation.
+*   **Selective Invalidation**: Clears specific cache keys on update events:
+    ```typescript
+    export async function invalidateUserCache(userId: string): Promise<void> {
+      const keys = [
+        `user_recommendations:${userId}`,
+        `user_insights:${userId}`,
+        `user_action_center:${userId}`,
+        `user_health_score:${userId}`
+      ];
+      for (const key of keys) {
+        await invalidateCache(key);
+      }
+      await invalidateCachePattern(`user_match_score:${userId}:*`);
+    }
+    ```
+*   **Pattern-based Deletion**: Supports wildcard invalidations (e.g., `user_match_score:${userId}:*`).

@@ -1,0 +1,81 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: vtu-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: vtusmartprep
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: devpassword
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d vtusmartprep"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: vtu-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: vtu-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../backend:/workspace
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: vtu-worker
+    command: celery -A app.workers.celery_app worker --loglevel=info
+    volumes:
+      - ../backend:/workspace
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: vtu-frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ../frontend:/workspace
+      - /workspace/node_modules
+    env_file:
+      - .env
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:

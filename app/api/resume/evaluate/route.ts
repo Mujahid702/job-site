@@ -1,65 +1,144 @@
-import { NextResponse } from "next/server";
-import { parsePdf, parseDocx } from "@/lib/resume-parser";
+import { NextResponse } from 'next/server'
+import { parsePdf, parseDocx } from '@/lib/resume-parser'
+import { generateResponse } from '@/lib/ai/router'
+import { rateLimit } from '@/lib/rate-limit'
+import { validateUploadedFile } from '@/lib/file-validator'
+import { z } from 'zod'
+import { logAnalyticsEvent } from '@/lib/db/admin-analytics'
 
-export const dynamic = "force-dynamic";
+export const dynamic = 'force-dynamic'
+
+const evaluateInputSchema = z.object({
+  targetRole: z.string().trim().max(100).optional().nullable(),
+  text: z.string().trim().max(75000, 'Pasted text exceeds the maximum 75,000 characters limit.').optional().nullable(),
+})
 
 export async function POST(request: Request) {
+  const startTime = Date.now()
   try {
-    const formData = await request.formData();
-    const file = formData.get("file") as File | null;
-    const pastedText = formData.get("text") as string | null;
-    const targetRole = formData.get("targetRole") as string | null;
+    // 1. Rate limiting check (20 requests/hour)
+    const ip = request.headers.get('x-forwarded-for') || '127.0.0.1'
+    const limitResult = await rateLimit(ip, 'ats')
+    if (!limitResult.success) {
+      return NextResponse.json(
+        { success: false, message: 'Rate limit exceeded. Please try again later.' },
+        { status: 429, headers: limitResult.headers }
+      )
+    }
 
-    let resumeText = "";
+    // 2. Parse form data and validate
+    const contentType = request.headers.get('content-type') || ''
+    if (!contentType.includes('multipart/form-data')) {
+      return NextResponse.json(
+        { success: false, message: 'Invalid request content type.' },
+        { status: 400, headers: limitResult.headers }
+      )
+    }
+
+    const formData = await request.formData()
+    const file = formData.get('file') as File | null
+    const pastedText = formData.get('text') as string | null
+    const targetRole = formData.get('targetRole') as string | null
+
+    // Validate textual fields using Zod
+    const textValidation = evaluateInputSchema.safeParse({ text: pastedText, targetRole })
+    if (!textValidation.success) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Invalid input fields.',
+          errors: textValidation.error.flatten(),
+        },
+        { status: 400, headers: limitResult.headers }
+      )
+    }
+
+    let resumeText = ''
 
     if (file) {
-      const buffer = Buffer.from(await file.arrayBuffer());
-      const fileName = file.name.toLowerCase();
-
-      if (fileName.endsWith(".pdf") || file.type === "application/pdf") {
-        resumeText = await parsePdf(buffer);
-      } else if (
-        fileName.endsWith(".docx") ||
-        file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-      ) {
-        resumeText = await parseDocx(buffer);
-      } else {
+      // Validate file size bounds before reading array buffer fully
+      if (file.size > 5 * 1024 * 1024) {
         return NextResponse.json(
-          { error: "Unsupported file format. Please upload a PDF or DOCX file." },
-          { status: 400 }
-        );
+          { success: false, message: 'File size exceeds the maximum 5MB limit.' },
+          { status: 400, headers: limitResult.headers }
+        )
       }
-    } else if (pastedText && pastedText.trim() !== "") {
-      resumeText = pastedText;
+
+      const buffer = Buffer.from(await file.arrayBuffer())
+      
+      // Perform strict MIME / magic signature validations
+      const fileValidation = validateUploadedFile(file, buffer)
+      if (!fileValidation.valid) {
+        return NextResponse.json(
+          { success: false, message: fileValidation.error || 'Invalid file uploaded.' },
+          { status: 400, headers: limitResult.headers }
+        )
+      }
+
+      const fileName = file.name.toLowerCase()
+      try {
+        if (fileName.endsWith('.pdf')) {
+          resumeText = await parsePdf(buffer)
+        } else if (fileName.endsWith('.docx')) {
+          resumeText = await parseDocx(buffer)
+        }
+      } catch (err) {
+        return NextResponse.json(
+          { success: false, message: 'Corrupt or unreadable resume file. Please upload a valid document.' },
+          { status: 400, headers: limitResult.headers }
+        )
+      }
+    } else if (pastedText && pastedText.trim() !== '') {
+      resumeText = pastedText
     } else {
       return NextResponse.json(
-        { error: "Please upload a resume file or paste your resume text." },
-        { status: 400 }
-      );
+        { success: false, message: 'Please upload a resume file or paste your resume text.' },
+        { status: 400, headers: limitResult.headers }
+      )
     }
 
-    if (!resumeText || resumeText.trim() === "") {
+    if (!resumeText || resumeText.trim() === '') {
       return NextResponse.json(
-        { error: "Could not extract text from the provided resume. Make sure it is not empty or an image-only scanned PDF." },
-        { status: 400 }
-      );
+        { success: false, message: 'Could not extract text from the provided resume.' },
+        { status: 400, headers: limitResult.headers }
+      )
     }
 
-    // Retrieve Gemini API Key from headers or environment
-    const headerApiKey = request.headers.get("x-gemini-api-key");
-    const apiKey = headerApiKey || process.env.GEMINI_API_KEY;
+    // Determine provider, model, and key based on available environment variables and headers
+    const headerApiKey = request.headers.get('x-gemini-api-key')
+    
+    let provider: 'gemini' | 'groq' | 'openrouter' = 'gemini'
+    let apiKey = headerApiKey || process.env.GEMINI_API_KEY
+    let model = 'gemini-3.5-flash'
+
+    // If client provides a direct Gemini API key via headers, we respect it.
+    // Otherwise, we prioritize Groq's high-speed free tier, followed by OpenRouter.
+    if (headerApiKey) {
+      provider = 'gemini'
+      apiKey = headerApiKey
+      model = 'gemini-3.5-flash'
+    } else if (process.env.GROQ_API_KEY) {
+      provider = 'groq'
+      apiKey = process.env.GROQ_API_KEY
+      model = 'llama-3.3-70b-versatile'
+    } else if (process.env.OPENROUTER_API_KEY) {
+      provider = 'openrouter'
+      apiKey = process.env.OPENROUTER_API_KEY
+      model = 'meta-llama/llama-3.1-8b-instruct:free'
+    }
 
     if (!apiKey) {
       return NextResponse.json(
         {
-          error: "Gemini API Key is missing. Please configure it in your environment variables as GEMINI_API_KEY.",
+          success: false,
+          message: 'API Key is missing. Please configure GEMINI_API_KEY, GROQ_API_KEY, or OPENROUTER_API_KEY in your environment.',
           needsKey: true,
         },
-        { status: 401 }
-      );
+        { status: 401, headers: limitResult.headers }
+      )
     }
 
-    const systemPrompt = `You are a premium explainable ATS evaluation engine, expert recruiter, and CV consultant.
+    const systemPrompt = `You are a premium explainable ATS evaluation engine, CV consultant.
 Analyze the following resume text and provide a highly detailed, explainable, and role-specific ATS evaluation.
 Your evaluation must be grounded in actual layout, format, and content analysis of the provided text.
 
@@ -96,297 +175,286 @@ CRITICAL INSTRUCTIONS:
 
 RESUME RAW TEXT:
 """
-${resumeText}
+${resumeText.substring(0, 50000)}
 """
 
 TARGET ROLE:
-"${targetRole || 'Not specified'}"`;
+"${targetRole || 'Not specified'}"`
 
     const schema = {
-      type: "OBJECT",
+      type: 'OBJECT',
       properties: {
         parsedInfo: {
-          type: "OBJECT",
+          type: 'OBJECT',
           properties: {
-            name: { type: "STRING" },
-            education: { type: "ARRAY", items: { type: "STRING" } },
-            skills: { type: "ARRAY", items: { type: "STRING" } },
-            projects: { type: "ARRAY", items: { type: "STRING" } },
-            experience: { type: "ARRAY", items: { type: "STRING" } },
-            certifications: { type: "ARRAY", items: { type: "STRING" } },
-            achievements: { type: "ARRAY", items: { type: "STRING" } },
+            name: { type: 'STRING' },
+            education: { type: 'ARRAY', items: { type: 'STRING' } },
+            skills: { type: 'ARRAY', items: { type: 'STRING' } },
+            projects: { type: 'ARRAY', items: { type: 'STRING' } },
+            experience: { type: 'ARRAY', items: { type: 'STRING' } },
+            certifications: { type: 'ARRAY', items: { type: 'STRING' } },
+            achievements: { type: 'ARRAY', items: { type: 'STRING' } },
             contactInformation: {
-              type: "OBJECT",
+              type: 'OBJECT',
               properties: {
-                email: { type: "STRING" },
-                phone: { type: "STRING" },
-                linkedin: { type: "STRING" },
-                github: { type: "STRING" },
-                portfolio: { type: "STRING" }
+                email: { type: 'STRING' },
+                phone: { type: 'STRING' },
+                linkedin: { type: 'STRING' },
+                github: { type: 'STRING' },
+                portfolio: { type: 'STRING' },
               },
-              required: ["email", "phone"]
-            }
-          },
-          required: ["name", "education", "skills", "projects", "experience", "contactInformation"]
-        },
-        overallExplanation: { type: "STRING" },
-        atsScore: { type: "INTEGER" },
-        categories: {
-          type: "OBJECT",
-          properties: {
-            resumeStructure: {
-              type: "OBJECT",
-              properties: {
-                score: { type: "INTEGER" },
-                maxScore: { type: "INTEGER" },
-                reasons: { type: "ARRAY", items: { type: "STRING" } },
-                deductions: { type: "ARRAY", items: { type: "STRING" } }
-              },
-              required: ["score", "maxScore", "reasons", "deductions"]
+              required: ['email', 'phone'],
             },
-            atsCompatibility: {
-              type: "OBJECT",
-              properties: {
-                score: { type: "INTEGER" },
-                maxScore: { type: "INTEGER" },
-                reasons: { type: "ARRAY", items: { type: "STRING" } },
-                deductions: { type: "ARRAY", items: { type: "STRING" } }
-              },
-              required: ["score", "maxScore", "reasons", "deductions"]
-            },
-            skillsRelevance: {
-              type: "OBJECT",
-              properties: {
-                score: { type: "INTEGER" },
-                maxScore: { type: "INTEGER" },
-                reasons: { type: "ARRAY", items: { type: "STRING" } },
-                deductions: { type: "ARRAY", items: { type: "STRING" } }
-              },
-              required: ["score", "maxScore", "reasons", "deductions"]
-            },
-            projectQuality: {
-              type: "OBJECT",
-              properties: {
-                score: { type: "INTEGER" },
-                maxScore: { type: "INTEGER" },
-                reasons: { type: "ARRAY", items: { type: "STRING" } },
-                deductions: { type: "ARRAY", items: { type: "STRING" } }
-              },
-              required: ["score", "maxScore", "reasons", "deductions"]
-            },
-            experienceQuality: {
-              type: "OBJECT",
-              properties: {
-                score: { type: "INTEGER" },
-                maxScore: { type: "INTEGER" },
-                reasons: { type: "ARRAY", items: { type: "STRING" } },
-                deductions: { type: "ARRAY", items: { type: "STRING" } }
-              },
-              required: ["score", "maxScore", "reasons", "deductions"]
-            },
-            keywordCoverage: {
-              type: "OBJECT",
-              properties: {
-                score: { type: "INTEGER" },
-                maxScore: { type: "INTEGER" },
-                reasons: { type: "ARRAY", items: { type: "STRING" } },
-                deductions: { type: "ARRAY", items: { type: "STRING" } }
-              },
-              required: ["score", "maxScore", "reasons", "deductions"]
-            },
-            readability: {
-              type: "OBJECT",
-              properties: {
-                score: { type: "INTEGER" },
-                maxScore: { type: "INTEGER" },
-                reasons: { type: "ARRAY", items: { type: "STRING" } },
-                deductions: { type: "ARRAY", items: { type: "STRING" } }
-              },
-              required: ["score", "maxScore", "reasons", "deductions"]
-            },
-            professionalPresentation: {
-              type: "OBJECT",
-              properties: {
-                score: { type: "INTEGER" },
-                maxScore: { type: "INTEGER" },
-                reasons: { type: "ARRAY", items: { type: "STRING" } },
-                deductions: { type: "ARRAY", items: { type: "STRING" } }
-              },
-              required: ["score", "maxScore", "reasons", "deductions"]
-            }
           },
           required: [
-            "resumeStructure",
-            "atsCompatibility",
-            "skillsRelevance",
-            "projectQuality",
-            "experienceQuality",
-            "keywordCoverage",
-            "readability",
-            "professionalPresentation"
-          ]
+            'name',
+            'education',
+            'skills',
+            'projects',
+            'experience',
+            'contactInformation',
+          ],
+        },
+        overallExplanation: { type: 'STRING' },
+        atsScore: { type: 'INTEGER' },
+        categories: {
+          type: 'OBJECT',
+          properties: {
+            resumeStructure: {
+              type: 'OBJECT',
+              properties: {
+                score: { type: 'INTEGER' },
+                maxScore: { type: 'INTEGER' },
+                reasons: { type: 'ARRAY', items: { type: 'STRING' } },
+                deductions: { type: 'ARRAY', items: { type: 'STRING' } },
+              },
+              required: ['score', 'maxScore', 'reasons', 'deductions'],
+            },
+            atsCompatibility: {
+              type: 'OBJECT',
+              properties: {
+                score: { type: 'INTEGER' },
+                maxScore: { type: 'INTEGER' },
+                reasons: { type: 'ARRAY', items: { type: 'STRING' } },
+                deductions: { type: 'ARRAY', items: { type: 'STRING' } },
+              },
+              required: ['score', 'maxScore', 'reasons', 'deductions'],
+            },
+            skillsRelevance: {
+              type: 'OBJECT',
+              properties: {
+                score: { type: 'INTEGER' },
+                maxScore: { type: 'INTEGER' },
+                reasons: { type: 'ARRAY', items: { type: 'STRING' } },
+                deductions: { type: 'ARRAY', items: { type: 'STRING' } },
+              },
+              required: ['score', 'maxScore', 'reasons', 'deductions'],
+            },
+            projectQuality: {
+              type: 'OBJECT',
+              properties: {
+                score: { type: 'INTEGER' },
+                maxScore: { type: 'INTEGER' },
+                reasons: { type: 'ARRAY', items: { type: 'STRING' } },
+                deductions: { type: 'ARRAY', items: { type: 'STRING' } },
+              },
+              required: ['score', 'maxScore', 'reasons', 'deductions'],
+            },
+            experienceQuality: {
+              type: 'OBJECT',
+              properties: {
+                score: { type: 'INTEGER' },
+                maxScore: { type: 'INTEGER' },
+                reasons: { type: 'ARRAY', items: { type: 'STRING' } },
+                deductions: { type: 'ARRAY', items: { type: 'STRING' } },
+              },
+              required: ['score', 'maxScore', 'reasons', 'deductions'],
+            },
+            keywordCoverage: {
+              type: 'OBJECT',
+              properties: {
+                score: { type: 'INTEGER' },
+                maxScore: { type: 'INTEGER' },
+                reasons: { type: 'ARRAY', items: { type: 'STRING' } },
+                deductions: { type: 'ARRAY', items: { type: 'STRING' } },
+              },
+              required: ['score', 'maxScore', 'reasons', 'deductions'],
+            },
+            readability: {
+              type: 'OBJECT',
+              properties: {
+                score: { type: 'INTEGER' },
+                maxScore: { type: 'INTEGER' },
+                reasons: { type: 'ARRAY', items: { type: 'STRING' } },
+                deductions: { type: 'ARRAY', items: { type: 'STRING' } },
+              },
+              required: ['score', 'maxScore', 'reasons', 'deductions'],
+            },
+            professionalPresentation: {
+              type: 'OBJECT',
+              properties: {
+                score: { type: 'INTEGER' },
+                maxScore: { type: 'INTEGER' },
+                reasons: { type: 'ARRAY', items: { type: 'STRING' } },
+                deductions: { type: 'ARRAY', items: { type: 'STRING' } },
+              },
+              required: ['score', 'maxScore', 'reasons', 'deductions'],
+            },
+          },
+          required: [
+            'resumeStructure',
+            'atsCompatibility',
+            'skillsRelevance',
+            'projectQuality',
+            'experienceQuality',
+            'keywordCoverage',
+            'readability',
+            'professionalPresentation',
+          ],
         },
         roleMatch: {
-          type: "OBJECT",
+          type: 'OBJECT',
           properties: {
-            matchPercentage: { type: "INTEGER" },
-            targetRole: { type: "STRING" },
-            status: { type: "STRING" },
-            reasoning: { type: "STRING" },
-            strongAreas: { type: "ARRAY", items: { type: "STRING" } },
-            weakAreas: { type: "ARRAY", items: { type: "STRING" } }
+            matchPercentage: { type: 'INTEGER' },
+            targetRole: { type: 'STRING' },
+            status: { type: 'STRING' },
+            reasoning: { type: 'STRING' },
+            strongAreas: { type: 'ARRAY', items: { type: 'STRING' } },
+            weakAreas: { type: 'ARRAY', items: { type: 'STRING' } },
           },
-          required: ["matchPercentage", "targetRole", "status", "reasoning", "strongAreas", "weakAreas"]
+          required: [
+            'matchPercentage',
+            'targetRole',
+            'status',
+            'reasoning',
+            'strongAreas',
+            'weakAreas',
+          ],
         },
         roleFitBreakdown: {
-          type: "ARRAY",
+          type: 'ARRAY',
           items: {
-            type: "OBJECT",
+            type: 'OBJECT',
             properties: {
-              role: { type: "STRING" },
-              percentage: { type: "INTEGER" },
-              status: { type: "STRING" }
+              role: { type: 'STRING' },
+              percentage: { type: 'INTEGER' },
+              status: { type: 'STRING' },
             },
-            required: ["role", "percentage", "status"]
-          }
+            required: ['role', 'percentage', 'status'],
+          },
         },
         projectsEvaluation: {
-          type: "ARRAY",
+          type: 'ARRAY',
           items: {
-            type: "OBJECT",
+            type: 'OBJECT',
             properties: {
-              title: { type: "STRING" },
-              score: { type: "NUMBER" },
-              maxScore: { type: "NUMBER" },
-              strengths: { type: "ARRAY", items: { type: "STRING" } },
-              weaknesses: { type: "ARRAY", items: { type: "STRING" } },
-              recruiterImpact: { type: "STRING" }
+              title: { type: 'STRING' },
+              score: { type: 'NUMBER' },
+              maxScore: { type: 'NUMBER' },
+              strengths: { type: 'ARRAY', items: { type: 'STRING' } },
+              weaknesses: { type: 'ARRAY', items: { type: 'STRING' } },
+              recruiterImpact: { type: 'STRING' },
             },
-            required: ["title", "score", "maxScore", "strengths", "weaknesses", "recruiterImpact"]
-          }
+            required: [
+              'title',
+              'score',
+              'maxScore',
+              'strengths',
+              'weaknesses',
+              'recruiterImpact',
+            ],
+          },
         },
         missingSkillsDetector: {
-          type: "OBJECT",
+          type: 'OBJECT',
           properties: {
-            detected: { type: "ARRAY", items: { type: "STRING" } },
-            missing: { type: "ARRAY", items: { type: "STRING" } },
-            suggestions: { type: "ARRAY", items: { type: "STRING" } }
+            detected: { type: 'ARRAY', items: { type: 'STRING' } },
+            missing: { type: 'ARRAY', items: { type: 'STRING' } },
+            suggestions: { type: 'ARRAY', items: { type: 'STRING' } },
           },
-          required: ["detected", "missing", "suggestions"]
+          required: ['detected', 'missing', 'suggestions'],
         },
         atsRisks: {
-          type: "ARRAY",
+          type: 'ARRAY',
           items: {
-            type: "OBJECT",
+            type: 'OBJECT',
             properties: {
-              risk: { type: "STRING" },
-              severity: { type: "STRING" },
-              explanation: { type: "STRING" }
+              risk: { type: 'STRING' },
+              severity: { type: 'STRING' },
+              explanation: { type: 'STRING' },
             },
-            required: ["risk", "severity", "explanation"]
-          }
+            required: ['risk', 'severity', 'explanation'],
+          },
         },
         improvementRoadmap: {
-          type: "ARRAY",
+          type: 'ARRAY',
           items: {
-            type: "OBJECT",
+            type: 'OBJECT',
             properties: {
-              id: { type: "INTEGER" },
-              improvement: { type: "STRING" },
-              impact: { type: "STRING" },
-              explanation: { type: "STRING" }
+              id: { type: 'INTEGER' },
+              improvement: { type: 'STRING' },
+              impact: { type: 'STRING' },
+              explanation: { type: 'STRING' },
             },
-            required: ["id", "improvement", "impact", "explanation"]
-          }
-        }
+            required: ['id', 'improvement', 'impact', 'explanation'],
+          },
+        },
       },
       required: [
-        "parsedInfo",
-        "overallExplanation",
-        "atsScore",
-        "categories",
-        "roleMatch",
-        "roleFitBreakdown",
-        "projectsEvaluation",
-        "missingSkillsDetector",
-        "atsRisks",
-        "improvementRoadmap"
-      ]
-    };
-
-    const payload = {
-      contents: [
-        {
-          parts: [{ text: systemPrompt }]
-        }
+        'parsedInfo',
+        'overallExplanation',
+        'atsScore',
+        'categories',
+        'roleMatch',
+        'roleFitBreakdown',
+        'projectsEvaluation',
+        'missingSkillsDetector',
+        'atsRisks',
+        'improvementRoadmap',
       ],
-      generationConfig: {
-        responseMimeType: "application/json",
-        responseSchema: schema,
-        temperature: 0.1,
-      }
-    };
-
-    const models = ["gemini-3.5-flash", "gemini-2.5-flash"];
-    let lastErrorMsg = "";
-    let lastStatus = 500;
-    let response = null;
-
-    for (const model of models) {
-      console.log(`[Resume Evaluator] Calling model: ${model}`);
-      try {
-        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-        const res = await fetch(endpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(payload),
-        });
-
-        if (res.ok) {
-          response = res;
-          break;
-        }
-
-        lastStatus = res.status;
-        const errorData = await res.json().catch(() => ({}));
-        lastErrorMsg = errorData?.error?.message || `Gemini API returned status ${res.status}`;
-        console.warn(`[Resume Evaluator] Model ${model} failed: ${lastErrorMsg}`);
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : String(err);
-        lastErrorMsg = errorMessage;
-        lastStatus = 500;
-        console.error(`[Resume Evaluator] Network error on model ${model}:`, err);
-      }
     }
 
-    if (!response || !response.ok) {
+    const gatewayResponse = await generateResponse({
+      provider,
+      model,
+      prompt: systemPrompt,
+      apiKey,
+      responseMimeType: 'application/json',
+      responseSchema: schema,
+      temperature: 0.1,
+      taskType: 'ats_analyzer',
+    })
+
+    if (!gatewayResponse.success) {
+      await logAnalyticsEvent('ats_analyzer', undefined, { response_time_ms: Date.now() - startTime, success: false, error: gatewayResponse.error })
       return NextResponse.json(
-        { error: `AI Resume evaluation failed: ${lastErrorMsg}` },
-        { status: lastStatus }
-      );
+        { success: false, message: `AI Resume evaluation failed: ${gatewayResponse.error}` },
+        { status: 500, headers: limitResult.headers }
+      )
     }
 
-    const data = await response.json();
-    const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    const textResponse = gatewayResponse.text
 
     if (!textResponse) {
+      await logAnalyticsEvent('ats_analyzer', undefined, { response_time_ms: Date.now() - startTime, success: false, error: 'Invalid response structure from Gemini API.' })
       return NextResponse.json(
-        { error: "Invalid response structure from Gemini API." },
-        { status: 500 }
-      );
+        { success: false, message: 'Invalid response structure from Gemini API.' },
+        { status: 500, headers: limitResult.headers }
+      )
     }
 
-    const result = JSON.parse(textResponse.trim());
-    return NextResponse.json({ data: result }, { status: 200 });
-
-  } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : "Failed to evaluate resume.";
-    console.error("Resume Evaluator API error:", err);
+    const result = JSON.parse(textResponse.trim())
+    await logAnalyticsEvent('ats_analyzer', undefined, { response_time_ms: Date.now() - startTime, success: true })
     return NextResponse.json(
-      { error: errorMsg },
+      { success: true, data: result, rawText: resumeText },
+      { status: 200, headers: limitResult.headers }
+    )
+  } catch (err: any) {
+    console.error('Resume Evaluator API error:', err)
+    await logAnalyticsEvent('ats_analyzer', undefined, { response_time_ms: Date.now() - startTime, success: false, error: err?.message || 'Temporary issue' })
+    return NextResponse.json(
+      { success: false, message: 'Temporary issue. Please try again.' },
       { status: 500 }
-    );
+    )
   }
 }

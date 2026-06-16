@@ -13,14 +13,14 @@ export async function GET(request: Request) {
   try {
     const supabase = await createClient();
 
-    // Fetch current applications count
+    // Fetch complete job details to sync to CRM tracker
     const { data: job, error: fetchError } = await supabase
       .from("job_postings")
-      .select("applications_count")
+      .select("*")
       .eq("id", jobId)
       .single();
 
-    if (!fetchError) {
+    if (!fetchError && job) {
       const currentApps = job.applications_count || 0;
 
       // Update with incremented applications
@@ -28,6 +28,21 @@ export async function GET(request: Request) {
         .from("job_postings")
         .update({ applications_count: currentApps + 1 })
         .eq("id", jobId);
+
+      // Authenticate user session
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { trackSavedJob } = await import("@/lib/db/applications");
+        await trackSavedJob(user.id, job, "Applied");
+
+        // Self-healing Referral Conversion Check:
+        try {
+          const { processReferralConversion } = await import("@/lib/db/growth");
+          await processReferralConversion(user.id);
+        } catch (e) {
+          console.error("Failed to run self-healing referral conversion in track apply:", e);
+        }
+      }
     }
   } catch (error) {
     console.error("Error tracking application:", error);

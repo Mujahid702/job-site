@@ -261,6 +261,23 @@ export default function NewJob() {
         return;
       }
 
+      // Log audit action to analytics center
+      await fetch("/api/admin/analytics", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "log_action",
+          details: {
+            actionName: "Job Published",
+            actionData: {
+              title: jobData.drive_title,
+              company: jobData.company_name,
+              category: jobData.category
+            }
+          }
+        })
+      }).catch(err => console.error("Failed to log job creation:", err));
+
       router.push('/admin/jobs');
     } catch (err: any) {
       console.error('Error while publishing job:', err);

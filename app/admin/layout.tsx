@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { LayoutDashboard, PlusCircle, Briefcase, LogOut, ChevronRight, Sparkles } from "lucide-react";
+import { LayoutDashboard, PlusCircle, Briefcase, LogOut, ChevronRight, Sparkles, Shield, TrendingUp, BookOpen, DollarSign } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
+import { isAdmin } from "@/lib/auth";
 
 export default async function AdminLayout({
   children,
@@ -13,6 +14,10 @@ export default async function AdminLayout({
 
   if (!user) {
     redirect("/login");
+  }
+
+  if (!isAdmin(user)) {
+    redirect("/");
   }
 
   return (
@@ -36,11 +41,35 @@ export default async function AdminLayout({
           </Link>
 
           <Link 
+            href="/admin/analytics" 
+            className="flex items-center gap-3 px-4 py-3 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all font-bold"
+          >
+            <TrendingUp className="w-5 h-5 text-emerald-500" />
+            Analytics Dashboard
+          </Link>
+
+          <Link 
+            href="/admin/ai-analytics" 
+            className="flex items-center gap-3 px-4 py-3 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all font-bold"
+          >
+            <DollarSign className="w-5 h-5 text-amber-500" />
+            AI Cost Analytics
+          </Link>
+
+          <Link 
             href="/admin/automation" 
             className="flex items-center gap-3 px-4 py-3 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all font-bold"
           >
             <Sparkles className="w-5 h-5 text-indigo-500" />
             Content Automation
+          </Link>
+
+          <Link 
+            href="/admin/knowledge" 
+            className="flex items-center gap-3 px-4 py-3 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all font-bold"
+          >
+            <BookOpen className="w-5 h-5 text-violet-500" />
+            Knowledge Base (RAG)
           </Link>
 
           <Link 
@@ -56,6 +85,14 @@ export default async function AdminLayout({
           >
             <Briefcase className="w-5 h-5" />
             Manage Jobs
+          </Link>
+
+          <Link 
+            href="/admin/moderation" 
+            className="flex items-center gap-3 px-4 py-3 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all font-bold"
+          >
+            <Shield className="w-5 h-5 text-rose-500" />
+            Moderation Panel
           </Link>
         </nav>
 

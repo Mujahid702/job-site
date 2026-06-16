@@ -27,26 +27,44 @@ export async function proxy(request: NextRequest) {
     }
   )
 
-  // IMPORTANT: Avoid writing any logic between createServerClient and
-  // getUser(). A simple mistake could make it very hard to debug
-  // issues with sessions being lost.
-
   const {
     data: { user },
   } = await supabase.auth.getUser()
 
-  if (request.nextUrl.pathname.startsWith('/admin')) {
+  const pathname = request.nextUrl.pathname
+
+  // Protect administrative routes
+  if (pathname.startsWith('/admin') || pathname.startsWith('/api/admin')) {
     if (!user) {
+      if (pathname.startsWith('/api/')) {
+        return NextResponse.json(
+          { success: false, message: 'Unauthorized. Active session required.' },
+          { status: 401 }
+        )
+      }
       const url = request.nextUrl.clone()
       url.pathname = '/login'
       return NextResponse.redirect(url)
     }
 
-    const isAdmin = user.email === 'admin@example.com' || user.email === 'buggedbrain2026@gmail.com' || user.email === 'mujjumujahid1992@gmail.com' || user.user_metadata?.role === 'admin'
+    const email = user.email || ''
+    const role = user.user_metadata?.role
+    const isAdmin =
+      email === 'admin@example.com' ||
+      email === 'buggedbrain2026@gmail.com' ||
+      email === 'mujjumujahid1992@gmail.com' ||
+      role === 'admin' ||
+      role === 'super_admin'
+
     if (!isAdmin) {
-      const url = request.nextUrl.clone()
-      url.pathname = '/'
-      return NextResponse.redirect(url)
+      if (pathname.startsWith('/api/')) {
+        return NextResponse.json(
+          { success: false, message: 'Forbidden. Admin role required.' },
+          { status: 403 }
+        )
+      }
+      // Return a 403 response for pages
+      return new NextResponse('Forbidden. Admin role required.', { status: 403 })
     }
   }
 

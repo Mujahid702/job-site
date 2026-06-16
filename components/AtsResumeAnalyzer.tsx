@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
+import { enqueueTask, startWorker, fileToBase64 } from "@/lib/queue";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   UploadCloud,
@@ -115,9 +116,16 @@ interface EvaluationData {
 
 interface AtsResumeAnalyzerProps {
   onScoreUpdate?: (score: number) => void;
+  onTabChange?: (tab: string) => void;
+  onAnalysisComplete?: (data: {
+    atsScore: number;
+    rawText: string;
+    categories: Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+    roleMatch: Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  }) => void;
 }
 
-export default function AtsResumeAnalyzer({ onScoreUpdate }: AtsResumeAnalyzerProps) {
+export default function AtsResumeAnalyzer({ onScoreUpdate, onTabChange, onAnalysisComplete }: AtsResumeAnalyzerProps) {
   const [selectedRole, setSelectedRole] = useState<string>("Software Engineer");
   const [customRole, setCustomRole] = useState<string>("");
   const [resumeText, setResumeText] = useState<string>("");
@@ -191,6 +199,54 @@ export default function AtsResumeAnalyzer({ onScoreUpdate }: AtsResumeAnalyzerPr
     }
   };
 
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+  const [taskProgress, setTaskProgress] = useState<number>(0);
+
+  useEffect(() => {
+    if (!activeTaskId) return;
+
+    const handleTaskUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const updatedTask = customEvent.detail;
+      if (updatedTask.id === activeTaskId) {
+        setTaskProgress(updatedTask.progress);
+        if (updatedTask.status === "PROCESSING") {
+          setScanStep(`Analyzing Resume: ${updatedTask.progress}%`);
+        } else if (updatedTask.status === "PENDING") {
+          setScanStep("Queued (Waiting for background thread)...");
+        } else if (updatedTask.status === "COMPLETED") {
+          setIsScanning(false);
+          const resData = updatedTask.result.data || updatedTask.result;
+          setResult(resData);
+          if (updatedTask.result.rawText) {
+            localStorage.setItem("last_analyzed_resume_text", updatedTask.result.rawText);
+          }
+          if (onAnalysisComplete && resData.atsScore) {
+            onAnalysisComplete({
+              atsScore: resData.atsScore,
+              rawText: updatedTask.result.rawText || "",
+              categories: resData.categories,
+              roleMatch: resData.roleMatch
+            });
+          }
+          if (onScoreUpdate && resData.atsScore) {
+            onScoreUpdate(resData.atsScore);
+          }
+          setActiveTaskId(null);
+        } else if (updatedTask.status === "FAILED") {
+          setIsScanning(false);
+          setErrorMsg(updatedTask.error || "Evaluation failed. Please try again.");
+          setActiveTaskId(null);
+        }
+      }
+    };
+
+    window.addEventListener("bb_task_updated", handleTaskUpdate);
+    return () => {
+      window.removeEventListener("bb_task_updated", handleTaskUpdate);
+    };
+  }, [activeTaskId]);
+
   const handleRunEvaluation = async () => {
     if (!uploadedFile && !resumeText.trim()) {
       setErrorMsg("Please upload a PDF/DOCX resume file or paste the resume text first.");
@@ -200,47 +256,37 @@ export default function AtsResumeAnalyzer({ onScoreUpdate }: AtsResumeAnalyzerPr
     setIsScanning(true);
     setErrorMsg(null);
     setResult(null);
-
-    // Run visually engaging scanner logs in parallel
-    const logsPromise = triggerScanSteps();
+    setScanStep("Queuing scan task...");
+    setTaskProgress(0);
 
     try {
-      const formData = new FormData();
+      let fileData = null;
+      let fileName = "";
+      let fileType = "";
+
       if (uploadedFile) {
-        formData.append("file", uploadedFile);
-      } else {
-        formData.append("text", resumeText);
+        fileData = await fileToBase64(uploadedFile);
+        fileName = uploadedFile.name;
+        fileType = uploadedFile.type;
       }
 
       const targetRoleToSend = selectedRole === "Other" ? customRole : selectedRole;
-      if (targetRoleToSend.trim()) {
-        formData.append("targetRole", targetRoleToSend);
-      }
 
-      const res = await fetch("/api/resume/evaluate", {
-        method: "POST",
-        body: formData,
-      });
+      const payload = {
+        fileData,
+        fileName,
+        fileType,
+        text: resumeText,
+        targetRole: targetRoleToSend
+      };
 
-      const responseData = await res.json();
-
-      // Ensure the scanner logs animation runs for at least some steps to not flicker
-      await logsPromise;
-
-      if (!res.ok) {
-        throw new Error(responseData.error || "Failed to analyze resume.");
-      }
-
-      setResult(responseData.data);
-      if (onScoreUpdate && responseData.data.atsScore) {
-        onScoreUpdate(responseData.data.atsScore);
-      }
-    } catch (err: any) {
+      const task = enqueueTask("ats", payload);
+      setActiveTaskId(task.id);
+      startWorker();
+    } catch (err: unknown) {
       console.error(err);
-      setErrorMsg(err.message || "Something went wrong during evaluation. Please try again.");
-    } finally {
+      setErrorMsg("Failed to queue task.");
       setIsScanning(false);
-      setScanStep("");
     }
   };
 
@@ -1102,28 +1148,43 @@ export default function AtsResumeAnalyzer({ onScoreUpdate }: AtsResumeAnalyzerPr
                   desc: "Track score evolution and changes across uploads.",
                   icon: <TrendingUp className="w-5 h-5 text-indigo-400" />
                 }
-              ].map((item, idx) => (
-                <div
-                  key={idx}
-                  className="bg-white/5 border border-white/10 p-5 rounded-3xl space-y-4 hover:bg-white/10 transition-all relative group cursor-not-allowed select-none"
-                >
-                  <div className="flex justify-between items-start gap-4">
-                    <div className="p-2.5 bg-white/10 rounded-xl">
-                      {item.icon}
+              ].map((item, idx) => {
+                const isBulletRewrite = idx === 0 && onTabChange;
+                return (
+                  <div
+                    key={idx}
+                    onClick={isBulletRewrite ? () => onTabChange("enhancer") : undefined}
+                    className={
+                      isBulletRewrite
+                        ? "bg-white/5 border border-indigo-500/30 p-5 rounded-3xl space-y-4 hover:bg-white/10 hover:border-indigo-400 hover:shadow-lg hover:shadow-indigo-500/10 transition-all relative group cursor-pointer select-none"
+                        : "bg-white/5 border border-white/10 p-5 rounded-3xl space-y-4 hover:bg-white/10 transition-all relative group cursor-not-allowed select-none"
+                    }
+                  >
+                    <div className="flex justify-between items-start gap-4">
+                      <div className="p-2.5 bg-white/10 rounded-xl">
+                        {item.icon}
+                      </div>
+                      {isBulletRewrite ? (
+                        <div className="p-1.5 bg-emerald-500/25 text-emerald-400 rounded-lg hover:scale-105 transition-transform flex items-center gap-1 font-black text-[8px] uppercase tracking-widest">
+                          <Sparkles className="w-3.5 h-3.5 fill-emerald-400/20 animate-pulse" />
+                          <span>Active</span>
+                        </div>
+                      ) : (
+                        <div className="p-1.5 bg-white/10 rounded-lg text-amber-400 hover:scale-105 transition-transform flex items-center gap-1">
+                          <Lock className="w-3.5 h-3.5" />
+                          <span className="text-[8px] font-black uppercase tracking-widest">PRO</span>
+                        </div>
+                      )}
                     </div>
-                    <div className="p-1.5 bg-white/10 rounded-lg text-amber-400 hover:scale-105 transition-transform flex items-center gap-1">
-                      <Lock className="w-3.5 h-3.5" />
-                      <span className="text-[8px] font-black uppercase tracking-widest">PRO</span>
+                    <div className="space-y-1.5">
+                      <h4 className="text-xs font-black text-white">{item.title}</h4>
+                      <p className="text-[10px] text-slate-400 font-semibold leading-relaxed">
+                        {item.desc}
+                      </p>
                     </div>
                   </div>
-                  <div className="space-y-1.5">
-                    <h4 className="text-xs font-black text-white">{item.title}</h4>
-                    <p className="text-[10px] text-slate-400 font-semibold leading-relaxed">
-                      {item.desc}
-                    </p>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </motion.div>

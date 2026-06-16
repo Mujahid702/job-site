@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase";
+import { createClient } from "@/lib/supabase/server";
 import JobCard from "@/components/JobCard";
 import { Zap, Sparkles, TrendingUp, Filter } from "lucide-react";
 import { SidebarPromo } from "@/components/PromoComponents";
@@ -9,11 +9,59 @@ export const metadata = {
 };
 
 export default async function LatestJobsPage() {
+  const supabase = await createClient();
   const { data: jobs } = await supabase
     .from("job_postings")
     .select("*")
     .eq("is_active", true)
     .order("created_at", { ascending: false });
+
+  // Personalization of job feeds
+  let sortedJobs: any[] = jobs ? [...jobs] : [];
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("target_role, skills")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (profile) {
+        const target = (profile.target_role || "").toLowerCase().trim();
+        const skillsList = (profile.skills || []).map((s: string) => s.toLowerCase().trim());
+
+        sortedJobs.sort((a, b) => {
+          const aTitle = (a.drive_title || "").toLowerCase();
+          const aCompany = (a.company_name || "").toLowerCase();
+          const aJD = (a.job_description || "").toLowerCase();
+          
+          const bTitle = (b.drive_title || "").toLowerCase();
+          const bCompany = (b.company_name || "").toLowerCase();
+          const bJD = (b.job_description || "").toLowerCase();
+
+          // Target role matches
+          const aMatchRole = target && (aTitle.includes(target) || aCompany.includes(target));
+          const bMatchRole = target && (bTitle.includes(target) || bCompany.includes(target));
+
+          if (aMatchRole && !bMatchRole) return -1;
+          if (!aMatchRole && bMatchRole) return 1;
+
+          // Skills matches count
+          let aSkillsCount = 0;
+          let bSkillsCount = 0;
+          skillsList.forEach((skill: string) => {
+            if (aTitle.includes(skill) || aJD.includes(skill)) aSkillsCount++;
+            if (bTitle.includes(skill) || bJD.includes(skill)) bSkillsCount++;
+          });
+
+          return bSkillsCount - aSkillsCount;
+        });
+      }
+    }
+  } catch (err) {
+    console.error("Personalization failed in Latest Jobs feed:", err);
+  }
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -34,7 +82,7 @@ export default async function LatestJobsPage() {
         <div className="flex flex-wrap items-center gap-4">
            <div className="px-5 py-3 bg-slate-50 text-slate-400 font-black text-[10px] uppercase tracking-[0.2em] rounded-xl border border-slate-100 flex items-center gap-2">
               <TrendingUp className="w-4 h-4" />
-              {jobs?.length || 0} Open Roles
+              {sortedJobs.length} Open Roles
            </div>
         </div>
       </div>
@@ -43,10 +91,10 @@ export default async function LatestJobsPage() {
           {/* Jobs List */}
           <div className="lg:col-span-8">
              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-               {jobs?.map((job) => (
+               {sortedJobs.map((job) => (
                  <JobCard key={job.id} job={job} />
                ))}
-               {(!jobs || jobs.length === 0) && (
+               {(!sortedJobs || sortedJobs.length === 0) && (
                  <div className="col-span-full py-40 text-center bg-slate-50 rounded-[4rem] border border-dashed border-slate-200">
                     <div className="w-20 h-20 bg-white rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-sm">
                       <Filter className="w-10 h-10 text-slate-300" />

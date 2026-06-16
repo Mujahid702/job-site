@@ -1,16 +1,44 @@
 import { NextResponse } from "next/server";
+import { verifyAdmin } from "@/lib/auth";
+import { rateLimit } from "@/lib/rate-limit";
+import { z } from "zod";
+
+const scrapeUrlSchema = z.object({
+  url: z.string().trim().url("Invalid URL format").min(1, "URL is required")
+});
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { url } = body;
-
-    if (!url || typeof url !== "string" || !url.startsWith("http")) {
-      return NextResponse.json(
-        { error: "A valid HTTP or HTTPS hiring URL is required." },
-        { status: 400 }
+    // 1. Authenticate server-side admin role
+    const authResult = await verifyAdmin();
+    if (!authResult.authorized) {
+      return authResult.response || NextResponse.json(
+        { success: false, message: "Forbidden. Admin role required." },
+        { status: 403 }
       );
     }
+
+    // 2. Rate limiting check
+    const ip = request.headers.get("x-forwarded-for") || "127.0.0.1";
+    const limitResult = await rateLimit(ip, "scrape");
+    if (!limitResult.success) {
+      return NextResponse.json(
+        { success: false, message: "Rate limit exceeded. Please try again later." },
+        { status: 429, headers: limitResult.headers }
+      );
+    }
+
+    // 3. Zod input validation
+    const body = await request.json().catch(() => ({}));
+    const validation = scrapeUrlSchema.safeParse(body);
+    if (!validation.success) {
+      return NextResponse.json(
+        { success: false, message: "Invalid input fields.", errors: validation.error.flatten() },
+        { status: 400, headers: limitResult.headers }
+      );
+    }
+
+    const { url } = validation.data;
 
     console.log(`Starting scrape for URL: ${url}`);
 
