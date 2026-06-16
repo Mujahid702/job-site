@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { 
   DollarSign, Cpu, Activity, TrendingUp, Search, 
   HelpCircle, RefreshCw, Layers, Users, BarChart3, 
-  CheckCircle2, XCircle, Clock, Calendar
+  CheckCircle2, XCircle, Clock, Calendar, AlertTriangle
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AiCostAnalytics } from "@/lib/db/ai-analytics";
