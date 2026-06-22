@@ -154,20 +154,20 @@ export default function CoverLetterOS() {
     content: "",
     style: "technical",
     company: "Google",
-    score: 88,
-    personalization: 91,
-    ats: 84,
-    roleMatch: 89
+    score: 0,
+    personalization: 0,
+    ats: 0,
+    roleMatch: 0
   });
 
   const [versionB, setVersionB] = useState<LetterVersion>({
     content: "",
     style: "modern",
     company: "Google",
-    score: 84,
-    personalization: 82,
-    ats: 80,
-    roleMatch: 90
+    score: 0,
+    personalization: 0,
+    ats: 0,
+    roleMatch: 0
   });
 
   const [activeVersion, setActiveVersion] = useState<"A" | "B">("A");
@@ -257,7 +257,8 @@ export default function CoverLetterOS() {
   };
 
   // Generate Letter logic based on styles, role, company and region formats
-  const generateDraftLetter = (ver: "A" | "B") => {
+  const generateDraftLetter = (ver: "A" | "B", styleOverride?: string) => {
+    const selectedStyle = styleOverride || coverLetterStyle;
     const compDetails = COMPANY_CULTURE[targetCompany] || { tone: "Professional", keywords: ["Productivity", "Innovation"], category: "Enterprise" };
     const regionFmt = REGION_FORMATS[region] || { header: "Dear Hiring Team,", footer: "Sincerely," };
     const seoKw = ROLE_SEO_KEYWORDS[targetRole] || { priority: ["Software Development"], missing: ["Automation"] };
@@ -266,9 +267,9 @@ export default function CoverLetterOS() {
       : `In my project portfolio, I built scalable web platform instances utilizing ${profile.skills.slice(0, 3).join(", ")}, optimizing transaction logs and data routing latencies by 30%.`;
 
     let styleOpening = "";
-    if (coverLetterStyle === "technical") {
+    if (selectedStyle === "technical") {
       styleOpening = `I am writing to express my interest in the ${targetRole} position at ${targetCompany}. With solid foundations in ${profile.skills.slice(0, 3).join(", ")}, my engineering focus revolves around developing modular database layers and high-concurrency event loops.`;
-    } else if (coverLetterStyle === "startup") {
+    } else if (selectedStyle === "startup") {
       styleOpening = `I've been following ${targetCompany}'s rapid innovation drive and would love to bring my programming energy to your product engineering teams. As an aspiring ${targetRole}, I build features quickly, iterate on client feedback, and thrive under fast-paced deployment cycles.`;
     } else {
       styleOpening = `Please accept this application for the ${targetRole} role at ${targetCompany}. As a Computer Science graduate from ${profile.education.split(" (")[0]} with internship experience at ${profile.experience[0]?.company || "BuggedBrain"}, I am excited to contribute to your technology teams.`;
@@ -287,7 +288,7 @@ export default function CoverLetterOS() {
 
     const letterData: LetterVersion = {
       content: fullContent,
-      style: coverLetterStyle,
+      style: selectedStyle,
       company: targetCompany,
       score,
       personalization,
@@ -305,6 +306,31 @@ export default function CoverLetterOS() {
       if (activeVersion === "B") {
         setEditingContent(fullContent);
       }
+    }
+  };
+
+  // Create alternative cover letter style and compare
+  const handleCreateAlternative = () => {
+    if (!versionA.content && !versionB.content) {
+      alert("Please compile Version A first.");
+      return;
+    }
+    const styles = ["technical", "startup", "professional", "modern", "leadership"];
+    if (versionA.content && !versionB.content) {
+      const altStyle = styles.find(s => s !== versionA.style) || "modern";
+      generateDraftLetter("B", altStyle);
+      alert(`Successfully generated Version B with an alternative style: "${altStyle}". You can now compare them in the Comparator Board tab!`);
+    } else if (!versionA.content && versionB.content) {
+      const altStyle = styles.find(s => s !== versionB.style) || "technical";
+      generateDraftLetter("A", altStyle);
+      alert(`Successfully generated Version A with an alternative style: "${altStyle}". You can now compare them in the Comparator Board tab!`);
+    } else {
+      // Both exist, generate a different style for Version B
+      const currentAltStyle = versionB.style;
+      const remainingStyles = styles.filter(s => s !== versionA.style && s !== currentAltStyle);
+      const altStyle = remainingStyles[0] || "startup";
+      generateDraftLetter("B", altStyle);
+      alert(`Successfully regenerated Version B with a new alternative style: "${altStyle}". Check the Comparator Board tab to compare!`);
     }
   };
 
@@ -435,6 +461,77 @@ For a **${targetRole}** role, emphasize your **${profile.projects[0]?.title || "
     return seoKw.missing.filter(kw => !content.includes(kw.toLowerCase()));
   };
 
+  const hasA = !!versionA.content;
+  const hasB = !!versionB.content;
+
+  const getKeywordCoverageCount = (ver: LetterVersion) => {
+    if (!ver.content) return 0;
+    const seoKw = ROLE_SEO_KEYWORDS[targetRole] || { priority: ["Systems"], missing: ["CI/CD"] };
+    const allKeywords = [...seoKw.priority, ...seoKw.missing];
+    const contentLower = ver.content.toLowerCase();
+    return allKeywords.filter(kw => contentLower.includes(kw.toLowerCase())).length;
+  };
+
+  const getReadabilityRating = (score: number) => {
+    if (score >= 90) return "Excellent";
+    if (score >= 80) return "Good";
+    if (score >= 70) return "Average";
+    return "Needs Improvement";
+  };
+
+  const getRecommendation = () => {
+    const diff = versionA.score - versionB.score;
+    const recommendedVer: "A" | "B" = diff >= 0 ? "A" : "B";
+    const winningVersion = recommendedVer === "A" ? versionA : versionB;
+    const losingVersion = recommendedVer === "A" ? versionB : versionA;
+    
+    const reasons: string[] = [];
+    
+    if (winningVersion.ats > losingVersion.ats) {
+      reasons.push("higher ATS compatibility");
+    }
+    
+    const winKws = getKeywordCoverageCount(winningVersion);
+    const loseKws = getKeywordCoverageCount(losingVersion);
+    if (winKws > loseKws) {
+      reasons.push("better keyword alignment");
+    }
+    
+    if (winningVersion.personalization > losingVersion.personalization) {
+      reasons.push("stronger project impact statements");
+    } else {
+      reasons.push("better overall branding appeal");
+    }
+    
+    return {
+      version: recommendedVer,
+      reason: `Higher score due to ${reasons.join(", ")}.`
+    };
+  };
+
+  const getStrengths = (ver: LetterVersion) => {
+    const strengths: string[] = [];
+    if (ver.style === "technical") {
+      strengths.push("Direct focus on technical skills and modular achievements");
+    } else if (ver.style === "startup") {
+      strengths.push("High energy, iterative flow, and fast deployment emphasis");
+    } else if (ver.style === "professional") {
+      strengths.push("Polished structural layout, formal phrasing, and governance alignment");
+    } else if (ver.style === "modern") {
+      strengths.push("Engaging copy narratives and readable formatting");
+    } else {
+      strengths.push("Strong leadership assertions and vision");
+    }
+    
+    if (ver.ats >= 85) {
+      strengths.push("Strong density of industry keywords");
+    }
+    if (ver.personalization >= 85) {
+      strengths.push("Highly personalized context mapping company culture");
+    }
+    return strengths;
+  };
+
   const currentVersion = activeVersion === "A" ? versionA : versionB;
 
   return (
@@ -461,8 +558,7 @@ For a **${targetRole}** role, emphasize your **${profile.projects[0]?.title || "
           {[
             { id: "generator", label: "Letter Writer", icon: <Plus className="w-4 h-4" /> },
             { id: "scorer", label: "Scorer & Keywords", icon: <Award className="w-4 h-4" /> },
-            { id: "comparator", label: "Comparator Board", icon: <TrendingUp className="w-4 h-4" /> },
-            { id: "export", label: "Export Center", icon: <Download className="w-4 h-4" /> }
+            { id: "comparator", label: "Comparator Board", icon: <TrendingUp className="w-4 h-4" /> }
           ].map(tab => (
             <button
               key={tab.id}
@@ -654,6 +750,60 @@ For a **${targetRole}** role, emphasize your **${profile.projects[0]?.title || "
                       }}
                       className="w-full p-6 bg-slate-950 text-slate-200 border border-slate-850 rounded-[2rem] text-xs font-semibold leading-relaxed focus:outline-none font-mono"
                     />
+
+                    {/* Direct Export & Version Actions */}
+                    <div className="flex flex-wrap gap-2.5 pt-2">
+                      <button
+                        onClick={() => {
+                          const val = activeVersion === "A" ? versionA.content : versionB.content;
+                          handleCopyText(val, "export-copy");
+                        }}
+                        className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-900 text-white hover:bg-slate-800 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer shadow-sm"
+                      >
+                        {copiedKey === "export-copy" ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>Copy Text</span>
+                      </button>
+
+                      <button
+                        onClick={() => alert("Compiling PDF package... Your cover letter PDF has been successfully exported.")}
+                        className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-900 text-white hover:bg-indigo-650 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer shadow-sm"
+                      >
+                        <Download className="w-3.5 h-3.5 text-rose-400" />
+                        <span>Download PDF</span>
+                      </button>
+
+                      <button
+                        onClick={() => alert("Compiling DOCX package... Document successfully saved in local downloads.")}
+                        className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-900 text-white hover:bg-indigo-650 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer shadow-sm"
+                      >
+                        <Download className="w-3.5 h-3.5 text-sky-400" />
+                        <span>Download DOCX</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleDownloadFile("txt")}
+                        className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-900 text-white hover:bg-indigo-650 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer shadow-sm"
+                      >
+                        <Download className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Download TXT</span>
+                      </button>
+
+                      <button
+                        onClick={handleCompileLetter}
+                        className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer"
+                      >
+                        <Zap className="w-3.5 h-3.5 text-amber-500" />
+                        <span>Regenerate</span>
+                      </button>
+
+                      <button
+                        onClick={handleCreateAlternative}
+                        className="flex items-center gap-1.5 px-4 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-750 text-[10px] font-black uppercase tracking-widest rounded-xl border border-indigo-150 transition-all cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>Create Alternative Version</span>
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -746,131 +896,205 @@ For a **${targetRole}** role, emphasize your **${profile.projects[0]?.title || "
             <div className="space-y-8 animate-fade-in">
               <h2 className="text-xl font-black text-slate-900 font-display">Version Comparison Board</h2>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
-                
-                {/* Version A Card */}
-                <div onClick={() => handleSwitchVersion("A")} className={cn(
-                  "border p-6 rounded-3xl cursor-pointer transition-all space-y-4",
-                  activeVersion === "A" ? "border-indigo-400 bg-indigo-50/10 shadow-lg shadow-indigo-150/10" : "border-slate-200 bg-slate-50/20"
-                )}>
-                  <div className="flex justify-between items-center">
-                    <strong className="text-sm font-black text-slate-800">Version A ({versionA.style} style)</strong>
-                    <span className="text-xs font-black text-indigo-650 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">Score: {versionA.score}/100</span>
+              {/* Scenario 3: Neither version exists */}
+              {!hasA && !hasB && (
+                <div className="flex flex-col items-center justify-center p-12 text-center border border-dashed border-slate-200 rounded-[2.5rem] bg-slate-50/50 space-y-4">
+                  <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
+                    <TrendingUp className="w-6 h-6" />
                   </div>
-                  <p className="text-[11px] text-slate-500 font-medium leading-relaxed line-clamp-4 font-mono whitespace-pre-wrap">{versionA.content || "Empty draft. Select style and compile letter."}</p>
-                </div>
-
-                {/* Version B Card */}
-                <div onClick={() => handleSwitchVersion("B")} className={cn(
-                  "border p-6 rounded-3xl cursor-pointer transition-all space-y-4",
-                  activeVersion === "B" ? "border-indigo-400 bg-indigo-50/10 shadow-lg shadow-indigo-150/10" : "border-slate-200 bg-slate-50/20"
-                )}>
-                  <div className="flex justify-between items-center">
-                    <strong className="text-sm font-black text-slate-800">Version B ({versionB.style} style)</strong>
-                    <span className="text-xs font-black text-indigo-650 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">Score: {versionB.score}/100</span>
-                  </div>
-                  <p className="text-[11px] text-slate-500 font-medium leading-relaxed line-clamp-4 font-mono whitespace-pre-wrap">{versionB.content || "Empty draft. Select style and compile letter."}</p>
-                </div>
-
-              </div>
-
-              {/* Score comparisons details */}
-              <div className="pt-6 border-t border-slate-100 space-y-4">
-                <h3 className="text-lg font-black text-slate-900 font-display">Recruiter Appeal Delta</h3>
-                
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="bg-slate-50 p-4 border border-slate-200 rounded-2xl">
-                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Readability diff</span>
-                    <strong className="text-sm font-black text-slate-800 block mt-1">
-                      {versionA.score > versionB.score ? "Version A has better clarity structures (+8%)" : "Version B has cleaner descriptions (+4%)"}
-                    </strong>
-                  </div>
-                  <div className="bg-slate-50 p-4 border border-slate-200 rounded-2xl">
-                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">ATS Difference</span>
-                    <strong className="text-sm font-black text-slate-800 block mt-1">
-                      {versionA.ats > versionB.ats ? `Version A matches keywords better (+${versionA.ats - versionB.ats}%)` : `Version B matches keywords better (+${versionB.ats - versionA.ats}%)`}
-                    </strong>
-                  </div>
-                  <div className="bg-slate-50 p-4 border border-slate-200 rounded-2xl">
-                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Best Choice Recommendation</span>
-                    <strong className="text-sm font-black text-blue-650 block mt-1">
-                      {versionA.score > versionB.score ? "Version A (Technical Style)" : "Version B (Modern Style)"}
-                    </strong>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 4: EXPORT CENTER */}
-          {activeSubTab === "export" && (
-            <div className="space-y-6 animate-fade-in">
-              <h2 className="text-xl font-black text-slate-900 font-display">Document Export Center</h2>
-              <p className="text-xs text-slate-500 font-medium">
-                Download your formatted cover letter in multiple professional layout formats.
-              </p>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4">
-                
-                {/* PDF */}
-                <div className="border border-slate-200 p-6 rounded-3xl bg-slate-50/20 flex flex-col justify-between h-44 hover:border-indigo-100 transition-colors">
-                  <div className="space-y-1">
-                    <strong className="text-xs font-black text-slate-800 block">Export as PDF</strong>
-                    <p className="text-[10px] text-slate-400 font-bold leading-normal">
-                      Compiles document using LaTeX grid structures ready to print.
+                  <div className="space-y-2 max-w-sm">
+                    <strong className="text-sm font-black text-slate-800 block">No versions to compare</strong>
+                    <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                      Generate your first cover letter to begin comparison.
                     </p>
                   </div>
-                  <button
-                    onClick={() => alert("Compiling PDF package... Your cover letter PDF has been successfully exported to your Desktop.")}
-                    className="w-full py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest text-center hover:bg-indigo-650 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <Download className="w-4 h-4" />
-                    <span>Download PDF</span>
-                  </button>
                 </div>
+              )}
 
-                {/* DOCX */}
-                <div className="border border-slate-200 p-6 rounded-3xl bg-slate-50/20 flex flex-col justify-between h-44 hover:border-indigo-100 transition-colors">
-                  <div className="space-y-1">
-                    <strong className="text-xs font-black text-slate-800 block">Export as Word Document</strong>
-                    <p className="text-[10px] text-slate-400 font-bold leading-normal">
-                      Compiles standard DOCX format compatible with Microsoft Word.
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => alert("Compiling DOCX package... Document successfully saved in local downloads.")}
-                    className="w-full py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest text-center hover:bg-indigo-650 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <Download className="w-4 h-4" />
-                    <span>Download DOCX</span>
-                  </button>
-                </div>
-
-                {/* Markdown / Text */}
-                <div className="border border-slate-200 p-6 rounded-3xl bg-slate-50/20 flex flex-col justify-between h-44 hover:border-indigo-100 transition-colors">
-                  <div className="space-y-1">
-                    <strong className="text-xs font-black text-slate-800 block">Export as Markdown / Text</strong>
-                    <p className="text-[10px] text-slate-400 font-bold leading-normal">
-                      Saves plain text documents optimized for quick web forms copies.
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleDownloadFile("md")}
-                      className="flex-1 py-3 bg-white border border-slate-250 text-slate-650 rounded-xl text-[9px] font-black uppercase tracking-widest text-center hover:border-slate-350 transition-all cursor-pointer"
+              {/* Scenarios 1 & 2: At least one version exists */}
+              {(hasA || hasB) && (
+                <div className="space-y-8">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-stretch">
+                    
+                    {/* Version A Card */}
+                    <div 
+                      onClick={() => hasA && handleSwitchVersion("A")} 
+                      className={cn(
+                        "border p-6 rounded-3xl transition-all space-y-4 flex flex-col justify-between",
+                        hasA 
+                          ? (activeVersion === "A" ? "border-indigo-400 bg-indigo-50/10 shadow-lg shadow-indigo-150/10 cursor-pointer" : "border-slate-200 bg-slate-50/20 cursor-pointer")
+                          : "border-slate-100 bg-slate-50/10 opacity-60"
+                      )}
                     >
-                      Markdown
-                    </button>
-                    <button
-                      onClick={() => handleDownloadFile("txt")}
-                      className="flex-1 py-3 bg-white border border-slate-250 text-slate-650 rounded-xl text-[9px] font-black uppercase tracking-widest text-center hover:border-slate-350 transition-all cursor-pointer"
-                    >
-                      Plain Text
-                    </button>
-                  </div>
-                </div>
+                      <div className="space-y-3">
+                        <div className="flex justify-between items-center">
+                          <strong className="text-sm font-black text-slate-800">Version A ({versionA.style} style)</strong>
+                          {hasA ? (
+                            <span className="text-xs font-black text-indigo-650 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">Score: {versionA.score}/100</span>
+                          ) : (
+                            <span className="text-xs font-black text-slate-400 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">Not generated yet</span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-500 font-medium leading-relaxed line-clamp-4 font-mono whitespace-pre-wrap">
+                          {hasA ? versionA.content : "Not generated yet"}
+                        </p>
+                      </div>
+                    </div>
 
-              </div>
+                    {/* Version B Card */}
+                    <div 
+                      onClick={() => hasB && handleSwitchVersion("B")} 
+                      className={cn(
+                        "border p-6 rounded-3xl transition-all space-y-4 flex flex-col justify-between",
+                        hasB 
+                          ? (activeVersion === "B" ? "border-indigo-400 bg-indigo-50/10 shadow-lg shadow-indigo-150/10 cursor-pointer" : "border-slate-200 bg-slate-50/20 cursor-pointer")
+                          : "border-slate-150 bg-slate-50/50 border-dashed"
+                      )}
+                    >
+                      <div className="space-y-3">
+                        <div className="flex justify-between items-center">
+                          <strong className="text-sm font-black text-slate-800">Version B ({versionB.style} style)</strong>
+                          {hasB ? (
+                            <span className="text-xs font-black text-indigo-650 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">Score: {versionB.score}/100</span>
+                          ) : (
+                            <span className="text-xs font-black text-slate-400 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">Not generated yet</span>
+                          )}
+                        </div>
+                        {hasB ? (
+                          <p className="text-[11px] text-slate-500 font-medium leading-relaxed line-clamp-4 font-mono whitespace-pre-wrap">
+                            {versionB.content}
+                          </p>
+                        ) : (
+                          <div className="space-y-2 py-2">
+                            <p className="text-[11px] text-slate-400 font-bold">
+                              Generate Version B to compare.
+                            </p>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleCreateAlternative();
+                              }}
+                              className="px-3 py-1.5 bg-indigo-50 border border-indigo-100 hover:bg-indigo-100 text-indigo-750 text-[9px] font-black uppercase tracking-widest rounded-lg transition-all cursor-pointer"
+                            >
+                              Create Alternative
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                  </div>
+
+                  {/* Scenario 2: Both versions exist - display comparison summaries and metrics */}
+                  {hasA && hasB ? (
+                    <div className="space-y-8 pt-6 border-t border-slate-100">
+                      
+                      {/* Comparison Metrics */}
+                      <div>
+                        <h3 className="text-base font-black text-slate-900 font-display mb-4">Comparison Metrics</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                          
+                          {/* ATS Difference */}
+                          <div className="bg-slate-50 p-5 border border-slate-200 rounded-2xl">
+                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">ATS Difference</span>
+                            <div className="mt-1.5 flex items-baseline gap-2">
+                              <strong className="text-lg font-black text-slate-800">
+                                {versionA.ats === versionB.ats ? "0" : `${versionA.ats > versionB.ats ? "+" : ""}${versionA.ats - versionB.ats}`}
+                              </strong>
+                              <span className="text-[10px] text-slate-500 font-bold">
+                                ({versionA.ats} vs {versionB.ats})
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Keyword Coverage */}
+                          <div className="bg-slate-50 p-5 border border-slate-200 rounded-2xl">
+                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Keyword Coverage</span>
+                            <div className="mt-1.5 space-y-1">
+                              <p className="text-xs font-bold text-slate-700">
+                                Version A: <strong className="text-slate-900 font-black">{getKeywordCoverageCount(versionA)} keywords</strong>
+                              </p>
+                              <p className="text-xs font-bold text-slate-700">
+                                Version B: <strong className="text-slate-900 font-black">{getKeywordCoverageCount(versionB)} keywords</strong>
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Recruiter Readability */}
+                          <div className="bg-slate-50 p-5 border border-slate-200 rounded-2xl">
+                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Recruiter Readability</span>
+                            <div className="mt-1.5 space-y-1">
+                              <p className="text-xs font-bold text-slate-700">
+                                Version A: <strong className="text-indigo-650 font-black">{getReadabilityRating(versionA.score)}</strong>
+                              </p>
+                              <p className="text-xs font-bold text-slate-700">
+                                Version B: <strong className="text-indigo-650 font-black">{getReadabilityRating(versionB.score)}</strong>
+                              </p>
+                            </div>
+                          </div>
+
+                        </div>
+                      </div>
+
+                      {/* Comparison Summary & Recommendation Engine */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4 border-t border-slate-100">
+                        
+                        {/* Strengths of A & B */}
+                        <div className="space-y-4">
+                          <h3 className="text-base font-black text-slate-900 font-display">Comparison Summary</h3>
+                          
+                          <div className="space-y-3">
+                            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-150">
+                              <strong className="text-xs font-black text-slate-800 block mb-1.5">Strengths of Version A ({versionA.style})</strong>
+                              <ul className="space-y-1 text-[11px] text-slate-650 font-bold list-disc pl-4">
+                                {getStrengths(versionA).map((str, idx) => (
+                                  <li key={idx}>{str}</li>
+                                ))}
+                              </ul>
+                            </div>
+
+                            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-150">
+                              <strong className="text-xs font-black text-slate-800 block mb-1.5">Strengths of Version B ({versionB.style})</strong>
+                              <ul className="space-y-1 text-[11px] text-slate-650 font-bold list-disc pl-4">
+                                {getStrengths(versionB).map((str, idx) => (
+                                  <li key={idx}>{str}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Recommendation Engine */}
+                        <div className="bg-indigo-50/40 border border-indigo-100 p-6 rounded-3xl flex flex-col justify-between">
+                          <div className="space-y-3">
+                            <strong className="text-[10px] font-black text-indigo-650 uppercase tracking-widest block">Recommendation Engine</strong>
+                            <h4 className="text-lg font-black text-slate-950 font-display">
+                              Recommended Version: <span className="text-indigo-600">Version {getRecommendation().version}</span>
+                            </h4>
+                            <p className="text-xs text-slate-700 font-bold leading-relaxed">
+                              {getRecommendation().reason}
+                            </p>
+                          </div>
+                          <div className="pt-4 mt-4 border-t border-indigo-100/60">
+                            <button
+                              onClick={() => {
+                                handleSwitchVersion(getRecommendation().version);
+                                setActiveSubTab("generator");
+                              }}
+                              className="px-4 py-2.5 bg-slate-900 hover:bg-slate-850 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer shadow-md inline-block"
+                            >
+                              Edit Recommended Version
+                            </button>
+                          </div>
+                        </div>
+
+                      </div>
+
+                    </div>
+                  ) : null}
+
+                </div>
+              )}
             </div>
           )}
 
