@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     if (!limitResult.success) {
       return NextResponse.json(
         { success: false, message: 'Rate limit exceeded. Please try again later.' },
-        { status: 429, headers: limitResult.headers }
+        { status: 200, headers: limitResult.headers }
       )
     }
 
@@ -31,7 +31,7 @@ export async function POST(request: Request) {
     if (!contentType.includes('multipart/form-data')) {
       return NextResponse.json(
         { success: false, message: 'Invalid request content type.' },
-        { status: 400, headers: limitResult.headers }
+        { status: 200, headers: limitResult.headers }
       )
     }
 
@@ -49,7 +49,7 @@ export async function POST(request: Request) {
           message: 'Invalid input fields.',
           errors: textValidation.error.flatten(),
         },
-        { status: 400, headers: limitResult.headers }
+        { status: 200, headers: limitResult.headers }
       )
     }
 
@@ -60,7 +60,7 @@ export async function POST(request: Request) {
       if (file.size > 5 * 1024 * 1024) {
         return NextResponse.json(
           { success: false, message: 'File size exceeds the maximum 5MB limit.' },
-          { status: 400, headers: limitResult.headers }
+          { status: 200, headers: limitResult.headers }
         )
       }
 
@@ -71,7 +71,7 @@ export async function POST(request: Request) {
       if (!fileValidation.valid) {
         return NextResponse.json(
           { success: false, message: fileValidation.error || 'Invalid file uploaded.' },
-          { status: 400, headers: limitResult.headers }
+          { status: 200, headers: limitResult.headers }
         )
       }
 
@@ -85,7 +85,7 @@ export async function POST(request: Request) {
       } catch (err) {
         return NextResponse.json(
           { success: false, message: 'Corrupt or unreadable resume file. Please upload a valid document.' },
-          { status: 400, headers: limitResult.headers }
+          { status: 200, headers: limitResult.headers }
         )
       }
     } else if (pastedText && pastedText.trim() !== '') {
@@ -93,14 +93,14 @@ export async function POST(request: Request) {
     } else {
       return NextResponse.json(
         { success: false, message: 'Please upload a resume file or paste your resume text.' },
-        { status: 400, headers: limitResult.headers }
+        { status: 200, headers: limitResult.headers }
       )
     }
 
     if (!resumeText || resumeText.trim() === '') {
       return NextResponse.json(
         { success: false, message: 'Could not extract text from the provided resume.' },
-        { status: 400, headers: limitResult.headers }
+        { status: 200, headers: limitResult.headers }
       )
     }
 
@@ -134,7 +134,7 @@ export async function POST(request: Request) {
           message: 'API Key is missing. Please configure GEMINI_API_KEY, GROQ_API_KEY, or OPENROUTER_API_KEY in your environment.',
           needsKey: true,
         },
-        { status: 401, headers: limitResult.headers }
+        { status: 200, headers: limitResult.headers }
       )
     }
 
@@ -439,7 +439,7 @@ TARGET ROLE:
       await logAnalyticsEvent('ats_analyzer', undefined, { response_time_ms: Date.now() - startTime, success: false, error: gatewayResponse.error })
       return NextResponse.json(
         { success: false, message: `AI Resume evaluation failed: ${gatewayResponse.error}` },
-        { status: 500, headers: limitResult.headers }
+        { status: 200, headers: limitResult.headers }
       )
     }
 
@@ -449,7 +449,7 @@ TARGET ROLE:
       await logAnalyticsEvent('ats_analyzer', undefined, { response_time_ms: Date.now() - startTime, success: false, error: 'Invalid response structure from Gemini API.' })
       return NextResponse.json(
         { success: false, message: 'Invalid response structure from Gemini API.' },
-        { status: 500, headers: limitResult.headers }
+        { status: 200, headers: limitResult.headers }
       )
     }
 
@@ -464,7 +464,7 @@ TARGET ROLE:
     await logAnalyticsEvent('ats_analyzer', undefined, { response_time_ms: Date.now() - startTime, success: false, error: err?.message || 'Temporary issue' })
     return NextResponse.json(
       { success: false, message: 'Temporary issue. Please try again.' },
-      { status: 500 }
+      { status: 200 }
     )
   }
 }

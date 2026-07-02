@@ -10,8 +10,8 @@ export async function POST(request: Request) {
 
     if (!targetRole) {
       return NextResponse.json(
-        { error: "targetRole is required." },
-        { status: 400 }
+        { success: false, error: "targetRole is required." },
+        { status: 200 }
       );
     }
 
@@ -22,10 +22,11 @@ export async function POST(request: Request) {
     if (!apiKey) {
       return NextResponse.json(
         {
+          success: false,
           error: "Gemini API Key is missing. Please configure it in your settings or environment variables.",
           needsKey: true,
         },
-        { status: 401 }
+        { status: 200 }
       );
     }
 
@@ -254,8 +255,8 @@ Do NOT include any surrounding markdown code blocks in the API response. Output 
 
     if (!gatewayResponse.success) {
       return NextResponse.json(
-        { error: `AI Roadmap generation failed: ${gatewayResponse.error}` },
-        { status: 500 }
+        { success: false, error: `AI Roadmap generation failed: ${gatewayResponse.error}` },
+        { status: 200 }
       )
     }
 
@@ -263,17 +264,17 @@ Do NOT include any surrounding markdown code blocks in the API response. Output 
 
     if (!textResponse) {
       return NextResponse.json(
-        { error: "Invalid response structure from Gemini API." },
-        { status: 500 }
+        { success: false, error: "Invalid response structure from Gemini API." },
+        { status: 200 }
       )
     }
 
     const result = JSON.parse(textResponse.trim());
-    return NextResponse.json({ data: result }, { status: 200 });
+    return NextResponse.json({ success: true, data: result }, { status: 200 });
 
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : "Failed to generate AI career roadmap.";
     console.error("AI Roadmap API error:", err);
-    return NextResponse.json({ error: errorMsg }, { status: 500 });
+    return NextResponse.json({ success: false, error: errorMsg }, { status: 200 });
   }
 }
