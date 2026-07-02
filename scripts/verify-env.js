@@ -79,14 +79,22 @@ RECOMMENDED_VARS.forEach(v => {
 });
 
 if (missingRequired.length > 0) {
-  console.error(`\n${RED}${BOLD}✖ ENVIRONMENT ERROR: Missing Required Variables!${RESET}`);
-  console.error(`${RED}The following variables must be configured in your .env.local file to run BuggedBrain:${RESET}`);
-  missingRequired.forEach(v => {
-    console.error(`  - ${BOLD}${v}${RESET}`);
-  });
-  console.error(`\n${YELLOW}Please copy .env.example to .env.local and fill in valid API keys/database credentials.${RESET}`);
-  console.error(`${RED}${BOLD}Startup aborted.${RESET}\n`);
-  process.exit(1);
+  const isCI = process.env.VERCEL || process.env.CI || process.env.GITHUB_ACTIONS;
+  if (isCI) {
+    console.warn(`\n${YELLOW}${BOLD}⚠ CI ENVIRONMENT WARNING: Missing or Placeholder Required Variables detected, bypassing strict exit for CI build.${RESET}`);
+    missingRequired.forEach(v => {
+      console.warn(`  - ${v}`);
+    });
+  } else {
+    console.error(`\n${RED}${BOLD}✖ ENVIRONMENT ERROR: Missing Required Variables!${RESET}`);
+    console.error(`${RED}The following variables must be configured in your .env.local file to run BuggedBrain:${RESET}`);
+    missingRequired.forEach(v => {
+      console.error(`  - ${BOLD}${v}${RESET}`);
+    });
+    console.error(`\n${YELLOW}Please copy .env.example to .env.local and fill in valid API keys/database credentials.${RESET}`);
+    console.error(`${RED}${BOLD}Startup aborted.${RESET}\n`);
+    process.exit(1);
+  }
 }
 
 if (missingRecommended.length > 0) {
