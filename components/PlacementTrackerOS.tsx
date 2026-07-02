@@ -29,7 +29,12 @@ import {
   Activity,
   ThumbsUp,
   Edit2,
-  ExternalLink
+  ExternalLink,
+  Mail,
+  Globe,
+  Video,
+  MapPin,
+  Phone
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -51,6 +56,110 @@ import {
   InterviewRoundRecord
 } from "@/types/crm";
 
+export function generateInterviewPrepMaterial(company: string, role: string, roundType: string) {
+  const checklist = [
+    "Review your resume projects and be ready to explain architectural choices",
+    "Research the company values, culture, and recent news",
+    "Prepare 3-5 thoughtful questions to ask the interviewer",
+    "Test your meeting setup (camera, microphone, internet speed, quiet space)",
+    "Prepare clean attire and check meeting software (Google Meet / Zoom)"
+  ];
+
+  let companyTasks = [
+    `Study ${company}'s core business model and products`,
+    `Review past interview experiences at ${company} on Glassdoor/GeeksforGeeks`,
+    `Check standard interview structure for ${company}`
+  ];
+
+  if (company.toLowerCase().includes("google")) {
+    companyTasks = [
+      "Review Google's 3-step coding review rubric (Googley/Leadership, DSA, System Design)",
+      "Focus heavily on clean coding, time/space complexity optimization",
+      "Read about Google's culture of 'Googliness' and leadership principles",
+      "Solve Google-tagged LeetCode mediums and hard questions"
+    ];
+  } else if (company.toLowerCase().includes("amazon")) {
+    companyTasks = [
+      "Study Amazon's 16 Leadership Principles (LPs) and prepare STAR stories for each",
+      "Amazon LP answers count for 50%+ of the total round score. Practice telling stories concisely",
+      "Be prepared for deep system scalability questions (for Software roles)",
+      "Practice writeups for coding logic questions with test cases"
+    ];
+  } else if (company.toLowerCase().includes("tcs") || company.toLowerCase().includes("tata consultancy")) {
+    companyTasks = [
+      "Revise basic concepts of Java, OOPs, DBMS, and SQL queries",
+      "Prepare to talk about final year college project details",
+      "Review basic HR questions (Why TCS, relocation preference, night shifts)",
+      "Practice basic aptitude coding questions (TCS NQT style)"
+    ];
+  } else if (company.toLowerCase().includes("deloitte")) {
+    companyTasks = [
+      "Revise Case Interview framework and business technology problems",
+      "Prepare explanation of technical stacks used in resume projects",
+      "Deloitte values consulting presence. Practice professional speaking and clarity",
+      "Review SQL joins and basic databases concept"
+    ];
+  }
+
+  let roleTasks = [
+    `Review core technical stacks related to ${role}`,
+    "Prepare project deep-dives detailing challenges faced and metrics achieved",
+    "Review basic data structures & algorithms (DSA) concepts"
+  ];
+
+  const lowerRole = role.toLowerCase();
+  const lowerRound = roundType.toLowerCase();
+
+  if (lowerRole.includes("software") || lowerRole.includes("developer") || lowerRole.includes("backend") || lowerRole.includes("frontend") || lowerRole.includes("sde")) {
+    roleTasks = [
+      "Revise key Data Structures (Arrays, Strings, Trees, Graphs, HashMaps)",
+      "Practice coding syntax in your primary language on a clean canvas",
+      "Review core CS fundamentals (OS, Computer Networks, DBMS)",
+      "Solve 2-3 medium complexity questions on recursion/dynamic programming"
+    ];
+    if (lowerRole.includes("frontend") || lowerRole.includes("web")) {
+      roleTasks.push(
+        "Brush up on JS concepts (closures, event loop, promises, scoping)",
+        "Review React/Next.js lifecycle, state management, and DOM optimization",
+        "Practice building UI layouts using CSS Flexbox/Grid under 30 mins"
+      );
+    } else if (lowerRole.includes("backend")) {
+      roleTasks.push(
+        "Review REST API designs, status codes, and server performance optimizations",
+        "Review database design patterns, normalization, indexes, and caching (Redis)",
+        "Review concurrency, multithreading, and message queues (Kafka)"
+      );
+    }
+  } else if (lowerRole.includes("analyst") || lowerRole.includes("data")) {
+    roleTasks = [
+      "Review advanced SQL queries (Window functions, CTEs, Joins, Group By)",
+      "Revise probability, statistics, and hypothesis testing concepts",
+      "Be ready to explain ML models (regression, classification) if on resume",
+      "Practice mock business scenarios to extract metric gains from data tables"
+    ];
+  }
+
+  if (lowerRound.includes("managerial") || lowerRound.includes("system design")) {
+    roleTasks.push(
+      "Review System Design core principles (scaling, load balancers, caching, databases)",
+      "Practice whiteboarding clean component layout structure designs",
+      "Prepare answers around engineering leadership, conflict resolution, and timelines"
+    );
+  } else if (lowerRound.includes("hr") || lowerRound.includes("behavioral")) {
+    roleTasks.push(
+      "Prepare answers for: Tell me about yourself, Why did you apply, Where do you see yourself in 5 years",
+      "Be ready to discuss salary expectations and relocation parameters",
+      "Prepare stories demonstrating team collaborations and handling mistakes"
+    );
+  }
+
+  return {
+    checklist,
+    companyTasks,
+    roleTasks
+  };
+}
+
 // Kanban columns definitions
 const KANBAN_STAGES: { id: string; label: string; statuses: PlacementApplication["status"][]; color: string; border: string; bg: string; dot: string }[] = [
   { id: "Saved", label: "Saved", statuses: ["Saved"], color: "text-slate-500", border: "border-slate-200", bg: "bg-slate-50/20", dot: "bg-slate-400" },
@@ -66,10 +175,31 @@ const KANBAN_STAGES: { id: string; label: string; statuses: PlacementApplication
 const PREDEFINED_COMPANIES = ["Google", "IBM", "Deloitte", "TCS", "Accenture", "Microsoft", "Amazon", "Wipro", "Infosys", "Custom..."];
 
 export default function PlacementTrackerOS() {
-  const [activeTab, setActiveTab] = useState<"dashboard" | "kanban" | "calendar" | "oas" | "interviews" | "offers" | "copilot">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "kanban" | "calendar" | "oas" | "interviews" | "offers" | "copilot" | "gmail" | "extension">("dashboard");
   const [apps, setApps] = useState<PlacementApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
+
+  // Accordion state for checklist expansion in Interviews tab
+  const [expandedChecklistSchId, setExpandedChecklistSchId] = useState<string | null>(null);
+
+  // Gmail Ingestion States
+  const [gmailConnected, setGmailConnected] = useState(false);
+  const [gmailEmail, setGmailEmail] = useState<string | null>(null);
+  const [gmailLastSync, setGmailLastSync] = useState<string | null>(null);
+  const [gmailSyncLogs, setGmailSyncLogs] = useState<any[]>([]);
+  const [gmailSyncLoading, setGmailSyncLoading] = useState(false);
+  const [gmailActionLoading, setGmailActionLoading] = useState(false);
+  const [approvingLogId, setApprovingLogId] = useState<string | null>(null);
+
+  // Outlook Calendar Sync States
+  const [outlookConnected, setOutlookConnected] = useState(false);
+  const [outlookEmail, setOutlookEmail] = useState<string | null>(null);
+  const [outlookLastSync, setOutlookLastSync] = useState<string | null>(null);
+  const [outlookActionLoading, setOutlookActionLoading] = useState(false);
+  const [googleCalendarSyncEnabled, setGoogleCalendarSyncEnabled] = useState(true);
+  const [outlookCalendarSyncEnabled, setOutlookCalendarSyncEnabled] = useState(true);
+
   const supabase = createClient();
   const router = useRouter();
 
@@ -117,6 +247,233 @@ export default function PlacementTrackerOS() {
 
     return () => subscription.unsubscribe();
   }, [supabase]);
+
+  const fetchGmailStatus = async () => {
+    if (!userId) return;
+    try {
+      const res = await fetch("/api/placement/gmail/sync");
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setGmailConnected(data.connected);
+        setGmailEmail(data.gmailEmail);
+        setGmailLastSync(data.lastSync);
+        setGmailSyncLogs(data.logs || []);
+        setGoogleCalendarSyncEnabled(data.syncEnabled);
+      }
+    } catch (err) {
+      console.error("Failed to fetch gmail status:", err);
+    }
+  };
+
+  const fetchOutlookStatus = async () => {
+    if (!userId) return;
+    try {
+      const res = await fetch("/api/placement/outlook/sync");
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setOutlookConnected(data.connected);
+        setOutlookEmail(data.outlookEmail);
+        setOutlookLastSync(data.lastSync);
+        setOutlookCalendarSyncEnabled(data.syncEnabled);
+      }
+    } catch (err) {
+      console.error("Failed to fetch outlook status:", err);
+    }
+  };
+
+  useEffect(() => {
+    if (userId) {
+      fetchGmailStatus();
+      fetchOutlookStatus();
+    }
+  }, [userId, activeTab]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("gmail_sync") === "success") {
+        alert("Gmail Integration successfully connected!");
+        window.history.replaceState({}, document.title, window.location.pathname);
+        if (userId) {
+          fetchGmailStatus();
+        }
+      } else if (params.get("gmail_sync_error")) {
+        const error = params.get("gmail_sync_error");
+        alert(`Failed to connect Gmail integration: ${error}`);
+        window.history.replaceState({}, document.title, window.location.pathname);
+      } else if (params.get("outlook_sync") === "success") {
+        alert("Outlook Calendar Integration successfully connected!");
+        window.history.replaceState({}, document.title, window.location.pathname);
+        if (userId) {
+          fetchOutlookStatus();
+        }
+      } else if (params.get("outlook_sync_error")) {
+        const error = params.get("outlook_sync_error");
+        alert(`Failed to connect Outlook integration: ${error}`);
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    }
+  }, [userId]);
+
+  const handleConnectGmail = async () => {
+    setGmailActionLoading(true);
+    try {
+      const res = await fetch("/api/auth/google/url");
+      const data = await res.json();
+      if (res.ok && data.success && data.url) {
+        window.location.href = data.url;
+      } else {
+        alert(data.message || "Failed to generate Google auth URL.");
+      }
+    } catch {
+      alert("Failed to initialize Google OAuth connection.");
+    } finally {
+      setGmailActionLoading(false);
+    }
+  };
+
+  const handleTriggerSync = async () => {
+    setGmailSyncLoading(true);
+    try {
+      const res = await fetch("/api/placement/gmail/sync", { method: "POST" });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        alert(`Sync complete! Ingested ${data.countCreated} new applications and updated ${data.countUpdated} existing pipelines.`);
+        if (userId) {
+          await loadTrackerData(userId);
+          await fetchGmailStatus();
+        }
+      } else {
+        alert(data.message || "Gmail synchronization failed.");
+      }
+    } catch {
+      alert("An unexpected error occurred during sync.");
+    } finally {
+      setGmailSyncLoading(false);
+    }
+  };
+
+  const handleDisconnectGmail = async () => {
+    if (!window.confirm("Are you sure you want to disconnect Gmail? Auto sync updates will cease.")) return;
+    setGmailActionLoading(true);
+    try {
+      const res = await fetch("/api/placement/gmail/disconnect", { method: "POST" });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        alert("Gmail integration disconnected.");
+        setGmailConnected(false);
+        setGmailEmail(null);
+        setGmailLastSync(null);
+        setGmailSyncLogs([]);
+      } else {
+        alert(data.message || "Disconnect action failed.");
+      }
+    } catch {
+      alert("An unexpected error occurred.");
+    } finally {
+      setGmailActionLoading(false);
+    }
+  };
+
+  const handleApproveSuspiciousLog = async (logId: string) => {
+    setApprovingLogId(logId);
+    try {
+      const res = await fetch("/api/placement/trust/approve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ logId })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        alert("Email approved and CRM application updated successfully!");
+        if (userId) {
+          await loadTrackerData(userId);
+          await fetchGmailStatus();
+        }
+      } else {
+        alert(data.message || "Approval action failed.");
+      }
+    } catch (err) {
+      alert("An unexpected error occurred during approval.");
+    } finally {
+      setApprovingLogId(null);
+    }
+  };
+
+  const handleConnectOutlook = async () => {
+    setOutlookActionLoading(true);
+    try {
+      const res = await fetch("/api/auth/outlook/url");
+      const data = await res.json();
+      if (res.ok && data.success && data.url) {
+        window.location.href = data.url;
+      } else {
+        alert(data.message || "Failed to generate Outlook auth URL.");
+      }
+    } catch {
+      alert("Failed to initialize Outlook OAuth connection.");
+    } finally {
+      setOutlookActionLoading(false);
+    }
+  };
+
+  const handleDisconnectOutlook = async () => {
+    if (!window.confirm("Are you sure you want to disconnect Outlook Calendar? Sync will cease.")) return;
+    setOutlookActionLoading(true);
+    try {
+      const res = await fetch("/api/placement/outlook/disconnect", { method: "POST" });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        alert("Outlook integration disconnected.");
+        setOutlookConnected(false);
+        setOutlookEmail(null);
+        setOutlookLastSync(null);
+        setOutlookCalendarSyncEnabled(false);
+      } else {
+        alert(data.message || "Disconnect action failed.");
+      }
+    } catch {
+      alert("An unexpected error occurred.");
+    } finally {
+      setOutlookActionLoading(false);
+    }
+  };
+
+  const handleToggleGoogleCalendar = async (checked: boolean) => {
+    try {
+      const res = await fetch("/api/placement/gmail/toggle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: checked })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setGoogleCalendarSyncEnabled(checked);
+      } else {
+        alert(data.message || "Failed to toggle Google Calendar sync.");
+      }
+    } catch {
+      alert("An error occurred toggling Google Calendar sync.");
+    }
+  };
+
+  const handleToggleOutlookCalendar = async (checked: boolean) => {
+    try {
+      const res = await fetch("/api/placement/outlook/toggle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: checked })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setOutlookCalendarSyncEnabled(checked);
+      } else {
+        alert(data.message || "Failed to toggle Outlook Calendar sync.");
+      }
+    } catch {
+      alert("An error occurred toggling Outlook Calendar sync.");
+    }
+  };
 
   // Visual metrics calculations
   const totalAppsCount = apps.length;
@@ -259,6 +616,7 @@ export default function PlacementTrackerOS() {
       setRecLinkedIn(app.recruiter?.linkedIn || "");
       setSubOas(app.oas || []);
       setSubInterviews(app.interviews || []);
+      setSubSchedules(app.schedules || []);
 
       if (app.offer) {
         setOfferCtc(app.offer.ctc || "");
@@ -291,6 +649,7 @@ export default function PlacementTrackerOS() {
       setRecLinkedIn("");
       setSubOas([]);
       setSubInterviews([]);
+      setSubSchedules([]);
       setOfferCtc("");
       setOfferBase("");
       setOfferBonus("");
@@ -338,7 +697,7 @@ export default function PlacementTrackerOS() {
         phone: recPhone || undefined,
         linkedIn: recLinkedIn || undefined
       } : undefined,
-      schedules: editingApp?.schedules || [],
+      schedules: subSchedules,
       oas: subOas,
       interviews: subInterviews,
       offer: detailedOffer,
@@ -390,6 +749,82 @@ export default function PlacementTrackerOS() {
     }
   };
 
+  // Add individual Schedule to the form scope
+  const [subSchedules, setSubSchedules] = useState<InterviewSchedule[]>([]);
+  const [newSchType, setNewSchType] = useState<InterviewSchedule["type"]>("Technical Interview");
+  const [newSchDate, setNewSchDate] = useState("");
+  const [newSchTime, setNewSchTime] = useState("");
+  const [newSchPlatform, setNewSchPlatform] = useState("Google Meet");
+  const [newSchMode, setNewSchMode] = useState("Online"); // Online, In-Person, Phone Call
+  const [newSchMeetingLink, setNewSchMeetingLink] = useState("");
+  const [newSchRecName, setNewSchRecName] = useState("");
+  const [newSchRecEmail, setNewSchRecEmail] = useState("");
+  const [newSchRecPhone, setNewSchRecPhone] = useState("");
+  const [newSchNotes, setNewSchNotes] = useState("");
+
+  const handleAddScheduleToForm = () => {
+    if (!newSchDate) return;
+    const finalCompanyName = companyName === "Custom..." ? customCompany.trim() : companyName;
+    const prep = generateInterviewPrepMaterial(finalCompanyName || "Custom Company", role || "Job Role", newSchType);
+    const newSch: InterviewSchedule = {
+      id: `sch-${Date.now()}`,
+      type: newSchType,
+      date: newSchDate,
+      time: newSchTime || "12:00 PM",
+      platform: newSchPlatform,
+      mode: newSchMode,
+      meetingLink: newSchMeetingLink || undefined,
+      recruiterName: newSchRecName || undefined,
+      recruiterEmail: newSchRecEmail || undefined,
+      recruiterPhone: newSchRecPhone || undefined,
+      notes: newSchNotes || undefined,
+      checklist: prep.checklist,
+      companyTasks: prep.companyTasks,
+      roleTasks: prep.roleTasks
+    };
+    setSubSchedules([...subSchedules, newSch]);
+    setNewSchDate("");
+    setNewSchTime("");
+    setNewSchPlatform("Google Meet");
+    setNewSchMode("Online");
+    setNewSchMeetingLink("");
+    setNewSchRecName("");
+    setNewSchRecEmail("");
+    setNewSchRecPhone("");
+    setNewSchNotes("");
+  };
+
+  const handleToggleChecklistTask = async (appId: string, scheduleId: string, taskType: "checklist" | "companyTasks" | "roleTasks", taskIndex: number) => {
+    if (!userId) return;
+    const app = apps.find(a => a.id === appId);
+    if (!app) return;
+
+    const updatedSchedules = app.schedules.map(sch => {
+      if (sch.id !== scheduleId) return sch;
+      const taskList = [...(sch[taskType] || [])];
+      const task = taskList[taskIndex];
+      if (task.startsWith("[x] ")) {
+        taskList[taskIndex] = task.substring(4);
+      } else {
+        taskList[taskIndex] = `[x] ${task}`;
+      }
+      return {
+        ...sch,
+        [taskType]: taskList
+      };
+    });
+
+    // Optimistic update
+    setApps(prev => prev.map(a => a.id === appId ? { ...a, schedules: updatedSchedules } : a));
+
+    try {
+      await updateApplication(appId, { schedules: updatedSchedules }, userId);
+    } catch (err) {
+      console.error("Failed to update checklist task:", err);
+      loadTrackerData(userId);
+    }
+  };
+
   // Add individual OA to the form scope
   const [newOaDate, setNewOaDate] = useState("");
   const [newOaDiff, setNewOaDiff] = useState<OARecord["difficulty"]>("Medium");
@@ -397,6 +832,8 @@ export default function PlacementTrackerOS() {
   const [newOaResult, setNewOaResult] = useState<OARecord["result"]>("Pending");
   const [newOaTopics, setNewOaTopics] = useState("");
   const [newOaNotes, setNewOaNotes] = useState("");
+  const [newOaPlatform, setNewOaPlatform] = useState("HackerRank");
+  const [newOaDuration, setNewOaDuration] = useState(90);
 
   const handleAddOaToForm = () => {
     if (!newOaDate) return;
@@ -407,7 +844,11 @@ export default function PlacementTrackerOS() {
       topicsAsked: newOaTopics.split(",").map(t => t.trim()).filter(Boolean),
       score: Number(newOaScore),
       result: newOaResult,
-      prepNotes: newOaNotes
+      prepNotes: newOaNotes,
+      platform: newOaPlatform,
+      duration: Number(newOaDuration) || 90,
+      deadline: newOaDate,
+      status: newOaResult === "Pending" ? "Pending" : newOaResult === "Failed" ? "Expired" : "Completed"
     };
     setSubOas([...subOas, newOa]);
     setNewOaDate("");
@@ -633,6 +1074,16 @@ We recommend accepting **${topOffer.company}** due to higher compensation packag
     return events;
   }, [apps]);
 
+  const allSchedules = useMemo(() => {
+    const list: Array<{ app: PlacementApplication; schedule: InterviewSchedule }> = [];
+    apps.forEach(app => {
+      (app.schedules || []).forEach(schedule => {
+        list.push({ app, schedule });
+      });
+    });
+    return list.sort((a, b) => new Date(a.schedule.date).getTime() - new Date(b.schedule.date).getTime());
+  }, [apps]);
+
   const calendarDays = useMemo(() => {
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
@@ -758,7 +1209,9 @@ We recommend accepting **${topOffer.company}** due to higher compensation packag
           { id: "oas", label: `OA Tracker (${totalOAsCount})`, icon: <Activity className="w-4 h-4" /> },
           { id: "interviews", label: `Interview Tracker (${totalInterviewsCount})`, icon: <FileText className="w-4 h-4" /> },
           { id: "offers", label: "Offer Comparisons", icon: <DollarSign className="w-4 h-4" /> },
-          { id: "copilot", label: "AI Intelligence", icon: <Bot className="w-4 h-4" /> }
+          { id: "copilot", label: "AI Intelligence", icon: <Bot className="w-4 h-4" /> },
+          { id: "gmail", label: "Sync & Integrations", icon: <Mail className="w-4 h-4" /> },
+          { id: "extension", label: "Browser Extension", icon: <Globe className="w-4 h-4" /> }
         ].map(tab => (
           <button
             key={tab.id}
@@ -1241,66 +1694,101 @@ We recommend accepting **${topOffer.company}** due to higher compensation packag
                   <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 select-none">
                     <tr>
                       <th className="px-6 py-4">Company</th>
-                      <th className="px-6 py-4">OA Date</th>
-                      <th className="px-6 py-4">Difficulty</th>
-                      <th className="px-6 py-4">Topics Asked</th>
-                      <th className="px-6 py-4">Score</th>
+                      <th className="px-6 py-4">Platform</th>
+                      <th className="px-6 py-4">Deadline</th>
+                      <th className="px-6 py-4">Duration</th>
+                      <th className="px-6 py-4">Urgency</th>
                       <th className="px-6 py-4">Result</th>
                       <th className="px-6 py-4 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-xs font-bold text-slate-700">
-                    {apps.flatMap(app => (app.oas || []).map(oa => (
-                      <tr key={oa.id} className="hover:bg-slate-50/50">
-                        <td className="px-6 py-4">
-                          <strong className="text-slate-800 block text-xs">{app.companyName}</strong>
-                          <span className="text-[9px] text-slate-400 block mt-0.5">{app.role}</span>
-                        </td>
-                        <td className="px-6 py-4 font-mono">{oa.oaDate}</td>
-                        <td className="px-6 py-4">
-                          <span className={cn(
-                            "px-2 py-0.5 text-[9px] font-black uppercase rounded border",
-                            oa.difficulty === "Hard"
-                              ? "bg-rose-50 border-rose-100 text-rose-600"
-                              : oa.difficulty === "Medium"
-                              ? "bg-amber-50 border-amber-100 text-amber-600"
-                              : "bg-emerald-50 border-emerald-100 text-emerald-600"
-                          )}>
-                            {oa.difficulty}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex flex-wrap gap-1 max-w-xs">
-                            {oa.topicsAsked.map((topic, i) => (
-                              <span key={i} className="px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded text-[9px]">
-                                {topic}
-                              </span>
-                            ))}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 font-mono text-slate-800 text-xs">{oa.score}%</td>
-                        <td className="px-6 py-4">
-                          <span className={cn(
-                            "px-2 py-0.5 text-[9px] font-black uppercase rounded border",
-                            oa.result === "Cleared"
-                              ? "bg-emerald-50 border-emerald-100 text-emerald-600"
-                              : oa.result === "Failed"
-                              ? "bg-rose-50 border-rose-100 text-rose-600"
-                              : "bg-yellow-50 border-yellow-100 text-yellow-600"
-                          )}>
-                            {oa.result}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-right flex justify-end gap-2">
-                          <button
-                            onClick={() => openAppForm(app)}
-                            className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer text-[9px] uppercase tracking-wider"
-                          >
-                            Edit App
-                          </button>
-                        </td>
-                      </tr>
-                    )))}
+                    {apps.flatMap(app => (app.oas || []).map(oa => {
+                      const getUrgencyBadge = () => {
+                        if (oa.result === "Cleared" || oa.result === "Failed" || oa.result === "Expired") {
+                          return (
+                            <span className="px-2 py-0.5 text-[9px] font-black uppercase rounded border bg-slate-50 border-slate-200 text-slate-400">
+                              Inactive
+                            </span>
+                          );
+                        }
+                        const targetDate = oa.deadline || oa.oaDate;
+                        if (!targetDate) return <span className="text-slate-400">-</span>;
+
+                        const deadlineDate = new Date(targetDate);
+                        if (isNaN(deadlineDate.getTime())) {
+                          return <span className="text-slate-400">-</span>;
+                        }
+                        
+                        // Treat deadline date as end-of-day if no time specified
+                        const deadlineTime = targetDate.includes("T") ? deadlineDate.getTime() : new Date(targetDate + "T23:59:59").getTime();
+                        const diffMs = deadlineTime - Date.now();
+                        const diffHours = diffMs / (1000 * 60 * 60);
+
+                        if (diffHours < 0) {
+                          return (
+                            <span className="px-2 py-0.5 text-[9px] font-black uppercase rounded border bg-slate-100 border-slate-200 text-slate-400">
+                              Expired
+                            </span>
+                          );
+                        } else if (diffHours < 24) {
+                          return (
+                            <span className="px-2 py-0.5 text-[9px] font-black uppercase rounded border bg-rose-50 border-rose-100 text-rose-600 animate-pulse">
+                              Red (&lt;24h)
+                            </span>
+                          );
+                        } else if (diffHours < 72) {
+                          return (
+                            <span className="px-2 py-0.5 text-[9px] font-black uppercase rounded border bg-amber-50 border-amber-100 text-amber-600">
+                              Orange (&lt;72h)
+                            </span>
+                          );
+                        } else {
+                          return (
+                            <span className="px-2 py-0.5 text-[9px] font-black uppercase rounded border bg-emerald-50 border-emerald-100 text-emerald-600">
+                              Green (&gt;72h)
+                            </span>
+                          );
+                        }
+                      };
+
+                      return (
+                        <tr key={oa.id} className="hover:bg-slate-50/50">
+                          <td className="px-6 py-4">
+                            <strong className="text-slate-800 block text-xs">{app.companyName}</strong>
+                            <span className="text-[9px] text-slate-400 block mt-0.5">{app.role}</span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="px-2 py-1 bg-slate-50 border border-slate-200 text-slate-700 rounded-lg text-[10px] font-black uppercase tracking-wider">
+                              {oa.platform || "HackerRank"}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 font-mono text-slate-650">{oa.deadline || oa.oaDate}</td>
+                          <td className="px-6 py-4 font-mono text-slate-600">{oa.duration || 90} mins</td>
+                          <td className="px-6 py-4">{getUrgencyBadge()}</td>
+                          <td className="px-6 py-4">
+                            <span className={cn(
+                              "px-2 py-0.5 text-[9px] font-black uppercase rounded border",
+                              oa.result === "Cleared"
+                                ? "bg-emerald-50 border-emerald-100 text-emerald-600"
+                                : oa.result === "Failed" || oa.result === "Expired"
+                                ? "bg-rose-50 border-rose-100 text-rose-600"
+                                : "bg-yellow-50 border-yellow-100 text-yellow-600"
+                            )}>
+                              {oa.result}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-right flex justify-end gap-2">
+                            <button
+                              onClick={() => openAppForm(app)}
+                              className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer text-[9px] uppercase tracking-wider"
+                            >
+                              Edit App
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    }))}
                     {totalOAsCount === 0 && (
                       <tr>
                         <td colSpan={7} className="px-6 py-12 text-center text-slate-400 font-bold">
@@ -1322,8 +1810,223 @@ We recommend accepting **${topOffer.company}** due to higher compensation packag
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="space-y-6 text-left"
+            className="space-y-10 text-left"
           >
+            {/* Section A: Upcoming Scheduled Interviews (Tracker) */}
+            <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200/60 shadow-sm space-y-6">
+              <div className="space-y-1">
+                <span className="text-[10px] font-black text-indigo-650 uppercase tracking-widest block">Event Tracker</span>
+                <h3 className="text-xl font-black text-slate-900 font-display">Upcoming Scheduled Interviews</h3>
+                <p className="text-slate-500 text-xs font-medium">Real-time scheduling synced from Gmail, Google Calendar, and manual logs.</p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-6">
+                {allSchedules.map(({ app, schedule }) => {
+                  const standardTasks = schedule.checklist || [];
+                  const companyTasksList = schedule.companyTasks || [];
+                  const roleTasksList = schedule.roleTasks || [];
+                  const totalTasks = standardTasks.length + companyTasksList.length + roleTasksList.length;
+                  const completedTasks = [...standardTasks, ...companyTasksList, ...roleTasksList].filter(t => t.startsWith("[x] ")).length;
+                  const percent = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+                  const isExpanded = expandedChecklistSchId === schedule.id;
+
+                  return (
+                    <div key={schedule.id} className="p-6 border border-slate-200 rounded-[2rem] bg-slate-50/20 hover:border-indigo-250 transition-colors space-y-5">
+                      {/* Top Info Header */}
+                      <div className="flex flex-col md:flex-row justify-between items-start gap-4">
+                        <div className="space-y-1.5 flex-grow">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="text-base font-black text-slate-800 leading-tight">{app.companyName} &bull; {schedule.type}</h4>
+                            <span className="px-2 py-0.5 bg-indigo-50 border border-indigo-150 text-indigo-600 text-[9px] font-black uppercase rounded">
+                              {schedule.mode}
+                            </span>
+                            <span className="px-2 py-0.5 bg-slate-100 border border-slate-200 text-slate-600 text-[9px] font-black uppercase rounded">
+                              {schedule.platform}
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-slate-400 font-bold block">Target Role: {app.role} &bull; {app.location}</span>
+                        </div>
+
+                        {/* Date Time Badge */}
+                        <div className="p-3 bg-slate-900 text-white rounded-2xl flex flex-col items-center justify-center shrink-0 min-w-[140px]">
+                          <span className="text-[9px] font-black uppercase tracking-widest text-teal-300 block mb-0.5">Date & Time</span>
+                          <strong className="text-xs font-black tracking-tight block">{schedule.date}</strong>
+                          <span className="text-[10px] font-bold text-slate-350 block mt-0.5">{schedule.time}</span>
+                        </div>
+                      </div>
+
+                      {/* Middle Platform/Venue & Recruiter details */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-t border-slate-100 pt-4 text-xs font-bold text-slate-650">
+                        <div className="space-y-1.5">
+                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Venue / Meeting URL</span>
+                          {schedule.meetingLink ? (
+                            <a
+                              href={schedule.meetingLink}
+                              target="_blank"
+                              className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-600 border border-blue-150 hover:bg-blue-100 rounded-xl transition-all cursor-pointer"
+                            >
+                              <Video className="w-3.5 h-3.5" />
+                              <span>Join Meeting</span>
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </a>
+                          ) : (
+                            <span className="text-slate-500 inline-flex items-center gap-1">
+                              <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                              {schedule.platform || "N/A"}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Recruiter Contact</span>
+                          {schedule.recruiterName || schedule.recruiterEmail ? (
+                            <div className="space-y-1">
+                              {schedule.recruiterName && <span className="text-slate-800 block">👤 {schedule.recruiterName}</span>}
+                              {schedule.recruiterEmail && (
+                                <a href={`mailto:${schedule.recruiterEmail}`} className="text-indigo-650 hover:underline block font-mono text-[10px]">
+                                  ✉️ {schedule.recruiterEmail}
+                                </a>
+                              )}
+                              {schedule.recruiterPhone && <span className="text-slate-500 block font-mono text-[10px]">📞 {schedule.recruiterPhone}</span>}
+                            </div>
+                          ) : (
+                            <span className="text-slate-400">No recruiter details logged</span>
+                          )}
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Schedules Notes</span>
+                          <p className="text-[11px] font-medium text-slate-550 leading-relaxed">
+                            {schedule.notes || "No special instructions or prep syllabus guidelines logged."}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Prep Readiness Progress & Checklist drawer toggler */}
+                      <div className="border-t border-slate-100 pt-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                        <div className="flex-grow w-full sm:max-w-md space-y-1.5">
+                          <div className="flex justify-between text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                            <span>Preparation Readiness checklist</span>
+                            <span className="text-indigo-650">{percent}% Complete ({completedTasks}/{totalTasks} tasks)</span>
+                          </div>
+                          <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden border border-slate-200">
+                            <div className="bg-indigo-600 h-full rounded-full transition-all duration-300" style={{ width: `${percent}%` }} />
+                          </div>
+                        </div>
+
+                        <div className="flex gap-2 w-full sm:w-auto shrink-0 justify-end">
+                          <button
+                            onClick={() => openAppForm(app)}
+                            className="px-3.5 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 font-black text-[10px] uppercase tracking-wider rounded-xl transition-all cursor-pointer"
+                          >
+                            Reschedule / Edit
+                          </button>
+                          <button
+                            onClick={() => setExpandedChecklistSchId(isExpanded ? null : schedule.id)}
+                            className="px-4 py-2 bg-slate-900 hover:bg-indigo-650 text-white font-black text-[10px] uppercase tracking-wider rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
+                          >
+                            <Sparkles className="w-3.5 h-3.5 text-teal-300" />
+                            <span>{isExpanded ? "Hide Prep Plan" : "Prepare Plan Checklist"}</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Expanded preparation checklist workspace drawer */}
+                      {isExpanded && (
+                        <div className="mt-4 p-5 bg-slate-50 border border-slate-205 rounded-2xl space-y-5 animate-fade-in">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            
+                            {/* Column 1: Standard Checklist */}
+                            <div className="space-y-3">
+                              <span className="text-[10px] font-black text-slate-450 uppercase tracking-widest block border-b border-slate-200 pb-1">1. Standard Checks</span>
+                              <div className="space-y-2">
+                                {standardTasks.map((task, tIdx) => {
+                                  const isDone = task.startsWith("[x] ");
+                                  const text = isDone ? task.substring(4) : task;
+                                  return (
+                                    <label key={tIdx} className="flex items-start gap-2.5 cursor-pointer select-none">
+                                      <input
+                                        type="checkbox"
+                                        checked={isDone}
+                                        onChange={() => handleToggleChecklistTask(app.id, schedule.id, "checklist", tIdx)}
+                                        className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500/40 w-4 h-4 cursor-pointer"
+                                      />
+                                      <span className={cn("text-xs font-semibold leading-tight", isDone ? "text-slate-400 line-through" : "text-slate-700")}>
+                                        {text}
+                                      </span>
+                                    </label>
+                                  );
+                                })}
+                                {standardTasks.length === 0 && <p className="text-[10px] text-slate-400 italic font-bold">No checklist tasks</p>}
+                              </div>
+                            </div>
+
+                            {/* Column 2: Company Specific */}
+                            <div className="space-y-3">
+                              <span className="text-[10px] font-black text-indigo-650 uppercase tracking-widest block border-b border-slate-200 pb-1">2. Company Specific Rubrics</span>
+                              <div className="space-y-2">
+                                {companyTasksList.map((task, tIdx) => {
+                                  const isDone = task.startsWith("[x] ");
+                                  const text = isDone ? task.substring(4) : task;
+                                  return (
+                                    <label key={tIdx} className="flex items-start gap-2.5 cursor-pointer select-none">
+                                      <input
+                                        type="checkbox"
+                                        checked={isDone}
+                                        onChange={() => handleToggleChecklistTask(app.id, schedule.id, "companyTasks", tIdx)}
+                                        className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500/40 w-4 h-4 cursor-pointer"
+                                      />
+                                      <span className={cn("text-xs font-semibold leading-tight", isDone ? "text-slate-400 line-through" : "text-slate-700")}>
+                                        {text}
+                                      </span>
+                                    </label>
+                                  );
+                                })}
+                                {companyTasksList.length === 0 && <p className="text-[10px] text-slate-400 italic font-bold">No company specific tasks</p>}
+                              </div>
+                            </div>
+
+                            {/* Column 3: Role Specific */}
+                            <div className="space-y-3">
+                              <span className="text-[10px] font-black text-teal-650 uppercase tracking-widest block border-b border-slate-200 pb-1">3. Technical Revise</span>
+                              <div className="space-y-2">
+                                {roleTasksList.map((task, tIdx) => {
+                                  const isDone = task.startsWith("[x] ");
+                                  const text = isDone ? task.substring(4) : task;
+                                  return (
+                                    <label key={tIdx} className="flex items-start gap-2.5 cursor-pointer select-none">
+                                      <input
+                                        type="checkbox"
+                                        checked={isDone}
+                                        onChange={() => handleToggleChecklistTask(app.id, schedule.id, "roleTasks", tIdx)}
+                                        className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500/40 w-4 h-4 cursor-pointer"
+                                      />
+                                      <span className={cn("text-xs font-semibold leading-tight", isDone ? "text-slate-400 line-through" : "text-slate-700")}>
+                                        {text}
+                                      </span>
+                                    </label>
+                                  );
+                                })}
+                                {roleTasksList.length === 0 && <p className="text-[10px] text-slate-400 italic font-bold">No role specific tasks</p>}
+                              </div>
+                            </div>
+
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {allSchedules.length === 0 && (
+                  <div className="p-12 text-center text-xs font-bold text-slate-400 border border-dashed border-slate-200 rounded-[2rem] bg-slate-50/10">
+                    🎉 No scheduled interviews pending! Sync Gmail or add schedules in application modals.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Section B: Completed Interviews (Performance Log) */}
             <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200/60 shadow-sm space-y-6">
               <h3 className="text-xl font-black text-slate-900 font-display">Interviews Performance Log</h3>
 
@@ -1403,7 +2106,7 @@ We recommend accepting **${topOffer.company}** due to higher compensation packag
                       </div>
 
                       <div className="space-y-1 pt-1">
-                        <span className="text-[9px] font-black text-teal-600 uppercase tracking-widest block">Improvement Areas</span>
+                        <span className="text-[9px] font-black text-teal-650 uppercase tracking-widest block">Improvement Areas</span>
                         <div className="flex flex-wrap gap-1">
                           {round.improvementAreas.length > 0 ? (
                             round.improvementAreas.map((imp, idx) => (
@@ -1457,7 +2160,7 @@ We recommend accepting **${topOffer.company}** due to higher compensation packag
                 <button
                   onClick={handleTriggerOfferComparison}
                   disabled={comparingOffers || apps.filter(a => a.status === "Offer Received" || a.status === "Joined").length === 0}
-                  className="px-4 py-2.5 bg-slate-950 text-white font-black text-[10px] uppercase tracking-widest rounded-xl hover:bg-indigo-650 transition-colors cursor-pointer disabled:opacity-40 shadow-sm"
+                  className="px-4 py-2.5 bg-slate-900 text-white font-black text-[10px] uppercase tracking-widest rounded-xl hover:bg-slate-800 transition-colors cursor-pointer disabled:opacity-40 shadow-sm"
                 >
                   {comparingOffers ? "Triggering AI Analysis..." : "Run AI Offer Comparison"}
                 </button>
@@ -1465,7 +2168,7 @@ We recommend accepting **${topOffer.company}** due to higher compensation packag
 
               {/* Offer recommendation box */}
               {offerRecommendation && (
-                <div className="p-6 bg-slate-950 border border-indigo-950 text-white rounded-[2rem] space-y-4 shadow-xl select-none whitespace-pre-wrap leading-relaxed text-xs">
+                <div className="p-6 bg-indigo-50/50 border border-indigo-100 text-slate-800 rounded-[2rem] space-y-4 shadow-sm select-none whitespace-pre-wrap leading-relaxed text-xs">
                   {offerRecommendation.split("\n").map((line, idx) => {
                     if (line.startsWith("### ")) {
                       return <h4 key={idx} className="font-black text-indigo-400 text-sm mt-3 mb-1 font-display first:mt-0">{line.replace("### ", "")}</h4>;
@@ -1703,7 +2406,447 @@ We recommend accepting **${topOffer.company}** due to higher compensation packag
             </div>
           </motion.div>
         )}
+        {/* 7. SYNC & INTEGRATIONS SERVICE PANEL */}
+        {activeTab === "gmail" && (
+          <motion.div
+            key="gmail-tab"
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
+            className="space-y-8 text-left"
+          >
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              
+              {/* Google Workspace Card */}
+              <div className="bg-white rounded-3xl border border-slate-200 shadow-md p-8 flex flex-col justify-between space-y-6">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xl font-display font-black text-slate-800 flex items-center gap-2">
+                      <Mail className="w-6 h-6 text-teal-600 animate-pulse" />
+                      Google Workspace
+                    </h3>
+                    {gmailConnected ? (
+                      <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-250 px-2.5 py-1 rounded-full flex items-center gap-1">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+                        Connected
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-black uppercase tracking-wider bg-slate-50 text-slate-500 border border-slate-200 px-2.5 py-1 rounded-full">
+                        Not Connected
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-slate-550 text-xs font-semibold leading-relaxed">
+                    Ingest assessments, interview schedules, and job status notifications directly from your Gmail inbox, and sync them to your Google Calendar.
+                  </p>
+                  
+                  {gmailConnected && (
+                    <div className="space-y-3 bg-slate-50/50 p-4.5 rounded-2xl border border-slate-150">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="font-black text-slate-500 uppercase tracking-wider">Google Account</span>
+                        <span className="font-bold text-slate-800">{gmailEmail}</span>
+                      </div>
+                      {gmailLastSync && (
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="font-black text-slate-500 uppercase tracking-wider">Last Sync Checked</span>
+                          <span className="font-medium text-slate-650">{new Date(gmailLastSync).toLocaleString()}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
+                  {/* Toggle Google Calendar Sync */}
+                  <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-150">
+                    <div className="space-y-0.5 max-w-[75%]">
+                      <span className="text-xs font-black text-slate-800 uppercase tracking-wider block">Google Calendar Sync</span>
+                      <span className="text-[10px] text-slate-450 font-bold leading-normal block">
+                        Automatically push OAs, interviews, and deadlines to your Google Calendar.
+                      </span>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                      <input
+                        type="checkbox"
+                        disabled={!gmailConnected}
+                        checked={googleCalendarSyncEnabled}
+                        onChange={(e) => handleToggleGoogleCalendar(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-teal-650"></div>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2.5 pt-4">
+                  {gmailConnected ? (
+                    <>
+                      <button
+                        onClick={handleTriggerSync}
+                        disabled={gmailSyncLoading || gmailActionLoading}
+                        className="flex-grow px-5 py-3.5 bg-slate-900 hover:bg-slate-800 text-white font-black text-xs uppercase tracking-widest rounded-2xl disabled:opacity-40 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md"
+                      >
+                        {gmailSyncLoading ? (
+                          <>
+                            <RefreshCw className="w-4 h-4 animate-spin text-teal-300" />
+                            <span>Syncing Gmail...</span>
+                          </>
+                        ) : (
+                          <>
+                            <RefreshCw className="w-4 h-4 text-teal-300" />
+                            <span>Scan Inbox Now</span>
+                          </>
+                        )}
+                      </button>
+                      <button
+                        onClick={handleDisconnectGmail}
+                        disabled={gmailSyncLoading || gmailActionLoading}
+                        className="px-5 py-3.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-100 font-black text-xs uppercase tracking-widest rounded-2xl disabled:opacity-40 transition-all cursor-pointer"
+                      >
+                        Disconnect
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={handleConnectGmail}
+                      disabled={gmailActionLoading}
+                      className="w-full px-6 py-4 bg-slate-900 text-white font-black text-xs uppercase tracking-widest rounded-2xl hover:bg-teal-650 disabled:opacity-40 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg hover:shadow-teal-100/10"
+                    >
+                      <Mail className="w-4.5 h-4.5 text-teal-300" />
+                      <span>Connect Google Account</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Microsoft Outlook Card */}
+              <div className="bg-white rounded-3xl border border-slate-200 shadow-md p-8 flex flex-col justify-between space-y-6">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xl font-display font-black text-slate-800 flex items-center gap-2">
+                      <CalendarIcon className="w-6 h-6 text-indigo-600 animate-pulse" />
+                      Outlook Calendar
+                    </h3>
+                    {outlookConnected ? (
+                      <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-250 px-2.5 py-1 rounded-full flex items-center gap-1">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+                        Connected
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-black uppercase tracking-wider bg-slate-50 text-slate-500 border border-slate-200 px-2.5 py-1 rounded-full">
+                        Not Connected
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-slate-550 text-xs font-semibold leading-relaxed">
+                    Synchronize assessment deadlines, interview sessions, and pipeline schedules directly to your Microsoft Outlook Calendar.
+                  </p>
+
+                  {outlookConnected && (
+                    <div className="space-y-3 bg-slate-50/50 p-4.5 rounded-2xl border border-slate-150">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="font-black text-slate-500 uppercase tracking-wider">Outlook Account</span>
+                        <span className="font-bold text-slate-800">{outlookEmail}</span>
+                      </div>
+                      {outlookLastSync && (
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="font-black text-slate-500 uppercase tracking-wider">Last Synced</span>
+                          <span className="font-medium text-slate-650">{new Date(outlookLastSync).toLocaleString()}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Toggle Outlook Calendar Sync */}
+                  <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-150">
+                    <div className="space-y-0.5 max-w-[75%]">
+                      <span className="text-xs font-black text-slate-800 uppercase tracking-wider block">Outlook Calendar Sync</span>
+                      <span className="text-[10px] text-slate-450 font-bold leading-normal block">
+                        Automatically push OAs, interviews, and deadlines to your Outlook Calendar.
+                      </span>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                      <input
+                        type="checkbox"
+                        disabled={!outlookConnected}
+                        checked={outlookCalendarSyncEnabled}
+                        onChange={(e) => handleToggleOutlookCalendar(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-650"></div>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2.5 pt-4">
+                  {outlookConnected ? (
+                    <>
+                      <button
+                        disabled={true}
+                        className="flex-grow px-5 py-3.5 bg-slate-100 text-slate-450 font-black text-xs uppercase tracking-widest rounded-2xl flex items-center justify-center gap-2 cursor-not-allowed border border-slate-200"
+                      >
+                        <Check className="w-4 h-4 text-emerald-500" />
+                        <span>Outlook Sync Active</span>
+                      </button>
+                      <button
+                        onClick={handleDisconnectOutlook}
+                        disabled={outlookActionLoading}
+                        className="px-5 py-3.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-100 font-black text-xs uppercase tracking-widest rounded-2xl disabled:opacity-40 transition-all cursor-pointer"
+                      >
+                        Disconnect
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={handleConnectOutlook}
+                      disabled={outlookActionLoading}
+                      className="w-full px-6 py-4 bg-slate-900 text-white font-black text-xs uppercase tracking-widest rounded-2xl hover:bg-indigo-650 disabled:opacity-40 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg hover:shadow-indigo-100/10"
+                    >
+                      <CalendarIcon className="w-4.5 h-4.5 text-indigo-300" />
+                      <span>Connect Outlook Account</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+            </div>
+
+            {/* Sync History Table */}
+            <div className="bg-white rounded-3xl border border-slate-200 p-8 shadow-sm space-y-4">
+              <div className="flex justify-between items-center flex-wrap gap-4">
+                <h4 className="text-sm font-black text-slate-800 tracking-tight flex items-center gap-1.5">
+                  <Clock className="w-4.5 h-4.5 text-slate-500" />
+                  Ingestion Audit logs
+                </h4>
+                <Link
+                  href="/dashboard/admin/trust"
+                  className="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 border border-indigo-150 text-indigo-650 font-black text-[10px] uppercase tracking-widest rounded-xl transition-all cursor-pointer"
+                >
+                  Admin Trust Panel
+                </Link>
+              </div>
+
+              {gmailSyncLogs.length === 0 ? (
+                <div className="py-12 text-center text-xs font-bold text-slate-400 border border-dashed border-slate-200 rounded-[2.5rem] bg-slate-50/20">
+                  No Gmail emails ingested yet. Setup a connection and scan inbox to retrieve updates.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs font-bold text-slate-650 border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-100 text-[10px] text-slate-400 uppercase tracking-widest text-left font-display">
+                        <th className="pb-3 font-black">Company</th>
+                        <th className="pb-3 font-black">Target Role</th>
+                        <th className="pb-3 font-black">Detected Stage</th>
+                        <th className="pb-3 font-black">Recruitment Trust</th>
+                        <th className="pb-3 font-black">Confidence</th>
+                        <th className="pb-3 font-black">Ingested Date</th>
+                        <th className="pb-3 font-black">Status / Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {gmailSyncLogs.map((log) => {
+                        const trustDecision = log.extracted_entities?.trustDecision || "Likely Recruitment Email";
+                        const trustScore = log.extracted_entities?.trustScore ?? 75;
+                        
+                        let trustBg = "bg-slate-50 text-slate-700 border-slate-200";
+                        let trustDot = "bg-slate-400";
+                        let trustLabel = "Unknown";
+                        
+                        if (trustDecision === "Verified Recruitment Email" || trustDecision === "Verified") {
+                          trustBg = "bg-emerald-50 text-emerald-700 border border-emerald-255";
+                          trustDot = "bg-emerald-500";
+                          trustLabel = "Verified";
+                        } else if (trustDecision === "Likely Recruitment Email" || trustDecision === "Likely") {
+                          trustBg = "bg-teal-50 text-teal-700 border border-teal-200";
+                          trustDot = "bg-teal-500";
+                          trustLabel = "Likely";
+                        } else if (trustDecision === "Suspicious") {
+                          trustBg = "bg-amber-50 text-amber-700 border border-amber-250";
+                          trustDot = "bg-amber-500";
+                          trustLabel = "Suspicious";
+                        } else if (trustDecision === "Potential Scam" || trustDecision === "Scam") {
+                          trustBg = "bg-rose-50 text-rose-700 border border-rose-250";
+                          trustDot = "bg-rose-500";
+                          trustLabel = "Scam";
+                        }
+
+                        return (
+                          <tr key={log.id} className="hover:bg-slate-50/40 transition-colors">
+                            <td className="py-4.5 font-black text-slate-800">{log.company}</td>
+                            <td className="py-4.5 text-slate-600 font-semibold">{log.role}</td>
+                            <td className="py-4.5">
+                              <span className={cn(
+                                "px-2 py-0.5 rounded font-black text-[9px] uppercase tracking-wide",
+                                log.detected_status === "Offer Received" ? "bg-emerald-50 text-emerald-700 border border-emerald-100" :
+                                log.detected_status === "Rejected" ? "bg-rose-50 text-rose-700 border border-rose-100" :
+                                log.detected_status.includes("Interview") ? "bg-indigo-50 text-indigo-700 border border-indigo-100" :
+                                log.detected_status.includes("Assessment") ? "bg-yellow-50 text-yellow-750 border border-yellow-100" :
+                                log.detected_status.includes("Scam") ? "bg-rose-50 text-rose-700 border border-rose-100" :
+                                "bg-slate-50 text-slate-700 border border-slate-150"
+                              )}>
+                                {log.detected_status}
+                              </span>
+                            </td>
+                            <td className="py-4.5 font-medium">
+                              <span className={cn("px-2 py-0.5 rounded font-black text-[9px] uppercase tracking-wide inline-flex items-center gap-1.5", trustBg)}>
+                                <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", trustDot)} />
+                                <span>{trustLabel} ({trustScore})</span>
+                              </span>
+                            </td>
+                            <td className="py-4.5 font-mono">{log.confidence_score}%</td>
+                            <td className="py-4.5 font-medium text-slate-500">
+                              {new Date(log.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                            </td>
+                            <td className="py-4.5">
+                              {log.processed ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] text-emerald-600 font-black uppercase">
+                                  <Check className="w-3.5 h-3.5" />
+                                  <span>Processed</span>
+                                </span>
+                              ) : log.detected_status === "Scam Blocked" ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] text-rose-600 font-black uppercase">
+                                  <X className="w-3.5 h-3.5" />
+                                  <span>Scam Blocked</span>
+                                </span>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <span className="inline-flex items-center gap-1 text-[10px] text-amber-600 font-black uppercase">
+                                    <Clock className="w-3.5 h-3.5 text-amber-500" />
+                                    <span>Review Needed</span>
+                                  </span>
+                                  <button
+                                    onClick={() => handleApproveSuspiciousLog(log.id)}
+                                    disabled={approvingLogId === log.id}
+                                    className="px-2 py-1 bg-indigo-650 hover:bg-indigo-700 text-white text-[9px] font-black uppercase tracking-wider rounded disabled:opacity-50 transition-colors"
+                                  >
+                                    {approvingLogId === log.id ? "Approving..." : "Add to CRM"}
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+
+        {/* 8. BROWSER EXTENSION SYNC INTEGRATION */}
+        {activeTab === "extension" && (
+          <motion.div
+            key="extension-tab"
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
+            className="space-y-8 text-left"
+          >
+            {/* Download & Auth Token Setup Card */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              
+              {/* Credentials & Downloads */}
+              <div className="bg-white rounded-3xl border border-slate-200 shadow-md p-8 space-y-6 flex flex-col justify-between">
+                <div className="space-y-4">
+                  <h3 className="text-xl font-display font-black text-slate-850 flex items-center gap-2">
+                    <Globe className="w-6 h-6 text-indigo-500 animate-pulse" />
+                    Chrome Extension Setup
+                  </h3>
+                  <p className="text-slate-500 text-xs font-semibold leading-relaxed">
+                    Auto-capture job listings directly from LinkedIn, Indeed, Naukri, Foundit, and custom career portals. The connector automatically identifies successful submits and logs them into your CRM instantly.
+                  </p>
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Your Personal Extension Token</label>
+                    <div className="flex gap-2">
+                      <input 
+                        type="text" 
+                        readOnly 
+                        value={userId || ""} 
+                        className="flex-grow p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-700 focus:outline-none"
+                      />
+                      <button
+                        onClick={() => {
+                          if (userId) {
+                            navigator.clipboard.writeText(userId);
+                            alert("Copied token to clipboard!");
+                          }
+                        }}
+                        className="px-4 py-3 bg-slate-900 text-white font-black text-xs uppercase tracking-widest rounded-xl hover:bg-indigo-650 transition-all cursor-pointer shrink-0"
+                      >
+                        Copy Key
+                      </button>
+                    </div>
+                    <span className="text-[9px] text-slate-400 font-bold block mt-1">This key connects the browser extension to your private account database. Keep it private.</span>
+                  </div>
+                </div>
+
+                <div className="pt-6 border-t border-slate-100 flex flex-col sm:flex-row gap-4">
+                  <a
+                    href="/api/placement/extension/download"
+                    className="flex-grow py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-black text-xs uppercase tracking-widest rounded-2xl hover:opacity-95 transition-all shadow-lg shadow-indigo-100 text-center flex items-center justify-center gap-2"
+                  >
+                    <Globe className="w-4 h-4 text-white" />
+                    Download Extension Package
+                  </a>
+                </div>
+              </div>
+
+              {/* Instructions Panel */}
+              <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-8 space-y-6">
+                <h4 className="text-sm font-black text-slate-800 tracking-tight flex items-center gap-1.5 border-b border-slate-100 pb-3">
+                  <Bot className="w-5 h-5 text-indigo-500" />
+                  Installation Instructions
+                </h4>
+
+                <ol className="space-y-4 text-xs font-semibold text-slate-650 list-decimal pl-4">
+                  <li>
+                    Click <strong className="text-slate-800">Download Extension Package</strong> and extract the downloaded <code>.zip</code> file onto your system.
+                  </li>
+                  <li>
+                    Open Google Chrome and navigate to <code className="text-indigo-650 font-mono">chrome://extensions/</code> in the URL bar.
+                  </li>
+                  <li>
+                    Enable <strong className="text-slate-800">Developer mode</strong> using the toggle button in the top-right corner of the Extensions dashboard.
+                  </li>
+                  <li>
+                    Click <strong className="text-slate-800">Load unpacked</strong> in the top-left menu, and select the extracted extension directory.
+                  </li>
+                  <li>
+                    Pin the <strong className="text-indigo-600">Placement Tracker OS Connector</strong> extension to your toolbar, paste your copied token inside the settings box, and save!
+                  </li>
+                </ol>
+              </div>
+            </div>
+
+            {/* Supported Platforms Grid */}
+            <div className="bg-white rounded-3xl border border-slate-200 p-8 shadow-sm space-y-6">
+              <div>
+                <h4 className="text-sm font-black text-slate-800 tracking-tight">Supported Platforms</h4>
+                <p className="text-slate-500 text-xs font-semibold mt-0.5">Scraping hooks are customized for the following recruitment pages:</p>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 pt-2">
+                {[
+                  { name: "LinkedIn", detail: "Easy Apply overlay & description parse", badge: "Live Tracking" },
+                  { name: "Indeed", detail: "Job cards & submission dialog checks", badge: "Live Tracking" },
+                  { name: "Naukri", detail: "One-click application redirect parse", badge: "Live Tracking" },
+                  { name: "Foundit", detail: "Title details & redirect thank-you tracking", badge: "Live Tracking" },
+                  { name: "Career Portals", detail: "Lever, Greenhouse, Workday success checks", badge: "ATS Auto Capture" }
+                ].map((site, idx) => (
+                  <div key={idx} className="p-4 bg-slate-50 border border-slate-150 rounded-2xl flex flex-col justify-between min-h-[90px]">
+                    <div>
+                      <span className="text-[10px] text-indigo-600 font-black uppercase tracking-wider block">{site.badge}</span>
+                      <strong className="text-xs font-black text-slate-850 block mt-1.5">{site.name}</strong>
+                    </div>
+                    <p className="text-[10px] text-slate-450 font-bold mt-2 leading-relaxed">{site.detail}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        )}
       </AnimatePresence>
 
       {/* DETAILED ADD APPLICATION MODAL */}
@@ -1944,6 +3087,26 @@ We recommend accepting **${topOffer.company}** due to higher compensation packag
 
                     <div className="grid grid-cols-2 gap-2">
                       <div className="space-y-1">
+                        <label className="text-[9px] text-slate-450 uppercase">Platform</label>
+                        <select value={newOaPlatform} onChange={e => setNewOaPlatform(e.target.value)} className="w-full p-2 bg-white border border-slate-200 rounded-lg focus:outline-none">
+                          <option value="HackerRank">HackerRank</option>
+                          <option value="CodeSignal">CodeSignal</option>
+                          <option value="Codility">Codility</option>
+                          <option value="SHL">SHL</option>
+                          <option value="Mercer Mettl">Mercer Mettl</option>
+                          <option value="AMCAT">AMCAT</option>
+                          <option value="eLitmus">eLitmus</option>
+                          <option value="Other">Other</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] text-slate-450 uppercase">Duration (mins)</label>
+                        <input type="number" value={newOaDuration} onChange={e => setNewOaDuration(Number(e.target.value))} className="w-full p-2 bg-white border border-slate-200 rounded-lg focus:outline-none" />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
                         <label className="text-[9px] text-slate-450 uppercase">Topics (comma-sep)</label>
                         <input type="text" value={newOaTopics} onChange={e => setNewOaTopics(e.target.value)} placeholder="DP, SQL" className="w-full p-2 bg-white border border-slate-200 rounded-lg focus:outline-none" />
                       </div>
@@ -1973,7 +3136,7 @@ We recommend accepting **${topOffer.company}** due to higher compensation packag
                       <div key={oa.id} className="p-3 bg-white border border-slate-200 rounded-xl flex justify-between items-center text-xs">
                         <div>
                           <strong>{oa.oaDate}</strong>
-                          <span className="text-[10px] text-slate-400 block mt-0.5">{oa.difficulty} &bull; Score: {oa.score}%</span>
+                          <span className="text-[10px] text-slate-400 block mt-0.5">{oa.platform || "HackerRank"} &bull; {oa.difficulty} &bull; {oa.duration || 90}m &bull; Score: {oa.score}%</span>
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="px-1.5 py-0.5 bg-slate-100 text-[9px] rounded font-bold">{oa.result}</span>
@@ -2056,6 +3219,111 @@ We recommend accepting **${topOffer.company}** due to higher compensation packag
                   </div>
                 </div>
 
+              </div>
+
+              {/* 3. Scheduled Upcoming Interviews inside form */}
+              <div className="md:col-span-12 border-t border-slate-100 pt-5 space-y-4">
+                <strong className="text-xs font-black text-slate-800 block">Scheduled Upcoming Interviews ({subSchedules.length})</strong>
+                
+                {/* Schedule Form */}
+                <div className="p-4 bg-slate-50 border border-slate-150 rounded-2xl space-y-3 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+                    <div className="space-y-1">
+                      <label className="text-[9px] text-slate-450 uppercase font-black">Round Type</label>
+                      <select value={newSchType} onChange={e => setNewSchType(e.target.value as any)} className="w-full p-2 bg-white border border-slate-200 rounded-lg focus:outline-none font-bold">
+                        <option value="Online Assessment">Online Assessment</option>
+                        <option value="Technical Interview">Technical Interview</option>
+                        <option value="Managerial Round">Managerial Round</option>
+                        <option value="HR Round">HR Round</option>
+                        <option value="Final Round">Final Round</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] text-slate-450 uppercase font-black">Date</label>
+                      <input type="date" value={newSchDate} onChange={e => setNewSchDate(e.target.value)} className="w-full p-2 bg-white border border-slate-200 rounded-lg focus:outline-none font-bold" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] text-slate-450 uppercase font-black">Time</label>
+                      <input type="text" value={newSchTime} onChange={e => setNewSchTime(e.target.value)} placeholder="e.g. 10:00 AM" className="w-full p-2 bg-white border border-slate-200 rounded-lg focus:outline-none font-bold" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] text-slate-450 uppercase font-black">Mode</label>
+                      <select value={newSchMode} onChange={e => setNewSchMode(e.target.value)} className="w-full p-2 bg-white border border-slate-200 rounded-lg focus:outline-none font-bold">
+                        <option value="Online">Online</option>
+                        <option value="In-Person">In-Person</option>
+                        <option value="Phone Call">Phone Call</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <label className="text-[9px] text-slate-450 uppercase font-black">Platform / Location / Venue</label>
+                      <input type="text" value={newSchPlatform} onChange={e => setNewSchPlatform(e.target.value)} placeholder="Google Meet, Zoom, Office Address..." className="w-full p-2 bg-white border border-slate-200 rounded-lg focus:outline-none font-bold" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] text-slate-450 uppercase font-black">Meeting Link (Zoom, Meet, Teams)</label>
+                      <input type="url" value={newSchMeetingLink} onChange={e => setNewSchMeetingLink(e.target.value)} placeholder="https://meet.google.com/..." className="w-full p-2 bg-white border border-slate-200 rounded-lg focus:outline-none font-bold" />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div className="space-y-1">
+                      <label className="text-[9px] text-slate-450 uppercase font-black">Recruiter Name</label>
+                      <input type="text" value={newSchRecName} onChange={e => setNewSchRecName(e.target.value)} placeholder="E.g., Sarah Jenkins" className="w-full p-2 bg-white border border-slate-200 rounded-lg focus:outline-none font-bold" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] text-slate-450 uppercase font-black">Recruiter Email</label>
+                      <input type="email" value={newSchRecEmail} onChange={e => setNewSchRecEmail(e.target.value)} placeholder="sarah@recruitment.com" className="w-full p-2 bg-white border border-slate-200 rounded-lg focus:outline-none font-bold" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] text-slate-450 uppercase font-black">Recruiter Phone</label>
+                      <input type="tel" value={newSchRecPhone} onChange={e => setNewSchRecPhone(e.target.value)} placeholder="E.g. +1 555-0199" className="w-full p-2 bg-white border border-slate-200 rounded-lg focus:outline-none font-bold" />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[9px] text-slate-450 uppercase font-black">Notes / Syllabus / Details</label>
+                    <input type="text" value={newSchNotes} onChange={e => setNewSchNotes(e.target.value)} placeholder="e.g. Focus on system design, revise oops" className="w-full p-2 bg-white border border-slate-200 rounded-lg focus:outline-none font-bold" />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleAddScheduleToForm}
+                    className="w-full py-2.5 bg-slate-900 hover:bg-teal-650 text-white font-black text-[9px] uppercase tracking-widest rounded-lg transition-colors cursor-pointer"
+                  >
+                    Log Upcoming Interview Schedule
+                  </button>
+                </div>
+
+                {/* Logged subSchedules list */}
+                <div className="space-y-2">
+                  {subSchedules.map(sch => (
+                    <div key={sch.id} className="p-4.5 bg-white border border-slate-200 rounded-xl flex justify-between items-start text-xs hover:border-indigo-150 transition-colors">
+                      <div className="space-y-1 text-left">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <strong className="text-slate-800 text-xs">{sch.type}</strong>
+                          <span className="px-1.5 py-0.5 bg-indigo-50 text-[8px] text-indigo-650 border border-indigo-100 rounded font-black uppercase">{sch.mode}</span>
+                          <span className="px-1.5 py-0.5 bg-slate-50 text-[8px] text-slate-550 border border-slate-200 rounded font-bold">{sch.platform}</span>
+                        </div>
+                        <p className="text-[10px] text-slate-500 font-bold mt-0.5">
+                          📅 {sch.date} at {sch.time}
+                        </p>
+                        {sch.meetingLink && (
+                          <p className="text-[10px] text-blue-500 font-bold truncate max-w-md mt-0.5">
+                            🔗 <a href={sch.meetingLink} target="_blank" className="hover:underline">{sch.meetingLink}</a>
+                          </p>
+                        )}
+                        {(sch.recruiterName || sch.recruiterEmail) && (
+                          <p className="text-[9px] text-slate-450 font-semibold mt-0.5">
+                            👤 Recruiter: {sch.recruiterName || "N/A"} {sch.recruiterEmail ? `(${sch.recruiterEmail})` : ""}
+                          </p>
+                        )}
+                      </div>
+                      <button type="button" onClick={() => setSubSchedules(subSchedules.filter(s => s.id !== sch.id))} className="text-rose-500 hover:bg-rose-50 p-1.5 rounded transition-colors cursor-pointer"><Trash2 className="w-4.5 h-4.5" /></button>
+                    </div>
+                  ))}
+                </div>
               </div>
 
             </div>

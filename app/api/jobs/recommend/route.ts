@@ -187,7 +187,7 @@ export async function GET(request: Request) {
     const highSalary = [...evaluatedJobs]
       .sort((a, b) => parseSalaryMax(b.salary_range) - parseSalaryMax(a.salary_range));
 
-    // 3. 🎯 Fast Applying Opportunities (either has direct apply tag or direct link, sorted by score)
+    // 3. 🎯 Apply Immediately Opportunities (either has direct apply tag or direct link, sorted by score)
     const fastApplying = [...evaluatedJobs]
       .filter(j => j.apply_link && !j.apply_link.includes("linkedin.com/jobs"))
       .sort((a, b) => b.matchDetails.matchScore - a.matchDetails.matchScore);

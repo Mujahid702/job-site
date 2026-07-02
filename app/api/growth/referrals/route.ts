@@ -21,7 +21,7 @@ export async function GET() {
     }
 
     const stats = await getUserReferralStats(user.id);
-    await setCache(cacheKey, stats, 900); // 15-minute TTL
+    await setCache(cacheKey, stats, 60); // 1-minute TTL for active growth tracking
 
     return NextResponse.json({ success: true, ...stats });
   } catch (err: any) {
@@ -40,13 +40,23 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json().catch(() => ({}));
-    const { referralCode } = body;
+    const { referralCode, deviceFingerprint } = body;
 
     if (!referralCode) {
       return NextResponse.json({ success: false, message: "referralCode is required." }, { status: 400 });
     }
 
-    const result = await processReferralJoin(user.id, referralCode);
+    // Extract IP and User Agent dynamically
+    const ip = request.headers.get("x-forwarded-for")?.split(",")[0] || 
+               request.headers.get("x-real-ip") || 
+               "127.0.0.1";
+    const userAgent = request.headers.get("user-agent") || "unknown";
+
+    const result = await processReferralJoin(user.id, referralCode, {
+      ip,
+      userAgent,
+      deviceFingerprint
+    });
 
     if (result.success) {
       return NextResponse.json({ success: true, message: "Referral code applied successfully." });

@@ -26,6 +26,8 @@ import Footer from "@/components/Footer";
 import PageTransition from "@/components/PageTransition";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { SavedJobsProvider } from "@/lib/context/SavedJobsContext";
+import SessionTimeoutGuard from "@/components/SessionTimeoutGuard";
+import { ToastProvider } from "@/components/Toast";
 
 export default function RootLayout({
   children,
@@ -53,17 +55,20 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-full flex flex-col bg-slate-50 font-sans">
-        <SavedJobsProvider>
-          <Header />
-          <main className="flex-grow">
-            <ErrorBoundary>
-              <PageTransition>
-                {children}
-              </PageTransition>
-            </ErrorBoundary>
-          </main>
-          <Footer />
-        </SavedJobsProvider>
+        <ToastProvider>
+          <SavedJobsProvider>
+            <SessionTimeoutGuard />
+            <Header />
+            <main className="flex-grow">
+              <ErrorBoundary>
+                <PageTransition>
+                  {children}
+                </PageTransition>
+              </ErrorBoundary>
+            </main>
+            <Footer />
+          </SavedJobsProvider>
+        </ToastProvider>
       </body>
     </html>
   );

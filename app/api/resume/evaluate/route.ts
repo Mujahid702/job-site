@@ -124,7 +124,7 @@ export async function POST(request: Request) {
     } else if (process.env.OPENROUTER_API_KEY) {
       provider = 'openrouter'
       apiKey = process.env.OPENROUTER_API_KEY
-      model = 'meta-llama/llama-3.1-8b-instruct:free'
+      model = 'meta-llama/llama-3.3-70b-instruct:free'
     }
 
     if (!apiKey) {
@@ -143,9 +143,14 @@ Analyze the following resume text and provide a highly detailed, explainable, an
 Your evaluation must be grounded in actual layout, format, and content analysis of the provided text.
 
 CRITICAL INSTRUCTIONS:
-1. Do NOT generate fake scores, random percentages, or generic templates.
-2. In the "overallExplanation", you MUST explicitly explain the ATS score, explaining exactly why the candidate received that score (e.g. "Your ATS score is 78 because the resume has strong project content and relevant technical skills, but lacks several important keywords, quantified achievements, and role-specific technologies.").
-3. For category scores, use the following points scale exactly:
+1. You MUST generate a "thinking" property first. In this section, perform a rigorous step-by-step chain of thought:
+   - Identify the target role and its standard, genuine industry skill expectations (e.g., an AI/ML role values Python, NumPy, Pandas, PyTorch, TensorFlow, Scikit-Learn, SQL, and stats/probability. It does NOT require Swift, Ruby, or Java. Do not recommend irrelevant skills as gaps).
+   - Analyze the candidate's actual extracted text to find what skills are present and which genuine gaps exist.
+   - Verify formatting parameters: only report formatting or layout risks (like multi-column or tables) if there is actual evidence in the text structure. Do not output generic warnings.
+   - Ground all subsequent scores and recommendations strictly on this thinking process.
+2. Do NOT generate fake scores, random percentages, or generic templates.
+3. In the "overallExplanation", you MUST explicitly explain the ATS score, explaining exactly why the candidate received that score (e.g. "Your ATS score is 78 because the resume has strong project content and relevant technical skills, but lacks several important keywords, quantified achievements, and role-specific technologies.").
+4. For category scores, use the following points scale exactly:
    - **Resume Structure** (max 20)
    - **ATS Compatibility** (max 15)
    - **Skills Relevance** (max 15)
@@ -155,9 +160,9 @@ CRITICAL INSTRUCTIONS:
    - **Readability** (max 10)
    - **Professional Presentation** (max 5)
    Total Score is the sum of these category scores (max 100).
-4. For every single category, provide reasons (green checks, e.g. "✓ Includes clear GitHub link") and deductions (red crosses, e.g. "✗ Missing a dedicated Certifications section"). For deductions, explicitly justify why points were lost.
-5. If the target role is specified as "${targetRole || 'not specified'}", evaluate the candidate's match percentage, status ("Excellent Match", "Good Match", "Needs Improvement", "Weak Match"), strong areas (green checks ✓), and weak areas (red crosses ✗). If no target role was specified, infer the candidate's natural career path and evaluate against that inferred role, while notifying them of it in the explanation.
-6. Provide a natural role match breakdown (percentage and status) for all of the following 11 roles:
+5. For every single category, provide reasons (green checks, e.g. "✓ Includes clear GitHub link") and deductions (red crosses, e.g. "✗ Missing a dedicated Certifications section"). For deductions, explicitly justify why points were lost.
+6. If the target role is specified as "${targetRole || 'not specified'}", evaluate the candidate's match percentage, status ("Excellent Match", "Good Match", "Needs Improvement", "Weak Match"), strong areas (green checks ✓), and weak areas (red crosses ✗). If no target role was specified, infer the candidate's natural career path and evaluate against that inferred role, while notifying them of it in the explanation.
+7. Provide a natural role match breakdown (percentage and status) for all of the following 11 roles:
    - Software Engineer
    - Full Stack Developer
    - Frontend Developer
@@ -169,9 +174,9 @@ CRITICAL INSTRUCTIONS:
    - DevOps Engineer
    - Cyber Security Analyst
    - Business Analyst
-7. Analyze each project individually. Provide a title, strength score (out of 10), strengths, weaknesses, and a recruiter impact assessment (High/Medium/Low).
-8. Scan for ATS layout risks in the text (e.g., detected multi-column layout indicators, tables, graphs, graphics, missing headings, missing contact details) and output clear warning items with severity (High/Medium/Low) and why it hurts parsing.
-9. Generate a prioritized Top 10 Improvement Roadmap, ranked from 1 to 10 by impact, detailing what to change and why.
+8. Analyze each project individually. Provide a title, strength score (out of 10), strengths, weaknesses, and a recruiter impact assessment (High/Medium/Low).
+9. Scan for ATS layout risks in the text (e.g., detected multi-column layout indicators, tables, graphs, graphics, missing headings, missing contact details) and output clear warning items with severity (High/Medium/Low) and why it hurts parsing.
+10. Generate a prioritized Top 10 Improvement Roadmap, ranked from 1 to 10 by impact, detailing what to change and why.
 
 RESUME RAW TEXT:
 """
@@ -184,6 +189,10 @@ TARGET ROLE:
     const schema = {
       type: 'OBJECT',
       properties: {
+        thinking: {
+          type: 'STRING',
+          description: 'A deep step-by-step reasoning chain about the candidate\'s resume, target role, genuine skills gap, and actual layout risks. Generated first.',
+        },
         parsedInfo: {
           type: 'OBJECT',
           properties: {
@@ -401,6 +410,7 @@ TARGET ROLE:
         },
       },
       required: [
+        'thinking',
         'parsedInfo',
         'overallExplanation',
         'atsScore',

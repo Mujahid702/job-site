@@ -1,0 +1,52 @@
+name: Pull Request Validation
+
+on:
+  pull_request:
+    branches:
+      - main
+      - dev
+    types: [opened, synchronize, reopened]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-level: '20'
+          cache: 'npm'
+
+      - name: Install Project Dependencies
+        run: npm ci
+
+      - name: Verify Environment Config Example
+        run: node scripts/verify-env.js
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: "https://mockref.supabase.co"
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: "eyJhbGciOi..."
+          GEMINI_API_KEY: "AIzaSy..."
+          UPSTASH_REDIS_REST_URL: "https://mockref.upstash.io"
+          UPSTASH_REDIS_REST_TOKEN: "Ap..."
+
+      - name: Code Formatting & Lint Audit
+        run: npm run lint
+
+      - name: TypeScript Type Check
+        run: npx tsc --noEmit
+
+      - name: Production Static Pages Build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: "https://mockref.supabase.co"
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: "eyJhbGciOi..."
+          GEMINI_API_KEY: "AIzaSy..."
+          UPSTASH_REDIS_REST_URL: "https://mockref.upstash.io"
+          UPSTASH_REDIS_REST_TOKEN: "Ap..."
+
+      - name: Execute Automated Test Suite
+        run: node --test tests/**/*.test.js

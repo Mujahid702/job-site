@@ -31,6 +31,23 @@ export interface StudentExperience {
   story: string;
 }
 
+export interface RoleDetail {
+  salaryRange?: string;
+  prepTime?: string;
+  selectionRatio?: string;
+  mustHaveSkills?: string[];
+  goodToHaveSkills?: string[];
+  bonusSkills?: string[];
+  hiringProcess?: HiringRound[];
+  oaQuestions?: OAQuestion[];
+  questionBank?: QuestionBankItem[];
+  roadmap30?: string[];
+  roadmap60?: string[];
+  roadmap90?: string[];
+  plannerChecklist?: string[];
+  resources?: any[];
+}
+
 export interface CompanyPrepData {
   slug: string;
   name: string;
@@ -46,6 +63,7 @@ export interface CompanyPrepData {
   mustHaveSkills: string[];
   goodToHaveSkills: string[];
   bonusSkills: string[];
+  roleDetails?: Record<string, RoleDetail>;
   oaPattern: {
     sections: string[];
     cutoff: string;
@@ -186,6 +204,145 @@ export const COMPANY_PREP_LIST: CompanyPrepData[] = [
       crack: "To crack IBM, clear the cognitive spatial patterns (IPAT) and practice code optimization. Focus on OOP definitions, SQL tables, and basic system checks in your technical round.",
       projects: "A full-stack REST API dashboard showing clear database CRUD mappings and robust exception handlers fits perfectly on your resume for IBM.",
       skills: "Ensure Java/Python, Relational DBMS (MySQL/PostgreSQL), and OOP concepts are clearly highlighted in your resume's primary skill section."
+    },
+    roleDetails: {
+      "Associate System Engineer (ASE)": {
+        salaryRange: "₹4.5 - ₹6.0 LPA",
+        prepTime: "20 Days",
+        selectionRatio: "12 - 15%",
+        mustHaveSkills: ["Java or Python", "SQL/DBMS", "Object-Oriented Programming (OOP)"],
+        goodToHaveSkills: ["REST APIs", "Software Engineering SDLC"],
+        bonusSkills: ["Basic Cloud Concepts"],
+        hiringProcess: [
+          {
+            name: "Resume Screening",
+            duration: "1 Week",
+            difficulty: "Easy",
+            tips: "Highlight key skill tags like REST API, Java, Python, and SQL. Format in a standard single-column ATS scan template."
+          },
+          {
+            name: "Online Assessment (OA)",
+            duration: "95 Mins",
+            difficulty: "Medium",
+            tips: "IPAT tests spatial and quantitative reasoning. The coding round usually features 1-2 standard array or string dynamic programming questions."
+          },
+          {
+            name: "Technical Interview",
+            duration: "45 Mins",
+            difficulty: "Medium",
+            tips: "Be prepared to write code for basic data structures (linked list, binary search) and detail database schema normalization rules."
+          },
+          {
+            name: "Managerial & HR Interview",
+            duration: "30 Mins",
+            difficulty: "Easy",
+            tips: "Expect behavioral questions assessing your adaptation to client projects, team disagreements, and communication skills."
+          }
+        ],
+        roadmap30: [
+          "Days 1-7: Review Java/Python core constructs, class variables, inheritance, interfaces.",
+          "Days 8-15: Master DBMS schema structures, normal forms (1NF-3NF), and basic joins.",
+          "Days 16-22: Solve 20 HackerRank String/Array challenges.",
+          "Days 23-30: Complete Mock Technical rounds and practice spatial puzzle patterns."
+        ],
+        plannerChecklist: [
+          "Practice 5 spatial logical reasoning matrices.",
+          "Write SQL joins queries for standard employee-department schemas.",
+          "Review Method Overriding vs Overloading concepts.",
+          "Complete a 15-minute voice mock behavioral session."
+        ]
+      },
+      "Cloud Application Developer": {
+        salaryRange: "₹7.0 - ₹9.0 LPA",
+        prepTime: "30 Days",
+        selectionRatio: "8 - 10%",
+        mustHaveSkills: ["Node.js or Java", "Cloud Computing Foundations", "REST APIs"],
+        goodToHaveSkills: ["Docker Basics", "Kubernetes", "SQL/DBMS"],
+        bonusSkills: ["CI/CD Pipelines", "NoSQL Databases"],
+        hiringProcess: [
+          {
+            name: "Resume Screening",
+            duration: "1 Week",
+            difficulty: "Easy",
+            tips: "Emphasize project experience with AWS/IBM Cloud, microservices, Node.js/Java backend endpoints, and container tools."
+          },
+          {
+            name: "Cloud Technical OA",
+            duration: "120 Mins",
+            difficulty: "Hard",
+            tips: "Coding round with 2 medium HackerRank questions. MCQs cover cloud virtualization, REST request methods, and system security."
+          },
+          {
+            name: "Cloud Technical Interview",
+            duration: "60 Mins",
+            difficulty: "Hard",
+            tips: "Design simple REST microservices, discuss load balancing, containerization with Docker, and write logic scripts."
+          },
+          {
+            name: "Managerial & HR Interview",
+            duration: "30 Mins",
+            difficulty: "Easy",
+            tips: "Behavioral questions assessing team communication, client expectations handling, and agile deployment sprint experiences."
+          }
+        ],
+        roadmap30: [
+          "Days 1-10: Study REST API architecture, HTTP response codes, and Node.js/Java server handling.",
+          "Days 11-20: Build Docker containers, review AWS/IBM Cloud virtual instances, and deploy simple code.",
+          "Days 21-30: Practice medium arrays/hashing coding challenges and run mock system deployments."
+        ],
+        plannerChecklist: [
+          "Dockerize a simple express application server.",
+          "Draw a microservices connection diagram for an e-commerce checkout flow.",
+          "Understand HTTP response codes (200, 201, 400, 401, 403, 500).",
+          "Deploy a mock node server on a cloud registry sandbox."
+        ]
+      },
+      "Data Engineer": {
+        salaryRange: "₹6.5 - ₹8.5 LPA",
+        prepTime: "25 Days",
+        selectionRatio: "10 - 12%",
+        mustHaveSkills: ["SQL/DBMS", "Python or Scala", "Data Warehousing (ETL)"],
+        goodToHaveSkills: ["Apache Spark", "Big Data Concepts", "Cloud Storage"],
+        bonusSkills: ["NoSQL Databases (MongoDB)", "Data Pipelines (Airflow)"],
+        hiringProcess: [
+          {
+            name: "Resume Screening",
+            duration: "1 Week",
+            difficulty: "Easy",
+            tips: "Ensure resume lists data pipelines, ETL scripts, SQL optimization projects, Python analysis, or Big Data technologies."
+          },
+          {
+            name: "Data & Coding Assessment",
+            duration: "90 Mins",
+            difficulty: "Medium",
+            tips: "Includes SQL query writing (aggregates, subqueries, analytical functions) and 1 Python data manipulation question."
+          },
+          {
+            name: "Data Engineering Technical Panel",
+            duration: "45 Mins",
+            difficulty: "Hard",
+            tips: "Write complex SQL joins and aggregations on the spot. Explain database indexes, ETL pipelines, and normalization levels."
+          },
+          {
+            name: "Managerial & HR Interview",
+            duration: "30 Mins",
+            difficulty: "Easy",
+            tips: "Discuss handling messy data requirements, explaining analytics report logic to non-tech managers, and team collaboration."
+          }
+        ],
+        roadmap30: [
+          "Days 1-8: Revise advanced SQL query writing (aggregations, window functions, indexes).",
+          "Days 9-16: Study Python data structures, pandas manipulations, and file integrations (CSV/JSON/Parquet).",
+          "Days 17-24: Master data warehousing concepts, ETL flows, star schemas, and big data basics.",
+          "Days 25-30: Run SQL mocks and practice dry-running table join scenarios."
+        ],
+        plannerChecklist: [
+          "Write a Python script to filter records from a JSON file and save to CSV.",
+          "Solve 3 medium SQL query aggregations using GROUP BY and HAVING clauses.",
+          "Explain the difference between a Star Schema and Snowflake Schema.",
+          "Draft a list of differences between OLTP and OLAP systems."
+        ]
+      }
     }
   },
   {

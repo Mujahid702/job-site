@@ -15,25 +15,58 @@ export async function proxy(request: NextRequest) {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value))
-          supabaseResponse = NextResponse.next({
-            request,
-          })
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          )
+          try {
+            cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
+            supabaseResponse = NextResponse.next({
+              request,
+            })
+            cookiesToSet.forEach(({ name, value, options }) =>
+              supabaseResponse.cookies.set(name, value, options)
+            )
+          } catch (err) {
+            console.warn('Proxy middleware setAll cookies error:', err)
+          }
         },
       },
     }
   )
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  let user = null
+  try {
+    const {
+      data: { user: supabaseUser },
+    } = await supabase.auth.getUser()
+    user = supabaseUser
+  } catch (err) {
+    console.warn('Proxy middleware getUser error:', err)
+  }
 
   const pathname = request.nextUrl.pathname
 
-  // Protect administrative routes
+  // 1. Guest-only routes: redirect logged-in users to /dashboard
+  const isGuestRoute = pathname === '/login' || pathname === '/signup'
+  if (isGuestRoute && user) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/dashboard'
+    return NextResponse.redirect(url)
+  }
+
+  // 2. User-only routes: redirect unauthenticated users to /login
+  const isUserRoute =
+    pathname === '/dashboard' ||
+    pathname.startsWith('/dashboard/') ||
+    pathname === '/onboarding' ||
+    pathname.startsWith('/onboarding/') ||
+    pathname === '/saved' ||
+    pathname.startsWith('/saved/')
+
+  if (isUserRoute && !user) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/login'
+    return NextResponse.redirect(url)
+  }
+
+  // 3. Protect administrative routes
   if (pathname.startsWith('/admin') || pathname.startsWith('/api/admin')) {
     if (!user) {
       if (pathname.startsWith('/api/')) {

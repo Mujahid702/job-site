@@ -467,6 +467,12 @@ export default function ResumeOS({ onScoreUpdate, subTab = "overview", onSubTabC
   const restoreHistoryItem = (snap: Snapshot) => {
     if (typeof window !== "undefined") {
       localStorage.setItem("last_analyzed_resume_text", snap.rawText);
+      localStorage.setItem("last_analyzed_resume_name", snap.version);
+      localStorage.setItem("last_analyzed_resume_timestamp", new Date().toISOString());
+      localStorage.removeItem("jd_match_history");
+      localStorage.removeItem("resume_enhance_result");
+      localStorage.removeItem("resume_builder_cache");
+      window.dispatchEvent(new Event("active_resume_updated"));
       alert(`Success! "${snap.version}" has been restored as the active resume. Scans will now reference this text.`);
     }
   };

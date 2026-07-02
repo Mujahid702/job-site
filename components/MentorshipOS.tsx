@@ -2,13 +2,8 @@
 
 import React, { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { getMentorBookings, bookSession, updateBooking } from "@/lib/db/mentor";
-import { generateUUID } from "@/lib/db/sync";
-
-
-
 import {
-  Calendar,
+  Calendar as CalendarIcon,
   Clock,
   Star,
   Award,
@@ -18,29 +13,41 @@ import {
   Send,
   FileText,
   CheckCircle2,
-  Briefcase
+  Briefcase,
+  AlertTriangle,
+  HeartHandshake
 } from "lucide-react";
-import { cn, flattenSkills } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
-// Types
+// Types matching DB schemas
 export interface Mentor {
   id: string;
-  name: string;
-  role: string;
+  full_name: string;
+  profile_photo?: string;
+  headline?: string;
+  bio?: string;
   company: string;
-  experience: number;
+  job_title: string;
+  years_experience: number;
   skills: string[];
   specializations: string[];
-  bio: string;
-  achievements: string[];
-  linkedin: string;
-  portfolio: string;
-  languages: string[];
+  session_types: string[];
+  pricing_type: 'FREE' | 'PAID' | 'PREMIUM' | 'INVITE ONLY';
+  session_price: number;
+  currency: string;
   rating: number;
-  reviewsCount: number;
-  pricing: number;
-  availableDays: string[];
-  imageColor: string; // color gradient key
+  review_count: number;
+  availability_status: 'Available' | 'Limited Availability' | 'Booked' | 'Vacation' | 'Unavailable';
+  verified_status: string;
+  featured_status: boolean;
+  linkedin_url?: string;
+  portfolio_url?: string;
+  email?: string;
+  location?: string;
+  languages: string[];
+  max_sessions_per_week: number;
+  active_status: boolean;
+  trust_score: number;
 }
 
 export interface Booking {
@@ -52,218 +59,81 @@ export interface Booking {
   sessionType: string;
   date: string;
   time: string;
-  status: "Upcoming" | "Completed" | "Cancelled";
+  status: "Upcoming" | "Completed" | "Cancelled" | "Rescheduled";
   pricePaid: number;
-  paymentMethod?: string;
+  paymentMethod: string;
   notes?: {
-    recommendations: string;
-    weakAreas: string;
-    actionPlan: string;
-    resources: string[];
-    homework: string;
+    recommendations?: string;
+    weakAreas?: string;
+    actionPlan?: string;
+    resources?: string[];
+    homework?: string;
   };
   reviewRating?: number;
   reviewComment?: string;
 }
 
-// Initial Mock Mentors Data
-const INITIAL_MENTORS: Mentor[] = [
-  {
-    id: "mentor-1",
-    name: "Sarah Jenkins",
-    role: "Senior Software Engineer",
-    company: "Google",
-    experience: 8,
-    skills: ["Go", "C++", "System Design", "Distributed Systems", "Kubernetes"],
-    specializations: ["System Design Reviews", "FAANG Interview Mock", "Backend Architecture Guides"],
-    bio: "Sarah is a tech lead at Google working on massive-scale distributed databases. She enjoys coaching students on concurrency and technical scaling paradigms.",
-    achievements: ["Google Spot Bonus recipient", "Patents in database replication"],
-    linkedin: "linkedin.com/in/sarah-jenkins-mock",
-    portfolio: "sarahjenkins.dev",
-    languages: ["English", "Spanish"],
-    rating: 4.9,
-    reviewsCount: 124,
-    pricing: 49,
-    availableDays: ["Monday", "Wednesday", "Friday"],
-    imageColor: "from-red-500 to-yellow-500"
-  },
-  {
-    id: "mentor-2",
-    name: "Rahul Sharma",
-    role: "AI Tech Lead",
-    company: "IBM",
-    experience: 6,
-    skills: ["Python", "TensorFlow", "PyTorch", "NLP", "LangChain"],
-    specializations: ["AI/ML Career Roadmaps", "IBM OA Strategy", "Resume Optimization for AI Roles"],
-    bio: "Rahul leads the Watson AI deployment pipeline. He advises on fine-tuning models, vector databases, and enterprise AI governance setups.",
-    achievements: ["IBM Master Inventor", "Author of 3 machine learning books"],
-    linkedin: "linkedin.com/in/rahul-sharma-mock",
-    portfolio: "sharmaml.dev",
-    languages: ["English", "Hindi"],
-    rating: 4.8,
-    reviewsCount: 92,
-    pricing: 29,
-    availableDays: ["Tuesday", "Thursday", "Saturday"],
-    imageColor: "from-blue-600 to-indigo-800"
-  },
-  {
-    id: "mentor-3",
-    name: "Arnav Gupta",
-    role: "Principal Talent Recruiter",
-    company: "Amazon",
-    experience: 10,
-    skills: ["ATS Scanning", "Behavioral Interview Prep", "LinkedIn Branding", "Resume Reviews"],
-    specializations: ["ATS Score Optimization", "Amazon Leadership Principles Coaching", "Offer Negotiation"],
-    bio: "Arnav has scanned over 50,000 engineering resumes. He tells candidates exactly what recruiters want to see in project bullet points.",
-    achievements: ["Hired 500+ engineers for AWS", "Top HR Voice on LinkedIn"],
-    linkedin: "linkedin.com/in/arnav-recruits-mock",
-    portfolio: "arnavrecruiting.com",
-    languages: ["English", "Hindi", "Punjabi"],
-    rating: 4.95,
-    reviewsCount: 205,
-    pricing: 39,
-    availableDays: ["Monday", "Tuesday", "Thursday"],
-    imageColor: "from-orange-500 to-amber-600"
-  },
-  {
-    id: "mentor-4",
-    name: "Elena Rostova",
-    role: "Senior Product Manager",
-    company: "Microsoft",
-    experience: 7,
-    skills: ["Product Strategy", "User Research", "Agile", "SQL", "A/B Testing"],
-    specializations: ["Product Case Interviews", "Product Design Reviews", "Enterprise Governance Basics"],
-    bio: "Elena drives Azure telemetry feature launches. She matches business strategy with developer tools and coaches product management candidates.",
-    achievements: ["Shipped 4 cloud developer tools", "Microsoft PM Mentor of the Year"],
-    linkedin: "linkedin.com/in/elena-microsoft-mock",
-    portfolio: "elenarostova.co",
-    languages: ["English", "Russian"],
-    rating: 4.75,
-    reviewsCount: 68,
-    pricing: 59,
-    availableDays: ["Wednesday", "Friday"],
-    imageColor: "from-blue-500 to-teal-500"
-  },
-  {
-    id: "mentor-5",
-    name: "Neha Patel",
-    role: "Software Developer (Capgemini Graduate)",
-    company: "Accenture",
-    experience: 2,
-    skills: ["Java", "Spring Boot", "SQL", "DBMS", "REST APIs"],
-    specializations: ["Accenture OA & Hiring Process", "Service MNC Migration Preparation", "DSA Basics"],
-    bio: "Neha cleared both Capgemini and Accenture off-campus placement tests. She shares the exact strategies that help freshers land coding placements.",
-    achievements: ["Cleared 4 off-campus drives", "BuggedBrain top graduate mentor"],
-    linkedin: "linkedin.com/in/neha-acc-mock",
-    portfolio: "nehacodes.dev",
-    languages: ["English", "Gujarati", "Hindi"],
-    rating: 4.9,
-    reviewsCount: 41,
-    pricing: 0, // Free session
-    availableDays: ["Saturday", "Sunday"],
-    imageColor: "from-purple-600 to-pink-700"
-  },
-  {
-    id: "mentor-6",
-    name: "David Miller",
-    role: "Senior Consultant (Cloud Architect)",
-    company: "Deloitte",
-    experience: 9,
-    skills: ["AWS Cloud Architecting", "Terraform", "CI/CD Pipelines", "Docker", "Linux"],
-    specializations: ["Cloud Migration Architectures", "Deloitte Mock Consultations", "DevOps Roadmaps"],
-    bio: "David leads enterprise migration projects for financial clients. He helps developers learn infra-as-code, Terraform architectures, and cloud networking.",
-    achievements: ["AWS Certified Solutions Architect Professional", "Consultant lead for 3 Fortune 500 integrations"],
-    linkedin: "linkedin.com/in/david-cloud-mock",
-    portfolio: "davidmillercloud.dev",
-    languages: ["English"],
-    rating: 4.85,
-    reviewsCount: 79,
-    pricing: 35,
-    availableDays: ["Tuesday", "Thursday"],
-    imageColor: "from-emerald-500 to-teal-700"
-  }
-];
-
-const DEFAULT_BOOKINGS: Booking[] = [
-  {
-    id: "booking-1",
-    mentorId: "mentor-3",
-    mentorName: "Arnav Gupta",
-    mentorRole: "Principal Talent Recruiter",
-    mentorCompany: "Amazon",
-    sessionType: "Resume Review & ATS Optimization",
-    date: "2026-06-10",
-    time: "11:00 AM",
-    status: "Upcoming",
-    pricePaid: 39,
-    paymentMethod: "UPI"
-  },
-  {
-    id: "booking-2",
-    mentorId: "mentor-5",
-    mentorName: "Neha Patel",
-    mentorRole: "Software Developer (Capgemini Graduate)",
-    mentorCompany: "Accenture",
-    sessionType: "Company Preparation Strategy",
-    date: "2026-05-28",
-    time: "03:00 PM",
-    status: "Completed",
-    pricePaid: 0,
-    paymentMethod: "Free Access",
-    notes: {
-      recommendations: "Solid OOP foundations. Focus more on Spring Boot annotation injection locks and standard REST API query parameters optimizations.",
-      weakAreas: "Spring Boot configuration contexts, SQL joins indexing overrides.",
-      actionPlan: "Build a microservice transaction tracker project with Spring Data JPA. Setup a custom Docker orchestration script to run MySQL alongside the Spring container.",
-      resources: ["Spring Boot Framework guide (file:///C:/Users/mujah/job-site/public/docs/spring.pdf)", "LeetCode SQL query schema practices sheet"],
-      homework: "Optimize standard API route latencies in the microservices database repository class."
-    },
-    reviewRating: 5,
-    reviewComment: "Neha was extremely clear and gave me excellent guidance for the Accenture coding drive!"
-  }
-];
-
-// Helper outside component for message ID creation
-const generateCopilotMsgId = () => {
-  return `mentor-copilot-msg-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-};
+export interface MentorSlot {
+  id: string;
+  mentor_id: string;
+  slot_date: string;
+  slot_time: string;
+  is_booked: boolean;
+}
 
 export default function MentorshipOS() {
   const [activeTab, setActiveTab] = useState<string>("marketplace");
   const [isMentorView, setIsMentorView] = useState<boolean>(false);
+  const [userId, setUserId] = useState<string | null>(null);
 
-  // States
-  const [mentors, setMentors] = useState<Mentor[]>(INITIAL_MENTORS);
-  const [bookings, setBookings] = useState<Booking[]>(DEFAULT_BOOKINGS);
+  // Dynamic lists from API
+  const [mentors, setMentors] = useState<Mentor[]>([]);
+  const [aiMatches, setAiMatches] = useState<Array<{ mentor: Mentor; score: number; reasoning: string }>>([]);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
 
-  // Filters
+  // Filtering states
   const [searchQuery, setSearchQuery] = useState("");
   const [filterCompany, setFilterCompany] = useState("all");
   const [filterRole, setFilterRole] = useState("all");
   const [filterPricing, setFilterPricing] = useState("all");
+  const [verifiedOnly, setVerifiedOnly] = useState(false);
 
-  // Selection states
+  // Booking process states
   const [selectedMentor, setSelectedMentor] = useState<Mentor | null>(null);
+  const [mentorSlots, setMentorSlots] = useState<MentorSlot[]>([]);
   const [bookingDate, setBookingDate] = useState("");
-  const [bookingTime, setBookingTime] = useState("10:00 AM");
-  const [bookingType, setBookingType] = useState("Mock Interview");
+  const [bookingTime, setBookingTime] = useState("");
+  const [bookingType, setBookingType] = useState("Mock Technical Interview");
   const [promoCode, setPromoCode] = useState("");
   const [discountAmount, setDiscountAmount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState("UPI");
 
-  // Feedback states
+  // Reviews submission
+  const [reviewBookingId, setReviewBookingId] = useState<string | null>(null);
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState("");
-  const [reviewBookingId, setReviewBookingId] = useState<string | null>(null);
+  const [reviewRatingComm, setReviewRatingComm] = useState(5);
+  const [reviewRatingKnow, setReviewRatingKnow] = useState(5);
+  const [reviewRatingHelp, setReviewRatingHelp] = useState(5);
+  const [reviewRatingAdv, setReviewRatingAdv] = useState(5);
 
-  // Mentor View states
-  const [mentorProfile, setMentorProfile] = useState<Mentor>(() => INITIAL_MENTORS[1]); // Default to Rahul Sharma for simulation
+  // Mentor Portal Simulation States
+  const [simulatedMentorId, setSimulatedMentorId] = useState<string>("");
   const [newNoteBookingId, setNewNoteBookingId] = useState<string | null>(null);
   const [newNoteRec, setNewNoteRec] = useState("");
   const [newNoteWeak, setNewNoteWeak] = useState("");
   const [newNotePlan, setNewNotePlan] = useState("");
   const [newNoteHomework, setNewNoteHomework] = useState("");
 
-  // Copilot messages
+  // Request a Mentor Modal States
+  const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
+  const [reqCompany, setReqCompany] = useState("");
+  const [reqRole, setReqRole] = useState("");
+  const [reqHelp, setReqHelp] = useState("");
+  const [submittingReq, setSubmittingReq] = useState(false);
+
+  // Copilot Chat
   const [copilotInput, setCopilotInput] = useState("");
   const [copilotLoading, setCopilotLoading] = useState(false);
   const [copilotMessages, setCopilotMessages] = useState<Array<{ id: string; role: "user" | "copilot"; content: string }>>([
@@ -274,9 +144,7 @@ export default function MentorshipOS() {
     }
   ]);
 
-  const [userId, setUserId] = useState<string | null>(null);
-
-  // Listen to Auth State
+  // Auth check
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) setUserId(user.id);
@@ -291,86 +159,82 @@ export default function MentorshipOS() {
     };
   }, []);
 
-  // Fetch bookings from Supabase
-  useEffect(() => {
-    async function loadBookings() {
-      if (!userId) {
-        const stored = localStorage.getItem("placement_mentorship_bookings");
-        if (stored) {
-          try {
-            setBookings(JSON.parse(stored));
-          } catch {}
-        }
-        return;
-      }
-
-      const dbBookings = await getMentorBookings(userId);
-      if (dbBookings && dbBookings.length > 0) {
-        const loadedBookings = dbBookings.map(b => {
-          let meta: any = {};
-          try {
-            if (b.notes && b.notes.startsWith("{")) {
-              meta = JSON.parse(b.notes);
-            }
-          } catch (e) {}
-
-          return {
-            id: b.id!,
-            mentorId: meta.mentorId || "mentor-unknown",
-            mentorName: b.mentor_name || "",
-            mentorRole: meta.mentorRole || "Mentor",
-            mentorCompany: meta.mentorCompany || "Company",
-            sessionType: b.session_type || "",
-            date: b.booking_date ? b.booking_date.split("T")[0] : "",
-            time: meta.time || "10:00 AM",
-            status: (b.status || "Upcoming") as any,
-            pricePaid: meta.pricePaid || 0,
-            paymentMethod: meta.paymentMethod || "Free Access",
-            notes: meta.notes,
-            reviewRating: meta.reviewRating,
-            reviewComment: meta.reviewComment
-          };
-        });
-        setBookings(loadedBookings);
-      } else {
-        // Migrate local storage
-        const stored = localStorage.getItem("placement_mentorship_bookings");
-        if (stored) {
-          try {
-            const parsed = JSON.parse(stored) as Booking[];
-            setBookings(parsed);
-            for (const b of parsed) {
-              const notesStr = JSON.stringify({
-                mentorId: b.mentorId,
-                mentorRole: b.mentorRole,
-                mentorCompany: b.mentorCompany,
-                time: b.time,
-                pricePaid: b.pricePaid,
-                paymentMethod: b.paymentMethod,
-                notes: b.notes,
-                reviewRating: b.reviewRating,
-                reviewComment: b.reviewComment
-              });
-
-              await bookSession(userId, {
-                mentor_name: b.mentorName,
-                session_type: b.sessionType,
-                booking_date: b.date ? `${b.date}T${b.time.includes("PM") ? "15:00:00Z" : "10:00:00Z"}` : new Date().toISOString(),
-                status: b.status,
-                notes: notesStr
-              });
-            }
-          } catch {}
+  // Fetch mentors catalog & AI Matches
+  const loadMentors = async () => {
+    setLoading(true);
+    try {
+      const url = `/api/mentorship/mentors?company=${filterCompany}&role=${filterRole}&pricing=${filterPricing}&verifiedOnly=${verifiedOnly}&query=${encodeURIComponent(searchQuery)}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.success) {
+        setMentors(data.mentors || []);
+        setAiMatches(data.matches || []);
+        if (data.mentors && data.mentors.length > 0 && !simulatedMentorId) {
+          setSimulatedMentorId(data.mentors[0].id);
         }
       }
+    } catch (e) {
+      console.error("Error loading mentors list:", e);
+    } finally {
+      setLoading(false);
     }
-    loadBookings();
+  };
+
+  // Fetch bookings
+  const loadBookings = async () => {
+    if (!userId) return;
+    try {
+      const res = await fetch("/api/mentorship/bookings");
+      const data = await res.json();
+      if (data.success) {
+        setBookings(data.bookings || []);
+      }
+    } catch (e) {
+      console.error("Error loading bookings queue:", e);
+    }
+  };
+
+  // Trigger reloading on filter updates
+  useEffect(() => {
+    loadMentors();
+  }, [filterCompany, filterRole, filterPricing, verifiedOnly, searchQuery]);
+
+  useEffect(() => {
+    if (userId) {
+      loadBookings();
+    }
   }, [userId]);
 
-  // Keep local cache as backup
+  // Load slots for selected mentor
   useEffect(() => {
-    localStorage.setItem("placement_mentorship_bookings", JSON.stringify(bookings));
-  }, [bookings]);
+    if (!selectedMentor) {
+      setMentorSlots([]);
+      setBookingDate("");
+      setBookingTime("");
+      return;
+    }
+
+    const fetchSlots = async () => {
+      try {
+        const res = await fetch(`/api/admin/mentors/slots?mentorId=${selectedMentor.id}`);
+        const data = await res.json();
+        if (data.success) {
+          setMentorSlots(data.slots || []);
+        }
+      } catch (e) {
+        console.error("Error loading availability slots:", e);
+      }
+    };
+    fetchSlots();
+  }, [selectedMentor]);
+
+  // Unique available dates
+  const availableDates = Array.from(new Set(mentorSlots.map(s => s.slot_date)));
+  
+  // Filtered available times for picked date
+  const availableTimes = mentorSlots
+    .filter(s => s.slot_date === bookingDate && !s.is_booked)
+    .map(s => s.slot_time);
 
   // Apply Coupon Code
   const handleApplyPromo = () => {
@@ -378,125 +242,79 @@ export default function MentorshipOS() {
     if (!selectedMentor) return;
 
     if (code === "WELCOMEFREE") {
-      setDiscountAmount(selectedMentor.pricing);
+      setDiscountAmount(selectedMentor.session_price);
       alert("Coupon 'WELCOMEFREE' applied! 100% discount, session is now FREE.");
     } else if (code === "BUGGED50") {
-      setDiscountAmount(Math.round(selectedMentor.pricing * 0.5));
+      setDiscountAmount(Math.round(selectedMentor.session_price * 0.5));
       alert("Coupon 'BUGGED50' applied! 50% discount successfully calculated.");
     } else {
       alert("Invalid promotional or referral discount code.");
     }
   };
 
-  // Confirm Booking
+  // Confirm booking
   const handleConfirmBooking = async () => {
-    if (!selectedMentor || !bookingDate) {
-      alert("Please configure a valid date for booking.");
+    if (!selectedMentor || !bookingDate || !bookingTime) {
+      alert("Please select a valid date and available time slot.");
       return;
     }
 
-    const pricePaid = Math.max(0, selectedMentor.pricing - discountAmount);
-    const newId = generateUUID();
+    const pricePaid = Math.max(0, selectedMentor.session_price - discountAmount);
 
-    const newBooking: Booking = {
-      id: newId,
-      mentorId: selectedMentor.id,
-      mentorName: selectedMentor.name,
-      mentorRole: selectedMentor.role,
-      mentorCompany: selectedMentor.company,
-      sessionType: bookingType,
-      date: bookingDate,
-      time: bookingTime,
-      status: "Upcoming",
-      pricePaid,
-      paymentMethod: pricePaid === 0 ? "Free Access" : paymentMethod
-    };
-
-    setBookings([newBooking, ...bookings]);
-    setSelectedMentor(null);
-    setBookingDate("");
-    setPromoCode("");
-    setDiscountAmount(0);
-
-    if (userId) {
-      const notesStr = JSON.stringify({
-        mentorId: newBooking.mentorId,
-        mentorRole: newBooking.mentorRole,
-        mentorCompany: newBooking.mentorCompany,
-        time: newBooking.time,
-        pricePaid: newBooking.pricePaid,
-        paymentMethod: newBooking.paymentMethod,
-        notes: newBooking.notes,
-        reviewRating: newBooking.reviewRating,
-        reviewComment: newBooking.reviewComment
+    try {
+      const res = await fetch("/api/mentorship/bookings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mentor_id: selectedMentor.id,
+          mentor_name: selectedMentor.full_name,
+          session_type: bookingType,
+          booking_date: bookingDate,
+          booking_time: bookingTime,
+          price_paid: pricePaid,
+          payment_method: pricePaid === 0 ? "Free Access" : paymentMethod,
+          notes: ""
+        })
       });
 
-      await bookSession(userId, {
-        id: newId,
-        mentor_name: newBooking.mentorName,
-        session_type: newBooking.sessionType,
-        booking_date: newBooking.date ? `${newBooking.date}T${newBooking.time.includes("PM") ? "15:00:00Z" : "10:00:00Z"}` : new Date().toISOString(),
-        status: newBooking.status,
-        notes: notesStr
-      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || "Failed to finalize booking");
+      }
+
+      alert(`Successfully booked session with ${selectedMentor.full_name}! Details synced to My Bookings.`);
+      setSelectedMentor(null);
+      setBookingDate("");
+      setBookingTime("");
+      setPromoCode("");
+      setDiscountAmount(0);
+      loadBookings();
+    } catch (e: any) {
+      alert(e.message || "Something went wrong during checkout.");
     }
-
-    alert(`Successfully booked session with ${selectedMentor.name}! Details synced to Student Dashboard.`);
   };
 
-  // Student Actions
+  // Cancel booking
   const handleCancelBooking = async (bookingId: string) => {
-    if (confirm("Are you sure you want to cancel this booking?")) {
-      const updated = bookings.map(b => b.id === bookingId ? { ...b, status: "Cancelled" as const } : b);
-      setBookings(updated);
+    if (!confirm("Are you sure you want to cancel this booking?")) return;
 
-      if (userId) {
-        const target = updated.find(b => b.id === bookingId);
-        if (target) {
-          const notesStr = JSON.stringify({
-            mentorId: target.mentorId,
-            mentorRole: target.mentorRole,
-            mentorCompany: target.mentorCompany,
-            time: target.time,
-            pricePaid: target.pricePaid,
-            paymentMethod: target.paymentMethod,
-            notes: target.notes,
-            reviewRating: target.reviewRating,
-            reviewComment: target.reviewComment
-          });
-          await updateBooking(userId, bookingId, {
-            status: "Cancelled",
-            notes: notesStr
-          });
-        }
-      }
-    }
-  };
+    try {
+      const res = await fetch("/api/mentorship/bookings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bookingId,
+          status: "Cancelled"
+        })
+      });
 
-  const handleMarkCompleted = async (bookingId: string) => {
-    const updated = bookings.map(b => b.id === bookingId ? { ...b, status: "Completed" as const } : b);
-    setBookings(updated);
-    setReviewBookingId(bookingId);
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.message);
 
-    if (userId) {
-      const target = updated.find(b => b.id === bookingId);
-      if (target) {
-        const notesStr = JSON.stringify({
-          mentorId: target.mentorId,
-          mentorRole: target.mentorRole,
-          mentorCompany: target.mentorCompany,
-          time: target.time,
-          pricePaid: target.pricePaid,
-          paymentMethod: target.paymentMethod,
-          notes: target.notes,
-          reviewRating: target.reviewRating,
-          reviewComment: target.reviewComment
-        });
-        await updateBooking(userId, bookingId, {
-          status: "Completed",
-          notes: notesStr
-        });
-      }
+      alert("Booking cancelled successfully.");
+      loadBookings();
+    } catch (e: any) {
+      alert(e.message || "Cancellation failed");
     }
   };
 
@@ -505,215 +323,121 @@ export default function MentorshipOS() {
     e.preventDefault();
     if (!reviewBookingId) return;
 
-    // Save review to booking
-    const updatedBookings = bookings.map(b => {
-      if (b.id === reviewBookingId) {
-        return {
-          ...b,
-          reviewRating,
-          reviewComment
-        };
-      }
-      return b;
-    });
-
-    setBookings(updatedBookings);
-
-    // Update mentor rating average in state
-    const targetBooking = bookings.find(b => b.id === reviewBookingId);
-    if (targetBooking) {
-      const updatedMentors = mentors.map(m => {
-        if (m.id === targetBooking.mentorId) {
-          const totalRating = m.rating * m.reviewsCount + reviewRating;
-          const newCount = m.reviewsCount + 1;
-          return {
-            ...m,
-            rating: Number((totalRating / newCount).toFixed(2)),
-            reviewsCount: newCount
-          };
-        }
-        return m;
+    try {
+      const res = await fetch("/api/mentorship/reviews", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          booking_id: reviewBookingId,
+          mentor_id: bookings.find(b => b.id === reviewBookingId)?.mentorId,
+          rating_communication: reviewRatingComm,
+          rating_knowledge: reviewRatingKnow,
+          rating_helpfulness: reviewRatingHelp,
+          rating_advice: reviewRatingAdv,
+          rating_overall: reviewRating,
+          comment: reviewComment
+        })
       });
-      setMentors(updatedMentors);
-    }
 
-    if (userId) {
-      const target = updatedBookings.find(b => b.id === reviewBookingId);
-      if (target) {
-        const notesStr = JSON.stringify({
-          mentorId: target.mentorId,
-          mentorRole: target.mentorRole,
-          mentorCompany: target.mentorCompany,
-          time: target.time,
-          pricePaid: target.pricePaid,
-          paymentMethod: target.paymentMethod,
-          notes: target.notes,
-          reviewRating,
-          reviewComment
-        });
-        await updateBooking(userId, reviewBookingId, {
-          notes: notesStr
-        });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || "Review submission failed.");
       }
+
+      alert("Feedback review submitted successfully!");
+      setReviewBookingId(null);
+      setReviewComment("");
+      setReviewRating(5);
+      loadBookings();
+      loadMentors();
+    } catch (err: any) {
+      alert(err.message || "Failed to submit rating");
     }
-
-    setReviewBookingId(null);
-    setReviewComment("");
-    setReviewRating(5);
-    alert("Feedback review submitted successfully!");
   };
 
-  // Mentor Portal actions
-  const handleUpdateMentorProfile = (e: React.FormEvent) => {
-    e.preventDefault();
-    setMentors(mentors.map(m => m.id === mentorProfile.id ? mentorProfile : m));
-    alert("Mentor profile credentials updated successfully.");
-  };
-
+  // Simulated Mentor: Submit post-session feedback notes
   const handleSaveNotes = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newNoteBookingId) return;
 
-    const sessionNotes = {
-      recommendations: newNoteRec,
-      weakAreas: newNoteWeak,
-      actionPlan: newNotePlan,
-      resources: ["Practice Sheet PDF", "BuggedBrain Company OS Guide"],
-      homework: newNoteHomework
-    };
+    const b = bookings.find(x => x.id === newNoteBookingId);
+    if (!b) return;
 
-    const updatedBookings = bookings.map(b => {
-      if (b.id === newNoteBookingId) {
-        return {
-          ...b,
-          notes: sessionNotes
-        };
-      }
-      return b;
-    });
+    try {
+      const res = await fetch("/api/mentorship/notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          booking_id: newNoteBookingId,
+          mentor_id: b.mentorId,
+          user_id: userId,
+          feedback: newNoteRec,
+          roadmap: newNotePlan,
+          resources: ["Practice Sheet PDF", "BuggedBrain Company OS Guide"],
+          questions: newNoteHomework.split(",").map(q => q.trim()),
+          improvement_areas: newNoteWeak
+        })
+      });
 
-    setBookings(updatedBookings);
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.message);
 
-    if (userId) {
-      const target = updatedBookings.find(b => b.id === newNoteBookingId);
-      if (target) {
-        const notesStr = JSON.stringify({
-          mentorId: target.mentorId,
-          mentorRole: target.mentorRole,
-          mentorCompany: target.mentorCompany,
-          time: target.time,
-          pricePaid: target.pricePaid,
-          paymentMethod: target.paymentMethod,
-          notes: sessionNotes,
-          reviewRating: target.reviewRating,
-          reviewComment: target.reviewComment
-        });
-        await updateBooking(userId, newNoteBookingId, {
-          notes: notesStr
-        });
-      }
+      alert("Session feedback notes uploaded successfully. Session marked COMPLETED.");
+      setNewNoteBookingId(null);
+      setNewNoteRec("");
+      setNewNoteWeak("");
+      setNewNotePlan("");
+      setNewNoteHomework("");
+      loadBookings();
+    } catch (err: any) {
+      alert(err.message || "Failed to save session notes");
     }
-
-    setNewNoteBookingId(null);
-    setNewNoteRec("");
-    setNewNoteWeak("");
-    setNewNotePlan("");
-    setNewNoteHomework("");
-    alert("Mock session feedback notes saved. Sent to student database.");
   };
 
-
-  // AI Matching logic
-  const getAIMatches = () => {
-    const targetRoleLabel = "Software Developer";
-    const targetCompanyLabel = "Google";
-    let skillsList: string[] = [];
-    let atsScoreVal = 75;
-
-    if (typeof window !== "undefined") {
-      const savedProfile = localStorage.getItem("resume_builder_profile");
-      if (savedProfile) {
-        try {
-          const parsed = JSON.parse(savedProfile);
-          skillsList = flattenSkills(parsed.skills || []);
-        } catch {}
-      }
-      atsScoreVal = Number(localStorage.getItem("ats_score") || "75");
+  // Student: Request a Mentor
+  const handleRequestMentorSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reqCompany || !reqRole) {
+      alert("Company and Role are required.");
+      return;
     }
 
-    return mentors.map(m => {
-      let score = 50;
+    setSubmittingReq(true);
+    try {
+      const res = await fetch("/api/mentorship/demand", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          company: reqCompany,
+          role: reqRole,
+          help_needed: reqHelp
+        })
+      });
 
-      // 1. Role similarity
-      const cleanRole = targetRoleLabel.toLowerCase();
-      const cleanMentorRole = m.role.toLowerCase();
-      if (cleanMentorRole.includes(cleanRole) || m.skills.some(s => cleanRole.includes(s.toLowerCase()))) {
-        score += 20;
-      }
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.message);
 
-      // 2. Company target
-      if (m.company.toLowerCase() === targetCompanyLabel.toLowerCase()) {
-        score += 15;
-      }
-
-      // 3. Specialization match
-      if (m.specializations.some(spec => spec.toLowerCase().includes(cleanRole) || spec.toLowerCase().includes("resume"))) {
-        score += 5;
-      }
-
-      // 4. Skills checklist match
-      const matchingSkills = m.skills.filter(s => 
-        skillsList.some(userSkill => 
-          typeof userSkill === 'string' && 
-          userSkill.toLowerCase() === (s || '').toLowerCase()
-        )
-      );
-      score += matchingSkills.length * 2;
-
-      // 5. ATS Score contribution
-      if (atsScoreVal > 80) {
-        score += 5;
-      }
-
-      const finalScore = Math.min(score, 100);
-
-      // Reasoning
-      let reasoning = "";
-      if (finalScore >= 85) {
-        reasoning = `Outstanding match! ${m.name} is a ${m.role} at ${m.company}. They specialize in ${m.specializations[0]}, which directly targets your goals for landing a role at ${m.company}.`;
-      } else if (finalScore >= 70) {
-        reasoning = `Good alignment. Matches skills in ${m.skills.slice(0, 2).join(", ")}. Can help you optimize projects for ATS review.`;
-      } else {
-        reasoning = `General career guidance candidate. Highly rated for generic interviews preps and coding tests setup.`;
-      }
-
-      return {
-        mentor: m,
-        score: finalScore,
-        reasoning
-      };
-    }).sort((a, b) => b.score - a.score);
+      alert("Your mentor request has been logged! Admins will check demand metrics to onboard matching experts.");
+      setReqCompany("");
+      setReqRole("");
+      setReqHelp("");
+      setIsRequestModalOpen(false);
+    } catch (err: any) {
+      alert(err.message || "Failed to submit request.");
+    } finally {
+      setSubmittingReq(false);
+    }
   };
 
-  const aiMatches = getAIMatches();
-
-  // Mentor view analytics indicators
-  const totalEarned = bookings
-    .filter(b => b.mentorId === mentorProfile.id && b.status === "Completed")
-    .reduce((sum, b) => sum + b.pricePaid, 0);
-
-  const totalSessionsConducted = bookings.filter(
-    b => b.mentorId === mentorProfile.id && b.status === "Completed"
-  ).length;
-
-  // Copilot strategics completions
+  // Copilot Send message
   const handleCopilotSend = async (customPrompt?: string) => {
     const query = (customPrompt || copilotInput).trim();
     if (!query) return;
 
     setCopilotInput("");
+    const userMsgId = `user-${Date.now()}`;
     const userMsg = {
-      id: generateCopilotMsgId(),
+      id: userMsgId,
       role: "user" as const,
       content: query
     };
@@ -723,12 +447,12 @@ export default function MentorshipOS() {
     setCopilotLoading(true);
 
     try {
-      const apiKey = typeof window !== "undefined" ? localStorage.getItem("gemini_api_key") || "" : "";
+      const storedKey = typeof window !== "undefined" ? localStorage.getItem("gemini_api_key") || "" : "";
       const res = await fetch("/api/placement/copilot", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-gemini-api-key": apiKey
+          "x-gemini-api-key": storedKey
         },
         body: JSON.stringify({
           message: `Mentorship OS query: ${query}`,
@@ -747,18 +471,19 @@ export default function MentorshipOS() {
       setCopilotMessages([
         ...updatedMsgs,
         {
-          id: generateCopilotMsgId(),
+          id: `copilot-${Date.now()}`,
           role: "copilot" as const,
-          content: data.data.reply
+          content: data.data?.reply || "I analyzed your mentorship history but got a blank suggestion. Try querying about specific FAANG roles!"
         }
       ]);
     } catch {
+      // Fallback matching reasoning
       const q = query.toLowerCase();
       let reply = "";
 
-      if (q.includes("google") || q.includes("jenkins") || q.includes("system design")) {
+      if (q.includes("google") || q.includes("system design")) {
         reply = `### Recommending Google Preparation Mentors:
-- **Sarah Jenkins** is your best match (95% Match Index).
+- **Sarah Jenkins** is highly recommended (95% Match Index).
 - **Specializations**: System Design Reviews, FAANG Interview Mocks.
 - **Action Plan**: Book a Mock Interview Session. Apply code \`WELCOMEFREE\` to secure it for free.`;
       } else if (q.includes("resume") || q.includes("review") || q.includes("ats")) {
@@ -776,7 +501,7 @@ export default function MentorshipOS() {
       setCopilotMessages([
         ...updatedMsgs,
         {
-          id: generateCopilotMsgId(),
+          id: `copilot-fallback-${Date.now()}`,
           role: "copilot" as const,
           content: reply
         }
@@ -786,21 +511,16 @@ export default function MentorshipOS() {
     }
   };
 
-  // Filtered mentors list
-  const filteredMentors = mentors.filter(m => {
-    const matchesSearch = m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          m.skills.some(s => s.toLowerCase().includes(searchQuery.toLowerCase())) ||
-                          m.company.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    const matchesCompany = filterCompany === "all" || m.company.toLowerCase() === filterCompany.toLowerCase();
-    const matchesRole = filterRole === "all" || m.role.toLowerCase().includes(filterRole.toLowerCase());
-    
-    let matchesPricing = true;
-    if (filterPricing === "free") matchesPricing = m.pricing === 0;
-    if (filterPricing === "paid") matchesPricing = m.pricing > 0;
+  // Get active mentor data for simulation view
+  const activeSimulatedMentor = mentors.find(m => m.id === simulatedMentorId) || mentors[0];
 
-    return matchesSearch && matchesCompany && matchesRole && matchesPricing;
-  });
+  const totalEarned = bookings
+    .filter(b => b.mentorId === simulatedMentorId && b.status === "Completed")
+    .reduce((sum, b) => sum + b.pricePaid, 0);
+
+  const totalSessionsConducted = bookings.filter(
+    b => b.mentorId === simulatedMentorId && b.status === "Completed"
+  ).length;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start relative font-sans">
@@ -825,7 +545,7 @@ export default function MentorshipOS() {
 
           <button
             onClick={() => setIsMentorView(!isMentorView)}
-            className="px-4 py-2.5 bg-slate-900 text-white hover:bg-indigo-650 text-xs font-black uppercase tracking-widest rounded-xl transition-all shadow-md cursor-pointer"
+            className="px-4 py-2.5 bg-slate-900 text-white hover:bg-indigo-600 text-xs font-black uppercase tracking-widest rounded-xl transition-all shadow-md cursor-pointer"
           >
             {isMentorView ? "Switch to Student Portal" : "Switch to Mentor Portal"}
           </button>
@@ -833,436 +553,572 @@ export default function MentorshipOS() {
 
         {/* Dynamic Context Tabs */}
         {!isMentorView ? (
-          <div className="flex flex-wrap border-b border-slate-200 bg-white p-2 rounded-2xl shadow-sm gap-1">
-            {[
-              { id: "marketplace", label: "Mentor Marketplace", icon: <Briefcase className="w-4 h-4" /> },
-              { id: "matching", label: "AI Mentor Matcher", icon: <Bot className="w-4 h-4" /> },
-              { id: "student-dashboard", label: "My Bookings & Notes", icon: <FileText className="w-4 h-4" /> }
-            ].map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={cn(
-                  "flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer",
-                  activeTab === tab.id
-                    ? "bg-slate-900 text-white shadow-md"
-                    : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
-                )}
-              >
-                {tab.icon}
-                <span>{tab.label}</span>
-              </button>
-            ))}
+          <div className="flex flex-wrap justify-between items-center border-b border-slate-200 bg-white p-2 rounded-2xl shadow-sm gap-2">
+            <div className="flex flex-wrap gap-1">
+              {[
+                { id: "marketplace", label: "Mentor Marketplace", icon: <Briefcase className="w-4 h-4" /> },
+                { id: "matching", label: "AI Mentor Matcher", icon: <Bot className="w-4 h-4" /> },
+                { id: "student-dashboard", label: "My Bookings & Notes", icon: <FileText className="w-4 h-4" /> }
+              ].map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={cn(
+                    "flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer",
+                    activeTab === tab.id
+                      ? "bg-slate-900 text-white shadow-md"
+                      : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                  )}
+                >
+                  {tab.icon}
+                  <span>{tab.label}</span>
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={() => setIsRequestModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-2 bg-pink-50 hover:bg-pink-100 text-pink-700 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all"
+            >
+              <HeartHandshake className="w-3.5 h-3.5" />
+              Request a Mentor
+            </button>
           </div>
         ) : (
-          <div className="flex flex-wrap border-b border-slate-200 bg-white p-2 rounded-2xl shadow-sm gap-1">
-            {[
-              { id: "mentor-dashboard", label: "Mentor Console", icon: <Award className="w-4 h-4" /> },
-              { id: "mentor-availability", label: "Manage Availability", icon: <Calendar className="w-4 h-4" /> }
-            ].map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={cn(
-                  "flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer",
-                  activeTab === tab.id
-                    ? "bg-slate-900 text-white shadow-md"
-                    : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
-                )}
-              >
-                {tab.icon}
-                <span>{tab.label}</span>
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center justify-between border-b border-slate-200 bg-white p-2 rounded-2xl shadow-sm gap-2">
+            <div className="flex flex-wrap gap-1">
+              {[
+                { id: "mentor-dashboard", label: "Mentor Console", icon: <Award className="w-4 h-4" /> },
+                { id: "mentor-availability", label: "Manage Availability", icon: <CalendarIcon className="w-4 h-4" /> }
+              ].map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={cn(
+                    "flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer",
+                    activeTab === tab.id
+                      ? "bg-slate-900 text-white shadow-md"
+                      : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                  )}
+                >
+                  {tab.icon}
+                  <span>{tab.label}</span>
+                </button>
+              ))}
+            </div>
+
+            {mentors.length > 0 && (
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-600 bg-slate-50 px-3 py-1.5 rounded-xl border">
+                <span>Simulated Mentor:</span>
+                <select
+                  value={simulatedMentorId}
+                  onChange={(e) => setSimulatedMentorId(e.target.value)}
+                  className="bg-white border text-xs font-bold p-1 rounded focus:outline-none"
+                >
+                  {mentors.map(m => (
+                    <option key={m.id} value={m.id}>{m.full_name} ({m.company})</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
         )}
 
         {/* Tab Cards Content Frame */}
         <div className="bg-white rounded-[2.5rem] p-6 md:p-10 border border-slate-200/60 shadow-sm min-h-[500px]">
           
-          {/* TAB: MARKETPLACE DIRECTORY */}
-          {!isMentorView && activeTab === "marketplace" && (
-            <div className="space-y-8 animate-fade-in">
-              
-              {/* Filters list */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-50/50 p-4 border border-slate-200 rounded-2xl">
-                <input
-                  type="text"
-                  placeholder="Search skills, company..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="p-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold focus:outline-none"
-                />
-                
-                <select
-                  value={filterCompany}
-                  onChange={(e) => setFilterCompany(e.target.value)}
-                  className="p-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold focus:outline-none"
-                >
-                  <option value="all">All Companies</option>
-                  <option value="google">Google</option>
-                  <option value="microsoft">Microsoft</option>
-                  <option value="amazon">Amazon</option>
-                  <option value="ibm">IBM</option>
-                  <option value="deloitte">Deloitte</option>
-                  <option value="accenture">Accenture</option>
-                </select>
-
-                <select
-                  value={filterRole}
-                  onChange={(e) => setFilterRole(e.target.value)}
-                  className="p-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold focus:outline-none"
-                >
-                  <option value="all">All Careers</option>
-                  <option value="engineer">Software Engineer</option>
-                  <option value="lead">Tech Lead / PM</option>
-                  <option value="recruiter">Recruiters</option>
-                </select>
-
-                <select
-                  value={filterPricing}
-                  onChange={(e) => setFilterPricing(e.target.value)}
-                  className="p-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold focus:outline-none"
-                >
-                  <option value="all">All Pricing</option>
-                  <option value="free">Free Sessions</option>
-                  <option value="paid">Paid Sessions</option>
-                </select>
-              </div>
-
-              {/* Mentors Cards grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {filteredMentors.map(mentor => (
-                  <div
-                    key={mentor.id}
-                    className="border border-slate-200 hover:border-pink-300 rounded-[2rem] p-6 space-y-4 hover:shadow-lg transition-all flex flex-col justify-between"
-                  >
-                    <div className="space-y-3">
-                      
-                      {/* Avatar, Company and Rating Header */}
-                      <div className="flex justify-between items-start">
-                        <div className="flex gap-3 items-center">
-                          <div className={cn("w-12 h-12 rounded-2xl bg-gradient-to-tr flex items-center justify-center text-white font-black text-xl shadow-md", mentor.imageColor)}>
-                            {mentor.name.charAt(0)}
-                          </div>
-                          <div>
-                            <strong className="text-sm font-black text-slate-800 block leading-tight">{mentor.name}</strong>
-                            <span className="text-[10px] text-slate-400 font-bold block mt-0.5">{mentor.role} @ {mentor.company}</span>
-                          </div>
-                        </div>
-                        
-                        <div className="flex items-center gap-1 text-amber-500 font-bold text-xs bg-amber-50 border border-amber-100 px-2 py-0.5 rounded">
-                          <Star className="w-3.5 h-3.5 fill-amber-400" />
-                          <span>{mentor.rating}</span>
-                        </div>
-                      </div>
-
-                      <p className="text-[11px] text-slate-500 font-semibold leading-relaxed line-clamp-3">
-                        {mentor.bio}
-                      </p>
-
-                      {/* Skills Tags */}
-                      <div className="flex flex-wrap gap-1.5 pt-1">
-                        {mentor.skills.slice(0, 3).map((skill, i) => (
-                          <span key={i} className="px-2 py-0.5 bg-slate-50 text-slate-500 text-[9px] font-black uppercase tracking-wider rounded border border-slate-100">
-                            {skill}
-                          </span>
-                        ))}
-                        {mentor.skills.length > 3 && (
-                          <span className="px-2 py-0.5 bg-slate-50 text-slate-400 text-[9px] font-black rounded border border-slate-100">
-                            +{mentor.skills.length - 3}
-                          </span>
-                        )}
-                      </div>
-
-                    </div>
-
-                    <div className="pt-4 border-t border-slate-100 flex justify-between items-center mt-3">
-                      <div>
-                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Session Price</span>
-                        <strong className="text-base font-black text-slate-900 leading-none">
-                          {mentor.pricing === 0 ? "FREE" : `$${mentor.pricing}`}
-                        </strong>
-                      </div>
-                      
-                      <button
-                        onClick={() => setSelectedMentor(mentor)}
-                        className="px-4 py-2 bg-slate-900 text-white hover:bg-pink-650 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer"
-                      >
-                        Book Slot
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-20 text-slate-400 font-bold uppercase tracking-widest text-xs gap-3">
+              <Bot className="w-8 h-8 text-pink-400 animate-spin" />
+              <span>Fetching Live Mentor Marketplace...</span>
             </div>
-          )}
-
-          {/* TAB: AI MATCHING ENGINE */}
-          {!isMentorView && activeTab === "matching" && (
-            <div className="space-y-6 animate-fade-in">
-              <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-2xl text-indigo-800 text-xs font-bold">
-                🚀 AI Mentor Matcher automatically computes compatibility indexes based on your target role config settings.
-              </div>
-
-              <div className="space-y-4">
-                {aiMatches.map((match, i) => (
-                  <div key={i} className="border border-slate-200 p-5 rounded-2xl flex flex-col md:flex-row justify-between md:items-center gap-6 bg-slate-50/20">
-                    <div className="space-y-3 flex-grow max-w-xl">
-                      <div className="flex items-center gap-3">
-                        <div className={cn("w-10 h-10 rounded-xl bg-gradient-to-tr flex items-center justify-center text-white font-black text-lg shadow-sm", match.mentor.imageColor)}>
-                          {match.mentor.name.charAt(0)}
-                        </div>
-                        <div>
-                          <strong className="text-sm font-black text-slate-800 block">{match.mentor.name}</strong>
-                          <span className="text-[10px] text-slate-400 font-bold block">{match.mentor.role} at {match.mentor.company}</span>
-                        </div>
-                      </div>
-                      <p className="text-xs text-slate-550 font-semibold leading-relaxed leading-normal">{match.reasoning}</p>
-                    </div>
-
-                    <div className="flex flex-col items-center md:items-end gap-3 shrink-0">
-                      <div className="text-center md:text-right">
-                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Compatibility Match</span>
-                        <strong className="text-xl font-black text-indigo-650 block mt-1">{match.score}%</strong>
-                      </div>
-                      <button
-                        onClick={() => setSelectedMentor(match.mentor)}
-                        className="px-4.5 py-2 bg-slate-900 text-white hover:bg-indigo-600 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer"
-                      >
-                        Book Now
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* TAB: STUDENT DASHBOARD */}
-          {!isMentorView && activeTab === "student-dashboard" && (
-            <div className="space-y-8 animate-fade-in">
-              <h2 className="text-xl font-black text-slate-900 font-display">My Bookings Queue & Mentor Notes</h2>
-
-              <div className="space-y-6">
-                {bookings.map(booking => (
-                  <div
-                    key={booking.id}
-                    className="border border-slate-200 p-6 rounded-[2rem] bg-white space-y-4 shadow-sm"
-                  >
-                    {/* Header: Title / Status */}
-                    <div className="flex justify-between items-start flex-wrap gap-4">
-                      <div>
-                        <strong className="text-sm font-black text-slate-850 block">{booking.sessionType}</strong>
-                        <span className="text-[10px] text-slate-400 font-bold block mt-0.5">Mentor: {booking.mentorName} ({booking.mentorCompany})</span>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <span className={cn(
-                          "px-2.5 py-0.5 text-[9px] font-black uppercase tracking-widest rounded border",
-                          booking.status === "Upcoming"
-                            ? "bg-amber-50 border-amber-100 text-amber-600 animate-pulse"
-                            : booking.status === "Completed"
-                            ? "bg-emerald-50 border-emerald-100 text-emerald-600"
-                            : "bg-red-50 border-red-100 text-red-500"
-                        )}>
-                          {booking.status}
-                        </span>
-                        {booking.status === "Upcoming" && (
-                          <div className="flex gap-1">
-                            <button
-                              onClick={() => handleMarkCompleted(booking.id)}
-                              className="px-2.5 py-1 bg-emerald-600 text-white hover:bg-emerald-700 text-[9px] font-black uppercase tracking-widest rounded-lg cursor-pointer"
-                            >
-                              Complete
-                            </button>
-                            <button
-                              onClick={() => handleCancelBooking(booking.id)}
-                              className="px-2.5 py-1 bg-slate-100 text-slate-500 hover:bg-red-50 hover:text-red-500 text-[9px] font-black uppercase tracking-widest rounded-lg cursor-pointer"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 py-2 border-y border-slate-100 text-xs font-bold text-slate-500">
-                      <div className="flex items-center gap-2">
-                        <Calendar className="w-4 h-4 text-slate-400" />
-                        <span>Date: {booking.date}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Clock className="w-4 h-4 text-slate-400" />
-                        <span>Time: {booking.time}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <DollarSign className="w-4 h-4 text-slate-400" />
-                        <span>Paid: {booking.pricePaid === 0 ? "FREE" : `$${booking.pricePaid}`}</span>
-                      </div>
-                    </div>
-
-                    {/* Mentor Notes */}
-                    {booking.notes && (
-                      <div className="p-4 bg-indigo-50/30 border border-indigo-100 rounded-2xl space-y-3 mt-2">
-                        <div className="flex items-center gap-1 text-[10px] font-black text-indigo-700 uppercase tracking-widest">
-                          <CheckCircle2 className="w-4 h-4" />
-                          <span>Mentor Feedback & Notes</span>
-                        </div>
-                        
-                        <div className="space-y-2 text-xs">
-                          <div>
-                            <strong className="text-slate-800 font-black">Recommendations:</strong>
-                            <p className="text-slate-600 font-semibold leading-relaxed mt-0.5">{booking.notes.recommendations}</p>
-                          </div>
-                          <div>
-                            <strong className="text-slate-800 font-black">Weak Areas to Address:</strong>
-                            <p className="text-slate-600 font-semibold leading-relaxed mt-0.5">{booking.notes.weakAreas}</p>
-                          </div>
-                          <div>
-                            <strong className="text-slate-800 font-black">Action Items:</strong>
-                            <p className="text-slate-600 font-semibold leading-relaxed mt-0.5">{booking.notes.actionPlan}</p>
-                          </div>
-                          <div>
-                            <strong className="text-slate-800 font-black">Homework Assignment:</strong>
-                            <p className="text-slate-600 font-semibold leading-relaxed mt-0.5">{booking.notes.homework}</p>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Review Ratings display */}
-                    {booking.status === "Completed" && booking.reviewRating && (
-                      <div className="flex items-center gap-2 pt-1">
-                        <span className="text-[9px] font-black text-slate-450 uppercase tracking-wider">Your Review:</span>
-                        <div className="flex gap-0.5">
-                          {Array.from({ length: 5 }).map((_, idx) => (
-                            <Star
-                              key={idx}
-                              className={cn(
-                                "w-3 h-3",
-                                idx < (booking.reviewRating || 5) ? "fill-amber-400 text-amber-400" : "text-slate-200"
-                              )}
-                            />
-                          ))}
-                        </div>
-                        {booking.reviewComment && (
-                          <span className="text-[11px] text-slate-500 italic font-semibold">&ldquo;{booking.reviewComment}&rdquo;</span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-            </div>
-          )}
-
-          {/* TAB: MENTOR CONSOLE (Mentor View) */}
-          {isMentorView && activeTab === "mentor-dashboard" && (
-            <div className="space-y-8 animate-fade-in">
-              <h2 className="text-xl font-black text-slate-900 font-display">Mentor Dashboard Console</h2>
-
-              {/* Earnings Analytics Row */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                {[
-                  { label: "Total Earnings", value: `$${totalEarned}` },
-                  { label: "Sessions Conducted", value: totalSessionsConducted },
-                  { label: "Average Rating", value: mentorProfile.rating },
-                  { label: "Reviews Received", value: mentorProfile.reviewsCount }
-                ].map((stat, i) => (
-                  <div key={i} className="bg-slate-50 border border-slate-200 p-5 rounded-2xl space-y-1">
-                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">{stat.label}</span>
-                    <strong className="text-2xl font-black text-slate-900">{stat.value}</strong>
-                  </div>
-                ))}
-              </div>
-
-              {/* Upcoming sessions details list */}
-              <div className="space-y-4 pt-4">
-                <h3 className="text-sm font-black text-slate-800">Student Bookings Queue</h3>
-                
-                <div className="space-y-3">
-                  {bookings.filter(b => b.mentorId === mentorProfile.id).map(booking => (
-                    <div key={booking.id} className="border border-slate-200 p-5 rounded-2xl bg-white flex flex-col md:flex-row justify-between md:items-center gap-4">
-                      <div>
-                        <strong className="text-sm font-black text-slate-800 block">{booking.sessionType}</strong>
-                        <span className="text-[10px] text-slate-400 font-bold block mt-0.5">Date: {booking.date} @ {booking.time} • Status: {booking.status}</span>
-                      </div>
-
-                      <div className="flex gap-2">
-                        {booking.status === "Completed" && !booking.notes && (
-                          <button
-                            onClick={() => setNewNoteBookingId(booking.id)}
-                            className="px-3 py-1.5 bg-slate-950 text-white text-[9px] font-black uppercase tracking-widest rounded-lg cursor-pointer"
-                          >
-                            Add Notes
-                          </button>
-                        )}
-                        <span className="px-2.5 py-1 text-[9px] font-black uppercase bg-slate-50 border rounded text-slate-550 shrink-0">Paid: {booking.pricePaid === 0 ? "FREE" : `$${booking.pricePaid}`}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB: MANAGE AVAILABILITY */}
-          {isMentorView && activeTab === "mentor-availability" && (
-            <div className="space-y-6 animate-fade-in">
-              <h2 className="text-xl font-black text-slate-900 font-display">Manage Availability Slots</h2>
-
-              <form onSubmit={handleUpdateMentorProfile} className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-2">Display Name</label>
+          ) : (
+            <>
+              {/* TAB: MARKETPLACE DIRECTORY */}
+              {!isMentorView && activeTab === "marketplace" && (
+                <div className="space-y-8 animate-fade-in">
+                  
+                  {/* Filters list */}
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-50/50 p-4 border border-slate-200 rounded-2xl">
                     <input
                       type="text"
-                      value={mentorProfile.name}
-                      onChange={(e) => setMentorProfile({ ...mentorProfile, name: e.target.value })}
-                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none"
+                      placeholder="Search skills, company..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="p-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold focus:outline-none"
                     />
+                    
+                    <select
+                      value={filterCompany}
+                      onChange={(e) => setFilterCompany(e.target.value)}
+                      className="p-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold focus:outline-none"
+                    >
+                      <option value="all">All Companies</option>
+                      <option value="google">Google</option>
+                      <option value="microsoft">Microsoft</option>
+                      <option value="amazon">Amazon</option>
+                      <option value="meta">Meta</option>
+                      <option value="netflix">Netflix</option>
+                      <option value="deloitte">Deloitte</option>
+                      <option value="accenture">Accenture</option>
+                      <option value="tcs">TCS</option>
+                      <option value="infosys">Infosys</option>
+                      <option value="ibm">IBM</option>
+                      <option value="capgemini">Capgemini</option>
+                      <option value="cognizant">Cognizant</option>
+                      <option value="wipro">Wipro</option>
+                      <option value="startup">Startup</option>
+                    </select>
+
+                    <select
+                      value={filterRole}
+                      onChange={(e) => setFilterRole(e.target.value)}
+                      className="p-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold focus:outline-none"
+                    >
+                      <option value="all">All Roles</option>
+                      <option value="engineer">Software Engineer</option>
+                      <option value="developer">Developer</option>
+                      <option value="architect">Cloud Architect</option>
+                      <option value="pm">Product Manager</option>
+                      <option value="analyst">Data Analyst</option>
+                      <option value="recruiter">Recruiter</option>
+                      <option value="consultant">Consultant</option>
+                    </select>
+
+                    <div className="flex flex-col gap-1 justify-center">
+                      <select
+                        value={filterPricing}
+                        onChange={(e) => setFilterPricing(e.target.value)}
+                        className="p-2 bg-white border border-slate-200 rounded-lg text-xs font-bold focus:outline-none w-full"
+                      >
+                        <option value="all">All Pricing</option>
+                        <option value="free">Free Sessions</option>
+                        <option value="paid">Paid Sessions</option>
+                      </select>
+                      <label className="flex items-center gap-1.5 text-[10px] font-black text-slate-500 uppercase mt-1 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={verifiedOnly}
+                          onChange={(e) => setVerifiedOnly(e.target.checked)}
+                          className="rounded border-slate-300 text-pink-600 focus:ring-pink-500"
+                        />
+                        Verified Only
+                      </label>
+                    </div>
                   </div>
 
-                  <div>
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-2">Session Fee ($)</label>
-                    <input
-                      type="number"
-                      value={mentorProfile.pricing}
-                      onChange={(e) => setMentorProfile({ ...mentorProfile, pricing: Number(e.target.value) })}
-                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none"
-                    />
+                  {/* Mentors Cards grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {mentors.map(mentor => (
+                      <div
+                        key={mentor.id}
+                        className="border border-slate-200 hover:border-pink-300 rounded-[2rem] p-6 space-y-4 hover:shadow-lg transition-all flex flex-col justify-between"
+                      >
+                        <div className="space-y-3">
+                          
+                          {/* Avatar, Company and Rating Header */}
+                          <div className="flex justify-between items-start">
+                            <div className="flex gap-3 items-center">
+                              <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white font-black text-xl shadow-md">
+                                {mentor.full_name.charAt(0)}
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-1.5">
+                                  <strong className="text-sm font-black text-slate-800 leading-tight">{mentor.full_name}</strong>
+                                  {mentor.verified_status !== "None" && (
+                                    <span className="px-1.5 py-0.5 bg-blue-50 text-blue-600 border border-blue-100 rounded text-[8px] font-black uppercase">
+                                      {mentor.verified_status.replace(" Badge", "")}
+                                    </span>
+                                  )}
+                                  {mentor.featured_status && (
+                                    <span className="px-1.5 py-0.5 bg-pink-50 text-pink-600 border border-pink-100 rounded text-[8px] font-black uppercase">
+                                      Featured
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="text-[10px] text-slate-400 font-bold block mt-0.5">{mentor.job_title} @ {mentor.company}</span>
+                              </div>
+                            </div>
+                            
+                            <div className="flex flex-col items-end gap-1">
+                              <div className="flex items-center gap-1 text-amber-500 font-bold text-xs bg-amber-50 border border-amber-100 px-2 py-0.5 rounded">
+                                <Star className="w-3.5 h-3.5 fill-amber-400" />
+                                <span>{mentor.rating}</span>
+                              </div>
+                              <span className="text-[9px] font-bold text-slate-450 uppercase">Trust: {mentor.trust_score}%</span>
+                            </div>
+                          </div>
+
+                          <p className="text-[11px] text-slate-500 font-semibold leading-relaxed line-clamp-3">
+                            {mentor.bio}
+                          </p>
+
+                          {/* Skills Tags */}
+                          <div className="flex flex-wrap gap-1.5 pt-1">
+                            {mentor.skills.slice(0, 3).map((skill, i) => (
+                              <span key={i} className="px-2 py-0.5 bg-slate-50 text-slate-500 text-[9px] font-black uppercase tracking-wider rounded border border-slate-100">
+                                {skill}
+                              </span>
+                            ))}
+                            {mentor.skills.length > 3 && (
+                              <span className="px-2 py-0.5 bg-slate-50 text-slate-400 text-[9px] font-black rounded border border-slate-100">
+                                +{mentor.skills.length - 3}
+                              </span>
+                            )}
+                          </div>
+
+                        </div>
+
+                        <div className="pt-4 border-t border-slate-100 flex justify-between items-center mt-3">
+                          <div>
+                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Session Price</span>
+                            <strong className="text-base font-black text-slate-900 leading-none">
+                              {mentor.session_price === 0 ? "FREE" : `$${mentor.session_price}`}
+                            </strong>
+                          </div>
+                          
+                          <button
+                            onClick={() => setSelectedMentor(mentor)}
+                            className="px-4 py-2 bg-slate-900 text-white hover:bg-pink-600 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer"
+                          >
+                            Book Slot
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {mentors.length === 0 && (
+                    <div className="flex flex-col items-center justify-center py-20 text-center gap-4">
+                      <AlertTriangle className="w-12 h-12 text-amber-500" />
+                      <div>
+                        <strong className="text-slate-800 text-sm font-black block">No Matching Mentors Found</strong>
+                        <p className="text-slate-400 text-xs font-semibold mt-1">Try relaxing filters or request custom expert onboarding below.</p>
+                      </div>
+                      <button
+                        onClick={() => setIsRequestModalOpen(true)}
+                        className="px-6 py-2.5 bg-slate-900 text-white font-black text-xs uppercase tracking-widest rounded-xl hover:bg-pink-600 transition-all cursor-pointer"
+                      >
+                        Request a Mentor
+                      </button>
+                    </div>
+                  )}
+
+                </div>
+              )}
+
+              {/* TAB: AI MATCHING ENGINE */}
+              {!isMentorView && activeTab === "matching" && (
+                <div className="space-y-6 animate-fade-in">
+                  <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-2xl text-indigo-800 text-xs font-bold flex items-center gap-2">
+                    <Bot className="w-5 h-5 text-indigo-500 shrink-0" />
+                    <span>AI Matcher computes compatibility based on your target role config settings, skills, and ATS weak spots.</span>
+                  </div>
+
+                  <div className="space-y-4">
+                    {aiMatches.map((match, i) => (
+                      <div key={i} className="border border-slate-200 p-5 rounded-2xl flex flex-col md:flex-row justify-between md:items-center gap-6 bg-slate-50/20">
+                        <div className="space-y-3 flex-grow max-w-xl">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white font-black text-lg shadow-sm">
+                              {match.mentor.full_name.charAt(0)}
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <strong className="text-sm font-black text-slate-800 block">{match.mentor.full_name}</strong>
+                                {match.mentor.verified_status !== "None" && (
+                                  <span className="px-1.5 py-0.5 bg-blue-50 text-blue-600 border border-blue-100 rounded text-[7px] font-black uppercase">
+                                    {match.mentor.verified_status.replace(" Badge", "")}
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[10px] text-slate-400 font-bold block">{match.mentor.job_title} at {match.mentor.company}</span>
+                            </div>
+                          </div>
+                          <p className="text-xs text-slate-600 font-semibold leading-relaxed leading-normal">{match.reasoning}</p>
+                        </div>
+
+                        <div className="flex flex-col items-center md:items-end gap-3 shrink-0">
+                          <div className="text-center md:text-right">
+                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Compatibility Match</span>
+                            <strong className="text-xl font-black text-indigo-600 block mt-1">{match.score}%</strong>
+                          </div>
+                          <button
+                            onClick={() => setSelectedMentor(match.mentor)}
+                            className="px-4.5 py-2 bg-slate-900 text-white hover:bg-indigo-650 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer"
+                          >
+                            Book Now
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+
+                    {aiMatches.length === 0 && (
+                      <div className="py-20 text-center text-slate-400 font-bold uppercase tracking-widest text-xs">
+                        No mentors catalogued to run AI matches
+                      </div>
+                    )}
                   </div>
                 </div>
+              )}
 
-                <div>
-                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-2">Configure Specializations</label>
-                  <input
-                    type="text"
-                    value={mentorProfile.specializations.join(", ")}
-                    onChange={(e) => setMentorProfile({ ...mentorProfile, specializations: e.target.value.split(", ") })}
-                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none"
-                    placeholder="E.g. System Design Reviews, FAANG Interview Mocks"
-                  />
+              {/* TAB: STUDENT BOOKINGS */}
+              {!isMentorView && activeTab === "student-dashboard" && (
+                <div className="space-y-8 animate-fade-in">
+                  <h2 className="text-xl font-black text-slate-900 font-display">My Bookings Queue & Mentor Notes</h2>
+
+                  <div className="space-y-6">
+                    {bookings.map(booking => (
+                      <div
+                        key={booking.id}
+                        className="border border-slate-200 p-6 rounded-[2rem] bg-white space-y-4 shadow-sm"
+                      >
+                        {/* Header: Title / Status */}
+                        <div className="flex justify-between items-start flex-wrap gap-4">
+                          <div>
+                            <strong className="text-sm font-black text-slate-850 block">{booking.sessionType}</strong>
+                            <span className="text-[10px] text-slate-400 font-bold block mt-0.5">Mentor: {booking.mentorName} ({booking.mentorCompany})</span>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <span className={cn(
+                              "px-2.5 py-0.5 text-[9px] font-black uppercase tracking-widest rounded border",
+                              booking.status === "Upcoming"
+                                ? "bg-amber-50 border-amber-100 text-amber-600 animate-pulse"
+                                : booking.status === "Completed"
+                                ? "bg-emerald-50 border-emerald-100 text-emerald-600"
+                                : "bg-red-50 border-red-100 text-red-500"
+                            )}>
+                              {booking.status}
+                            </span>
+                            {booking.status === "Upcoming" && (
+                              <button
+                                onClick={() => handleCancelBooking(booking.id)}
+                                className="px-2.5 py-1 bg-slate-100 text-slate-500 hover:bg-red-50 hover:text-red-500 text-[9px] font-black uppercase tracking-widest rounded-lg cursor-pointer"
+                              >
+                                Cancel
+                              </button>
+                            )}
+                            {booking.status === "Completed" && !booking.reviewRating && (
+                              <button
+                                onClick={() => setReviewBookingId(booking.id)}
+                                className="px-2.5 py-1 bg-amber-500 text-white hover:bg-amber-600 text-[9px] font-black uppercase tracking-widest rounded-lg cursor-pointer"
+                              >
+                                Leave Review
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 py-2 border-y border-slate-100 text-xs font-bold text-slate-500">
+                          <div className="flex items-center gap-2">
+                            <CalendarIcon className="w-4 h-4 text-slate-400" />
+                            <span>Date: {booking.date}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Clock className="w-4 h-4 text-slate-400" />
+                            <span>Time: {booking.time}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <DollarSign className="w-4 h-4 text-slate-400" />
+                            <span>Paid: {booking.pricePaid === 0 ? "FREE" : `$${booking.pricePaid}`}</span>
+                          </div>
+                        </div>
+
+                        {/* Mentor Notes */}
+                        {booking.notes && typeof booking.notes === 'object' && (
+                          <div className="p-4 bg-indigo-50/30 border border-indigo-100 rounded-2xl space-y-3 mt-2">
+                            <div className="flex items-center gap-1 text-[10px] font-black text-indigo-700 uppercase tracking-widest">
+                              <CheckCircle2 className="w-4 h-4" />
+                              <span>Mentor Feedback & Notes</span>
+                            </div>
+                            
+                            <div className="space-y-2 text-xs">
+                              {booking.notes.recommendations && (
+                                <div>
+                                  <strong className="text-slate-800 font-black">Recommendations:</strong>
+                                  <p className="text-slate-600 font-semibold leading-relaxed mt-0.5">{booking.notes.recommendations}</p>
+                                </div>
+                              )}
+                              {booking.notes.weakAreas && (
+                                <div>
+                                  <strong className="text-slate-800 font-black">Weak Areas to Address:</strong>
+                                  <p className="text-slate-600 font-semibold leading-relaxed mt-0.5">{booking.notes.weakAreas}</p>
+                                </div>
+                              )}
+                              {booking.notes.actionPlan && (
+                                <div>
+                                  <strong className="text-slate-800 font-black">Action Items:</strong>
+                                  <p className="text-slate-600 font-semibold leading-relaxed mt-0.5">{booking.notes.actionPlan}</p>
+                                </div>
+                              )}
+                              {booking.notes.homework && (
+                                <div>
+                                  <strong className="text-slate-800 font-black">Homework Assignment:</strong>
+                                  <p className="text-slate-600 font-semibold leading-relaxed mt-0.5">{booking.notes.homework}</p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Review Ratings display */}
+                        {booking.status === "Completed" && booking.reviewRating && (
+                          <div className="flex items-center gap-2 pt-1">
+                            <span className="text-[9px] font-black text-slate-450 uppercase tracking-wider">Your Review:</span>
+                            <div className="flex gap-0.5">
+                              {Array.from({ length: 5 }).map((_, idx) => (
+                                <Star
+                                  key={idx}
+                                  className={cn(
+                                    "w-3 h-3",
+                                    idx < (booking.reviewRating || 5) ? "fill-amber-400 text-amber-400" : "text-slate-200"
+                                  )}
+                                />
+                              ))}
+                            </div>
+                            {booking.reviewComment && (
+                              <span className="text-[11px] text-slate-550 italic font-bold">&ldquo;{booking.reviewComment}&rdquo;</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+
+                    {bookings.length === 0 && (
+                      <div className="py-20 text-center text-slate-400 font-bold uppercase tracking-widest text-xs">
+                        No bookings found. Book a session from the marketplace.
+                      </div>
+                    )}
+                  </div>
+
                 </div>
+              )}
 
-                <button
-                  type="submit"
-                  className="w-full py-4 bg-slate-900 text-white font-black text-xs uppercase tracking-widest rounded-2xl hover:bg-indigo-600 transition-all shadow-md cursor-pointer"
-                >
-                  Save Settings & Availability Mappings
-                </button>
-              </form>
-            </div>
+              {/* TAB: MENTOR CONSOLE (Simulated) */}
+              {isMentorView && activeTab === "mentor-dashboard" && (
+                <div className="space-y-8 animate-fade-in">
+                  <h2 className="text-xl font-black text-slate-900 font-display">Simulated Mentor Dashboard</h2>
+
+                  {activeSimulatedMentor ? (
+                    <>
+                      {/* Earnings Analytics Row */}
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                        {[
+                          { label: "Total Earnings", value: `$${totalEarned}` },
+                          { label: "Sessions Conducted", value: totalSessionsConducted },
+                          { label: "Average Rating", value: activeSimulatedMentor.rating },
+                          { label: "Reviews Received", value: activeSimulatedMentor.review_count }
+                        ].map((stat, i) => (
+                          <div key={i} className="bg-slate-50 border border-slate-200 p-5 rounded-2xl space-y-1">
+                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">{stat.label}</span>
+                            <strong className="text-2xl font-black text-slate-900">{stat.value}</strong>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Upcoming sessions details list */}
+                      <div className="space-y-4 pt-4">
+                        <h3 className="text-sm font-black text-slate-800">Student Bookings Queue</h3>
+                        
+                        <div className="space-y-3">
+                          {bookings
+                            .filter(b => b.mentorId === simulatedMentorId)
+                            .map(booking => (
+                              <div key={booking.id} className="border border-slate-200 p-5 rounded-2xl bg-white flex flex-col md:flex-row justify-between md:items-center gap-4">
+                                <div>
+                                  <strong className="text-sm font-black text-slate-800 block">{booking.sessionType}</strong>
+                                  <span className="text-[10px] text-slate-400 font-bold block mt-0.5">Date: {booking.date} @ {booking.time} • Status: {booking.status}</span>
+                                </div>
+
+                                <div className="flex gap-2 items-center">
+                                  {booking.status === "Upcoming" && (
+                                    <button
+                                      onClick={() => setNewNoteBookingId(booking.id)}
+                                      className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-[9px] font-black uppercase tracking-widest rounded-lg cursor-pointer"
+                                    >
+                                      Submit Notes
+                                    </button>
+                                  )}
+                                  <span className="px-2.5 py-1 text-[9px] font-black uppercase bg-slate-50 border rounded text-slate-550 shrink-0">Paid: {booking.pricePaid === 0 ? "FREE" : `$${booking.pricePaid}`}</span>
+                                </div>
+                              </div>
+                            ))}
+
+                          {bookings.filter(b => b.mentorId === simulatedMentorId).length === 0 && (
+                            <div className="py-10 text-center text-slate-400 font-bold uppercase tracking-widest text-xs bg-slate-50 rounded-xl border">
+                              No bookings recorded for this simulated mentor.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="py-20 text-center text-slate-400 font-bold uppercase tracking-widest text-xs">
+                      Please seed or add a mentor in the Admin Panel first.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* TAB: MANAGE AVAILABILITY (Simulated) */}
+              {isMentorView && activeTab === "mentor-availability" && (
+                <div className="space-y-6 animate-fade-in">
+                  <h2 className="text-xl font-black text-slate-900 font-display">Simulated Mentor Settings</h2>
+
+                  {activeSimulatedMentor ? (
+                    <form onSubmit={(e) => { e.preventDefault(); alert("Profile settings are fully managed in the central Admin Panel."); }} className="space-y-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                          <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-2">Display Name</label>
+                          <input
+                            type="text"
+                            readOnly
+                            value={activeSimulatedMentor.full_name}
+                            className="w-full p-3 bg-slate-100 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none text-slate-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-2">Session Fee ($)</label>
+                          <input
+                            type="number"
+                            readOnly
+                            value={activeSimulatedMentor.session_price}
+                            className="w-full p-3 bg-slate-100 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none text-slate-500"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-2">Specializations</label>
+                        <input
+                          type="text"
+                          readOnly
+                          value={activeSimulatedMentor.specializations.join(", ")}
+                          className="w-full p-3 bg-slate-100 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none text-slate-500"
+                        />
+                      </div>
+
+                      <div className="p-4 bg-slate-50 rounded-xl border text-xs font-bold text-slate-550 text-center">
+                        Note: Dynamic availability slots and verification badges are controlled directly from the **Admin Mentor Manager**.
+                      </div>
+                    </form>
+                  ) : (
+                    <div className="py-20 text-center text-slate-400 font-bold uppercase tracking-widest text-xs">
+                      No active simulated mentor configuration.
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
           )}
 
         </div>
 
       </div>
 
-      {/* RIGHT COLUMN: Readiness checklists & Strategics copilot drawer */}
+      {/* RIGHT COLUMN: Availability booking pane & strategics copilot */}
       <div className="lg:col-span-4 space-y-8">
         
         {/* Availability booking preview pane */}
@@ -1276,8 +1132,8 @@ export default function MentorshipOS() {
             <div className="space-y-4">
               <div>
                 <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Selected Expert</span>
-                <strong className="text-base font-black text-slate-800 block mt-1">{selectedMentor.name}</strong>
-                <span className="text-[10px] text-slate-550 block mt-0.5">{selectedMentor.role} at {selectedMentor.company}</span>
+                <strong className="text-base font-black text-slate-800 block mt-1">{selectedMentor.full_name}</strong>
+                <span className="text-[10px] text-slate-550 block mt-0.5">{selectedMentor.job_title} at {selectedMentor.company}</span>
               </div>
 
               <div>
@@ -1287,34 +1143,58 @@ export default function MentorshipOS() {
                   onChange={(e) => setBookingType(e.target.value)}
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none"
                 >
-                  <option value="Resume Review & ATS Optimization">Resume Review & ATS Optimization</option>
-                  <option value="Mock Technical Interview">Mock Technical Interview</option>
-                  <option value="Placement Prep Strategy Session">Placement Prep Strategy Session</option>
-                  <option value="Referral & LinkedIn Audit">Referral & LinkedIn Audit</option>
+                  {selectedMentor.session_types && selectedMentor.session_types.length > 0 ? (
+                    selectedMentor.session_types.map(st => (
+                      <option key={st} value={st}>{st}</option>
+                    ))
+                  ) : (
+                    <>
+                      <option value="Mock Technical Interview">Mock Technical Interview</option>
+                      <option value="Resume Review & ATS Optimization">Resume Review & ATS Optimization</option>
+                      <option value="Career Path Guidance">Career Path Guidance</option>
+                    </>
+                  )}
                 </select>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-2">Pick Date</label>
-                  <input
-                    type="date"
-                    value={bookingDate}
-                    onChange={(e) => setBookingDate(e.target.value)}
-                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none"
-                  />
+                  {availableDates.length > 0 ? (
+                    <select
+                      value={bookingDate}
+                      onChange={(e) => { setBookingDate(e.target.value); setBookingTime(""); }}
+                      className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none"
+                    >
+                      <option value="">Choose Date</option>
+                      {availableDates.map(d => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="text-[10px] font-bold text-red-500 py-2">No active dates</div>
+                  )}
                 </div>
                 <div>
                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-2">Select Time</label>
-                  <select
-                    value={bookingTime}
-                    onChange={(e) => setBookingTime(e.target.value)}
-                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none"
-                  >
-                    <option value="10:00 AM">10:00 AM - 10:45 AM</option>
-                    <option value="02:00 PM">02:00 PM - 02:45 PM</option>
-                    <option value="04:00 PM">04:00 PM - 04:45 PM</option>
-                  </select>
+                  {bookingDate ? (
+                    availableTimes.length > 0 ? (
+                      <select
+                        value={bookingTime}
+                        onChange={(e) => setBookingTime(e.target.value)}
+                        className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none"
+                      >
+                        <option value="">Choose Time</option>
+                        {availableTimes.map(t => (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className="text-[10px] font-bold text-red-500 py-2">All booked</div>
+                    )
+                  ) : (
+                    <div className="text-[10px] font-bold text-slate-400 py-2">Choose date first</div>
+                  )}
                 </div>
               </div>
 
@@ -1340,9 +1220,9 @@ export default function MentorshipOS() {
 
               {/* Price summary */}
               <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1 text-xs">
-                <div className="flex justify-between font-bold text-slate-500">
+                <div className="flex justify-between font-bold text-slate-505">
                   <span>Base Fee:</span>
-                  <span>${selectedMentor.pricing}</span>
+                  <span>${selectedMentor.session_price}</span>
                 </div>
                 {discountAmount > 0 && (
                   <div className="flex justify-between font-bold text-emerald-600">
@@ -1350,19 +1230,20 @@ export default function MentorshipOS() {
                     <span>-${discountAmount}</span>
                   </div>
                 )}
-                <div className="flex justify-between font-black text-slate-800 border-t border-slate-200 pt-1.5">
+                <div className="flex justify-between font-black text-slate-805 border-t border-slate-200 pt-1.5">
                   <span>Payable Total:</span>
-                  <span>${Math.max(0, selectedMentor.pricing - discountAmount)}</span>
+                  <span>${Math.max(0, selectedMentor.session_price - discountAmount)}</span>
                 </div>
               </div>
 
-              {selectedMentor.pricing - discountAmount > 0 && (
+              {selectedMentor.session_price - discountAmount > 0 && (
                 <div>
                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">Payment Provider</label>
                   <div className="grid grid-cols-3 gap-2">
                     {["UPI", "Stripe", "Razorpay"].map(method => (
                       <button
                         key={method}
+                        type="button"
                         onClick={() => setPaymentMethod(method)}
                         className={cn(
                           "py-2 border rounded-xl text-[10px] font-black transition-all cursor-pointer",
@@ -1394,19 +1275,46 @@ export default function MentorshipOS() {
           <div className="bg-white p-8 rounded-[2.5rem] border border-amber-250 shadow-xl space-y-4 animate-fade-in relative shrink-0">
             <strong className="text-sm font-black text-slate-900 block font-display">Rate Mentor Session</strong>
             <form onSubmit={handleSubmitReview} className="space-y-4">
-              <div>
-                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-2">Rating Star Count</label>
-                <div className="flex gap-2">
-                  {[1, 2, 3, 4, 5].map(star => (
-                    <button
-                      key={star}
-                      type="button"
-                      onClick={() => setReviewRating(star)}
-                      className="text-amber-400 focus:outline-none hover:scale-115 transition-transform"
-                    >
-                      <Star className={cn("w-6 h-6", star <= reviewRating ? "fill-amber-400" : "text-slate-200")} />
-                    </button>
-                  ))}
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-[10px] font-bold text-slate-600">Communication</span>
+                  <div className="flex gap-1">
+                    {[1,2,3,4,5].map(s => (
+                      <Star key={s} onClick={() => setReviewRatingComm(s)} className={cn("w-4.5 h-4.5 cursor-pointer", s <= reviewRatingComm ? "fill-amber-400 text-amber-400" : "text-slate-200")} />
+                    ))}
+                  </div>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-[10px] font-bold text-slate-600">Technical Knowledge</span>
+                  <div className="flex gap-1">
+                    {[1,2,3,4,5].map(s => (
+                      <Star key={s} onClick={() => setReviewRatingKnow(s)} className={cn("w-4.5 h-4.5 cursor-pointer", s <= reviewRatingKnow ? "fill-amber-400 text-amber-400" : "text-slate-200")} />
+                    ))}
+                  </div>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-[10px] font-bold text-slate-600">Helpfulness</span>
+                  <div className="flex gap-1">
+                    {[1,2,3,4,5].map(s => (
+                      <Star key={s} onClick={() => setReviewRatingHelp(s)} className={cn("w-4.5 h-4.5 cursor-pointer", s <= reviewRatingHelp ? "fill-amber-400 text-amber-400" : "text-slate-200")} />
+                    ))}
+                  </div>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-[10px] font-bold text-slate-600">Practical Advice</span>
+                  <div className="flex gap-1">
+                    {[1,2,3,4,5].map(s => (
+                      <Star key={s} onClick={() => setReviewRatingAdv(s)} className={cn("w-4.5 h-4.5 cursor-pointer", s <= reviewRatingAdv ? "fill-amber-400 text-amber-400" : "text-slate-200")} />
+                    ))}
+                  </div>
+                </div>
+                <div className="flex justify-between items-center border-t pt-2">
+                  <span className="text-xs font-black text-slate-800">Overall Rating</span>
+                  <div className="flex gap-1">
+                    {[1,2,3,4,5].map(s => (
+                      <Star key={s} onClick={() => setReviewRating(s)} className={cn("w-5 h-5 cursor-pointer", s <= reviewRating ? "fill-amber-400 text-amber-400" : "text-slate-200")} />
+                    ))}
+                  </div>
                 </div>
               </div>
 
@@ -1421,12 +1329,21 @@ export default function MentorshipOS() {
                 />
               </div>
 
-              <button
-                type="submit"
-                className="w-full py-3 bg-slate-900 text-white font-black text-[10px] uppercase tracking-widest rounded-xl hover:bg-amber-600 transition-all cursor-pointer"
-              >
-                Submit Review Rating
-              </button>
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  className="flex-grow py-3 bg-slate-900 text-white font-black text-[10px] uppercase tracking-widest rounded-xl hover:bg-amber-600 transition-all cursor-pointer"
+                >
+                  Submit Review Rating
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setReviewBookingId(null)}
+                  className="px-4 py-3 bg-slate-100 text-slate-500 hover:bg-slate-200 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+              </div>
             </form>
           </div>
         )}
@@ -1448,6 +1365,7 @@ export default function MentorshipOS() {
                   onChange={(e) => setNewNoteRec(e.target.value)}
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none"
                   placeholder="E.g. Code structure looks solid..."
+                  required
                 />
               </div>
 
@@ -1463,7 +1381,7 @@ export default function MentorshipOS() {
               </div>
 
               <div>
-                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Action Plan Project Recommendations</label>
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Action Plan Roadmap</label>
                 <input
                   type="text"
                   value={newNotePlan}
@@ -1474,21 +1392,76 @@ export default function MentorshipOS() {
               </div>
 
               <div>
-                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Homework Checklist Assignment</label>
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Homework Questions (comma separated)</label>
                 <input
                   type="text"
                   value={newNoteHomework}
                   onChange={(e) => setNewNoteHomework(e.target.value)}
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none"
-                  placeholder="E.g. Implement a Redis SETNX inventory caching lock loop"
+                  placeholder="E.g. Implement Redis locks, Optimize SQL Indexes"
                 />
               </div>
 
               <button
                 type="submit"
-                className="w-full py-3 bg-slate-900 text-white font-black text-[10px] uppercase tracking-widest rounded-xl hover:bg-indigo-600 transition-all cursor-pointer"
+                className="w-full py-3 bg-slate-900 text-white font-black text-[10px] uppercase tracking-widest rounded-xl hover:bg-indigo-650 transition-all cursor-pointer"
               >
                 Submit Notes to Student File
+              </button>
+            </form>
+          </div>
+        )}
+
+        {/* Request a Mentor Modal */}
+        {isRequestModalOpen && (
+          <div className="bg-white p-8 rounded-[2.5rem] border border-pink-200 shadow-xl space-y-4 animate-fade-in relative shrink-0">
+            <div className="flex justify-between items-center">
+              <strong className="text-sm font-black text-slate-900 block font-display">Request a custom Mentor</strong>
+              <button onClick={() => setIsRequestModalOpen(false)} className="text-slate-400 hover:text-slate-700 font-bold text-xs">Close</button>
+            </div>
+
+            <form onSubmit={handleRequestMentorSubmit} className="space-y-4">
+              <div>
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Target Company</label>
+                <input
+                  type="text"
+                  value={reqCompany}
+                  onChange={(e) => setReqCompany(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none"
+                  placeholder="E.g. Google, Deloitte, Atlassian..."
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Target Role</label>
+                <input
+                  type="text"
+                  value={reqRole}
+                  onChange={(e) => setReqRole(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none"
+                  placeholder="E.g. Backend Developer, Data Scientist..."
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Help needed / Session Goal</label>
+                <textarea
+                  rows={2}
+                  value={reqHelp}
+                  onChange={(e) => setReqHelp(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none"
+                  placeholder="E.g. Mock interview on System Design and SQL indexing strategies..."
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={submittingReq}
+                className="w-full py-3 bg-pink-600 text-white font-black text-[10px] uppercase tracking-widest rounded-xl hover:bg-slate-900 transition-all cursor-pointer disabled:opacity-50"
+              >
+                {submittingReq ? "Registering Demand..." : "Submit Demand Request"}
               </button>
             </form>
           </div>
@@ -1535,7 +1508,7 @@ export default function MentorshipOS() {
                         return <h4 key={idx} className="font-black text-slate-900 text-xs mt-2 mb-1 first:mt-0 font-display">{line.replace("### ", "")}</h4>;
                       }
                       if (line.startsWith("- ") || line.startsWith("* ")) {
-                        return <li key={idx} className="ml-3 list-disc text-slate-650 font-bold my-0.5">{line.replace(/^[-*]\s+/, "")}</li>;
+                        return <li key={idx} className="ml-3 list-disc text-slate-600 font-bold my-0.5">{line.replace(/^[-*]\s+/, "")}</li>;
                       }
                       return <p key={idx} className="my-1">{line}</p>;
                     })}

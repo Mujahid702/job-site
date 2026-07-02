@@ -298,7 +298,7 @@ export default function RecommendedJobsPage() {
             {[
               { id: "bestMatches", label: "🔥 Best Match" },
               { id: "highSalary", label: "🚀 High Salary" },
-              { id: "fastApplying", label: "🎯 Fast Apply" },
+              { id: "fastApplying", label: "🎯 Apply Immediately" },
               { id: "recentlyAdded", label: "📈 New Drives" }
             ].map((tab) => (
               <button

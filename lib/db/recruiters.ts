@@ -12,7 +12,7 @@ export interface Recruiter {
   location?: string;
   hiring_roles?: string;
   relationship_strength: "Cold" | "Connected" | "Messaged" | "Responded" | "Referral Possible" | "Strong Connection";
-  pipeline_stage: "Lead Found" | "Connection Sent" | "Connected" | "Conversation Started" | "Follow Up" | "Referral Requested" | "Referral Received" | "Interview Opportunity" | "Hired" | "Lost";
+  pipeline_stage: "Prospecting" | "Connected" | "Conversation Started" | "Relationship Building" | "Referral Requested" | "Referral Received" | "Application Submitted" | "Interview Opportunity" | "Offer Pipeline" | "Long-Term Network" | "Lead Found" | "Connection Sent" | "Follow Up" | "Hired" | "Lost";
   last_interaction?: string;
   notes?: string;
   tags: string[];
@@ -26,6 +26,19 @@ export interface Recruiter {
     email_verified: boolean;
     linkedin_verified: boolean;
   };
+  // 12 new metadata columns
+  department?: string;
+  company_domain?: string;
+  recruiter_type?: 'Technical Recruiter' | 'Campus Recruiter' | 'Talent Acquisition' | 'Hiring Manager' | 'Engineering Manager' | 'HR Partner' | 'Founder' | 'Startup Recruiter';
+  trust_score?: number;
+  verification_status?: 'Verified' | 'Likely Genuine' | 'Suspicious' | 'Potential Scam';
+  referral_sent_count?: number;
+  referral_accepted_count?: number;
+  referral_rejected_count?: number;
+  interview_count?: number;
+  offer_count?: number;
+  opportunity_score?: number;
+  opportunity_level?: 'High Opportunity' | 'Medium Opportunity' | 'Low Opportunity';
 }
 
 export interface RecruiterActivity {
@@ -63,29 +76,34 @@ export interface RecruiterTemplate {
 export function calculateRelationshipScore(recruiter: Partial<Recruiter>, activities: RecruiterActivity[] = []): number {
   let score = 0;
 
-  // 1. Pipeline Stage points (max 40)
+  // 1. Pipeline Stage points (max 50)
   const stagePoints: Record<string, number> = {
+    "Prospecting": 5,
     "Lead Found": 5,
     "Connection Sent": 10,
     "Connected": 20,
     "Conversation Started": 25,
+    "Relationship Building": 30,
     "Follow Up": 30,
-    "Referral Requested": 32,
-    "Referral Received": 35,
-    "Interview Opportunity": 38,
-    "Hired": 40,
+    "Referral Requested": 35,
+    "Referral Received": 40,
+    "Application Submitted": 45,
+    "Interview Opportunity": 50,
+    "Offer Pipeline": 55,
+    "Long-Term Network": 60,
+    "Hired": 60,
     "Lost": 5
   };
   score += stagePoints[recruiter.pipeline_stage || "Lead Found"] || 5;
 
-  // 2. Relationship Strength points (max 40)
+  // 2. Relationship Strength points (max 30)
   const strengthPoints: Record<string, number> = {
     "Cold": 5,
-    "Connected": 15,
-    "Messaged": 20,
-    "Responded": 30,
-    "Referral Possible": 35,
-    "Strong Connection": 40
+    "Connected": 10,
+    "Messaged": 15,
+    "Responded": 20,
+    "Referral Possible": 25,
+    "Strong Connection": 30
   };
   score += strengthPoints[recruiter.relationship_strength || "Cold"] || 5;
 
@@ -97,25 +115,78 @@ export function calculateRelationshipScore(recruiter: Partial<Recruiter>, activi
   if (lastDateStr) {
     const lastDate = new Date(lastDateStr).getTime();
     const diffDays = (Date.now() - lastDate) / (1000 * 60 * 60 * 24);
-    if (diffDays <= 7) {
+    if (diffDays <= 3) {
       score += 10;
+    } else if (diffDays <= 7) {
+      score += 7;
     } else if (diffDays <= 14) {
-      score += 5;
+      score += 4;
     }
   }
 
-  // 5. Trust / Verification Bonus (max 15)
-  if (recruiter.verification) {
-    if (recruiter.verification.verification_status === "Verified") {
-      score += 15;
-    } else if (recruiter.verification.trust_score >= 81) {
-      score += 15;
-    } else if (recruiter.verification.trust_score >= 61) {
-      score += 10;
-    }
+  // 5. Trust / Verification Bonus (max 10)
+  const vStatus = recruiter.verification_status || recruiter.verification?.verification_status;
+  const tScore = recruiter.trust_score ?? recruiter.verification?.trust_score ?? 100;
+  if (vStatus === "Verified") {
+    score += 10;
+  } else if (tScore >= 80) {
+    score += 8;
+  } else if (tScore >= 60) {
+    score += 5;
   }
 
   return Math.min(Math.max(score, 0), 100);
+}
+
+// Calculate 0-100 opportunity score based on recruiter type, verification status, and referral metrics
+export function calculateOpportunityScore(recruiter: Partial<Recruiter>): number {
+  let score = 50; // base
+
+  // Recruiter Type weighting (max 20)
+  const typeWeight: Record<string, number> = {
+    'Hiring Manager': 20,
+    'Engineering Manager': 20,
+    'Founder': 15,
+    'Technical Recruiter': 10,
+    'Campus Recruiter': 10,
+    'Talent Acquisition': 5,
+    'HR Partner': 5,
+    'Startup Recruiter': 10
+  };
+  if (recruiter.recruiter_type) {
+    score += typeWeight[recruiter.recruiter_type] || 0;
+  }
+
+  // Verification status weighting (max 15)
+  if (recruiter.verification_status === 'Verified') {
+    score += 15;
+  } else if (recruiter.verification_status === 'Likely Genuine') {
+    score += 10;
+  } else if (recruiter.verification_status === 'Suspicious') {
+    score -= 20;
+  } else if (recruiter.verification_status === 'Potential Scam') {
+    score -= 40;
+  }
+
+  // Referral metrics weighting (max 25)
+  if (recruiter.referral_accepted_count && recruiter.referral_accepted_count > 0) {
+    score += Math.min(recruiter.referral_accepted_count * 10, 15);
+  }
+  if (recruiter.offer_count && recruiter.offer_count > 0) {
+    score += 10;
+  }
+
+  // Trust score influence (max 10)
+  const tScore = recruiter.trust_score ?? 100;
+  score += Math.round((tScore - 50) * 0.1); // range -5 to +5
+
+  return Math.min(Math.max(score, 0), 100);
+}
+
+export function classifyOpportunityLevel(score: number): "High Opportunity" | "Medium Opportunity" | "Low Opportunity" {
+  if (score >= 75) return "High Opportunity";
+  if (score >= 40) return "Medium Opportunity";
+  return "Low Opportunity";
 }
 
 export function classifyRelationshipLevel(score: number): "Weak" | "Developing" | "Active" | "Strong" | "Advocate" {
@@ -298,7 +369,20 @@ export async function createRecruiter(
       notes: rec.notes || "",
       tags: rec.tags || [],
       created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
+      updated_at: new Date().toISOString(),
+      // 12 new columns
+      department: rec.department || "",
+      company_domain: rec.company_domain || "",
+      recruiter_type: rec.recruiter_type || null,
+      trust_score: rec.trust_score ?? 100,
+      verification_status: rec.verification_status || "Verified",
+      referral_sent_count: rec.referral_sent_count ?? 0,
+      referral_accepted_count: rec.referral_accepted_count ?? 0,
+      referral_rejected_count: rec.referral_rejected_count ?? 0,
+      interview_count: rec.interview_count ?? 0,
+      offer_count: rec.offer_count ?? 0,
+      opportunity_score: rec.opportunity_score ?? 50,
+      opportunity_level: rec.opportunity_level || "Medium Opportunity"
     };
 
     const { data, error } = await supabase

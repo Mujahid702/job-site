@@ -43,23 +43,32 @@ ${newerResumeText}
 """
 
 CRITICAL DIRECTIONS:
-1. Provide a detailed audit of changes from the Older version to the Newer version.
-2. In the "improvements" array, detail specific positive modifications: e.g. added quantified achievements (e.g. percentages, metrics), added GitHub projects, improved project architectures, or added technical keywords.
-3. In the "regressions" array, detect any negative changes: e.g. dropped technical keywords, removed key technologies (e.g. Spring Boot, REST APIs), shortened experience sections, or lost quantified details.
-4. If there are no regressions, leave the array empty or add a positive placeholder.
-5. In the "summary" field, write an overview explaining how much better or worse the newer version is, along with clear directions for further improvement.
-6. Provide an "atsScoreDelta" representing the estimated points change in ATS compatibility (positive if improved, negative if decreased).
-7. Do NOT output markdown code blocks outside of the JSON representation.`;
+1. You MUST generate a "thinking" property first. In this section, perform a step-by-step reasoning chain:
+   - Compare both resume texts section by section (header, experience, projects, skills).
+   - Identify specific additions and deletions of keywords, metrics, tech stacks, and contact links.
+   - Determine if modifications improve ATS compatibility or result in any regressions.
+   - Establish the reasoning context before calculating the final score delta and summaries.
+2. Provide a detailed audit of changes from the Older version to the Newer version.
+3. In the "improvements" array, detail specific positive modifications: e.g. added quantified achievements (e.g. percentages, metrics), added GitHub projects, improved project architectures, or added technical keywords.
+4. In the "regressions" array, detect any negative changes: e.g. dropped technical keywords, removed key technologies (e.g. Spring Boot, REST APIs), shortened experience sections, or lost quantified details.
+5. If there are no regressions, leave the array empty or add a positive placeholder.
+6. In the "summary" field, write an overview explaining how much better or worse the newer version is, along with clear directions for further improvement.
+7. Provide an "atsScoreDelta" representing the estimated points change in ATS compatibility (positive if improved, negative if decreased).
+8. Do NOT output markdown code blocks outside of the JSON representation.`;
 
     const schema = {
       type: "OBJECT",
       properties: {
+        thinking: {
+          type: "STRING",
+          description: "Step-by-step comparison reasoning chain. Generated first."
+        },
         atsScoreDelta: { type: "INTEGER" },
         improvements: { type: "ARRAY", items: { type: "STRING" } },
         regressions: { type: "ARRAY", items: { type: "STRING" } },
         summary: { type: "STRING" }
       },
-      required: ["atsScoreDelta", "improvements", "regressions", "summary"]
+      required: ["thinking", "atsScoreDelta", "improvements", "regressions", "summary"]
     };
 
     const gatewayResponse = await generateResponse({

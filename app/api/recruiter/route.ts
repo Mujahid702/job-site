@@ -84,7 +84,20 @@ export async function POST(request: Request) {
       relationship_strength,
       pipeline_stage,
       notes,
-      tags
+      tags,
+      // 12 new columns
+      department,
+      company_domain,
+      recruiter_type,
+      trust_score,
+      verification_status,
+      referral_sent_count,
+      referral_accepted_count,
+      referral_rejected_count,
+      interview_count,
+      offer_count,
+      opportunity_score,
+      opportunity_level
     } = body;
 
     if (!name || !company) {
@@ -129,7 +142,20 @@ export async function POST(request: Request) {
       relationship_strength,
       pipeline_stage,
       notes,
-      tags
+      tags,
+      // 12 new columns
+      department,
+      company_domain,
+      recruiter_type,
+      trust_score,
+      verification_status,
+      referral_sent_count,
+      referral_accepted_count,
+      referral_rejected_count,
+      interview_count,
+      offer_count,
+      opportunity_score,
+      opportunity_level
     });
 
     if (result.success && result.data) {

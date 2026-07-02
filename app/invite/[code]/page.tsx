@@ -17,12 +17,19 @@ export default function InvitePage({ params }: InvitePageProps) {
     if (code) {
       // 1. Log referral code locally
       localStorage.setItem("referral_code", code);
+
+      // Generate or retrieve persistent client-side device fingerprint for anti-spam check
+      let fingerprint = localStorage.getItem("device_fingerprint");
+      if (!fingerprint) {
+        fingerprint = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+        localStorage.setItem("device_fingerprint", fingerprint);
+      }
       
       // 2. Log click event in background if user is anonymous
-      fetch("/api/growth/referrals", {
+      fetch("/api/growth/referrals/click", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ referralCode: code })
+        body: JSON.stringify({ referralCode: code, deviceFingerprint: fingerprint })
       }).catch(err => console.error("Referral click tracking skipped:", err));
     }
 

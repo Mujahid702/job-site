@@ -56,11 +56,17 @@ export async function POST(request: Request) {
       )
     }
 
-    const systemPrompt = `You are a premium AI Resume Enhancement Engine and CV consultant.
+        const systemPrompt = `You are a premium AI Resume Enhancement Engine and CV consultant.
 Analyze the following text of type "${inputType}" and provide rewritten versions, quality scores, action verb analysis, and impact quantification suggestions.
 
 CRITICAL INSTRUCTIONS:
-1. Generate exactly 3 enhanced versions based on the input type:
+1. You MUST generate a "thinking" property first. In this section, perform a rigorous step-by-step chain of thought:
+   - Analyze the target role (if specified) and input content.
+   - Evaluate structural and stylistic weaknesses (e.g. passive tone, lack of metrics, generic verbs) in the original text.
+   - Plan out the edits required for each of the three optimized versions (ATS, Recruiter, Premium/STAR).
+   - Identify weak action verbs and brainstorm dynamic, impact-driven alternatives.
+   - Map out logical parameters to show where metric placeholders should be added.
+2. Generate exactly 3 enhanced versions based on the input type:
    - If input type is "bullet" or "experience", the versions must be:
      a. "ATS Optimized" (focused on keywords, clear syntax, parser-friendly structure)
      b. "Recruiter Optimized" (focused on professional framing, technical depth, and clean delivery)
@@ -70,15 +76,15 @@ CRITICAL INSTRUCTIONS:
      b. "LinkedIn Version" (engaging, storytelling, and includes relevant hashtags/mentions format)
      c. "Interview Explanation Version" (STAR framework format: Situation, Task, Action, Result, suitable for oral explanations)
 
-2. Evaluate and score the content:
+3. Evaluate and score the content:
    - Calculate a score out of 100 for the ORIGINAL text, including a rating label ("Weak", "Average", "Strong", "Excellent") and a brief reasoning explanation.
    - For each of the three generated versions, calculate their scores (out of 100), rating labels, and provide 3-4 bulleted reasons (green checks e.g. "✓ Strong action verb", "✓ ATS keywords added") explaining why it is stronger.
 
-3. Action Verb Analysis:
+4. Action Verb Analysis:
    - Scan the original text for weak action verbs (e.g. "worked", "helped", "made", "created", "assisted", "responsible for", "had to").
    - For each weak verb detected, list it and suggest 3-4 stronger action verbs (e.g. "engineered", "optimized", "architected", "streamlined", "orchestrated").
 
-4. Impact Quantification Engine:
+5. Impact Quantification Engine:
    - Show how the original statement can be quantified.
    - Provide a "Before" example (from the user's input).
    - Provide an "After" example showing how to quantify it. If metrics are not in the input, include clear brackets/placeholders like "[Insert User Count]" or "[Insert Performance Improvement]" so the user knows where and how to fill them.
@@ -95,6 +101,10 @@ TARGET ROLE:
     const schema = {
       type: 'OBJECT',
       properties: {
+        thinking: {
+          type: 'STRING',
+          description: 'A detailed step-by-step thinking/reasoning chain. Generated first.'
+        },
         originalScore: { type: 'INTEGER' },
         originalRating: { type: 'STRING' },
         originalReasoning: { type: 'STRING' },
@@ -159,6 +169,7 @@ TARGET ROLE:
         },
       },
       required: [
+        'thinking',
         'originalScore',
         'originalRating',
         'originalReasoning',

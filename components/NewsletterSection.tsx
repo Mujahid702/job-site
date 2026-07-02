@@ -78,6 +78,7 @@ export default function NewsletterSection() {
                           value={email}
                           onChange={(e) => setEmail(e.target.value)}
                           placeholder="you@example.com"
+                          suppressHydrationWarning={true}
                           className="w-full bg-white/10 border border-white/10 rounded-2xl py-5 pl-16 pr-6 text-white placeholder-slate-500 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-all font-medium"
                         />
                       </div>
@@ -86,6 +87,7 @@ export default function NewsletterSection() {
                     <button 
                       type="submit" 
                       disabled={isLoading}
+                      suppressHydrationWarning={true}
                       className="w-full py-5 bg-accent text-white font-black rounded-2xl shadow-xl shadow-accent/20 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2 group disabled:opacity-50"
                     >
                       {isLoading ? "Subscribing..." : "Join the Community"}
