@@ -349,22 +349,12 @@ export default function AiResumeEnhancer({ onScoreUpdate, onTabChange, userId }:
             )}
           </button>
 
-          {/* Local API Key Info */}
-          {!apiKey && (
-            <div className="p-3 bg-amber-50 border border-amber-100 rounded-xl flex items-start gap-2 text-[10px] text-amber-700 font-bold leading-normal">
-              <Info className="w-3.5 h-3.5 shrink-0 text-amber-500" />
-              <div>
-                No custom Gemini API key configured. Utilizing default environment key. Add a key in the Admin settings if you hit rate limits.
-              </div>
-            </div>
-          )}
-
           {errorMsg && (
             <div className="p-4 bg-red-50 text-red-700 rounded-2xl border border-red-100 flex items-start gap-2.5 text-xs font-bold leading-relaxed">
               <AlertTriangle className="w-4 h-4 shrink-0 text-red-500 mt-0.5" />
               <div>
-                <strong className="block mb-0.5">Execution Failed</strong>
-                {errorMsg}
+                <strong className="block mb-0.5">Generation Failed</strong>
+                Unable to generate the resume draft at the moment. Please try again in a few moments.
               </div>
             </div>
           )}

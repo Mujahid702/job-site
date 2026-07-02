@@ -155,15 +155,15 @@ export default function OnboardingPage() {
   const [targetCtc, setTargetCtc] = useState("5-8 LPA");
   const [preferredWorkMode, setPreferredWorkMode] = useState("Remote");
   const [preferredLocations, setPreferredLocations] = useState<string[]>([]);
-
   // STEP 9 Form states: Blueprint
+  const [isGeneratingBlueprint, setIsGeneratingBlueprint] = useState(false);
   const [blueprint, setBlueprint] = useState<{
     roadmapLevel: "Beginner" | "Intermediate" | "Advanced";
     skillsGap: { current: string[]; missing: string[]; priority: string[] };
     recommendedProjects: { title: string; difficulty: string; impact: string; value: string }[];
     companyPrep: string[];
+    thinking?: string;
   } | null>(null);
-
   // STEP 10 Form states: PRI Score
   const [priResult, setPriResult] = useState<{
     score: number;
@@ -354,6 +354,13 @@ export default function OnboardingPage() {
     };
   }, [activeTaskId, resumeFile, supabase, user]);
 
+  // Trigger blueprint generation when step 9 is entered and not yet compiled
+  useEffect(() => {
+    if (step === 9 && !blueprint && !isGeneratingBlueprint) {
+      compilePlacementBlueprint();
+    }
+  }, [step, blueprint, isGeneratingBlueprint]);
+
   // Persists draft state on next/prev step transitions
   const saveStepState = async (nextStep: number) => {
     setErrorMessage(null);
@@ -542,7 +549,10 @@ export default function OnboardingPage() {
   };
 
   // Step 9: Blueprint logic
-  const compilePlacementBlueprint = () => {
+  const compilePlacementBlueprint = async () => {
+    setIsGeneratingBlueprint(true);
+    setErrorMessage(null);
+
     const sem = currentSemester ? parseInt(currentSemester, 10) : 1;
     let level: "Beginner" | "Intermediate" | "Advanced" = "Beginner";
     if (sem >= 7 || selectedSkills.length >= 7) {
@@ -551,64 +561,168 @@ export default function OnboardingPage() {
       level = "Intermediate";
     }
 
-    // Skills Gaps based on Primary Target Role
-    const commonTargetSkills: Record<string, string[]> = {
-      "Software Engineer": ["Git", "Data Structures", "System Design", "Docker"],
-      "Frontend Developer": ["JavaScript", "React", "TypeScript", "Git"],
-      "Backend Developer": ["Java", "Python", "SQL", "Docker", "System Design"],
-      "Full Stack Developer": ["JavaScript", "React", "Node.js", "SQL", "Git"]
-    };
+    try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (typeof window !== "undefined") {
+        const apiKey = localStorage.getItem("user_gemini_api_key");
+        if (apiKey) {
+          headers["x-gemini-api-key"] = apiKey;
+        }
+      }
 
-    const targetList = commonTargetSkills[primaryRole] || ["Git", "Data Structures", "SQL"];
-    const missing = targetList.filter(s => !selectedSkills.includes(s));
-    
-    // tailor projects to target role
-    let recommended: any[] = [];
-    if (primaryRole.includes("Frontend")) {
-      recommended = [
-        { title: "E-Commerce Storefront SPA", difficulty: "Intermediate", impact: "High", value: "88%" },
-        { title: "Real-time Crypto Chart dashboard", difficulty: "Advanced", impact: "High", value: "92%" }
-      ];
-    } else if (primaryRole.includes("Backend") || primaryRole.includes("Software")) {
-      recommended = [
-        { title: "Distributed WebSockets Chat Engine", difficulty: "Advanced", impact: "High", value: "94%" },
-        { title: "Redis Transaction Caching API Gateway", difficulty: "Advanced", impact: "High", value: "96%" },
-        { title: "JWT Multi-tier Auth Service Middleware", difficulty: "Intermediate", impact: "Medium", value: "85%" }
-      ];
-    } else {
-      recommended = [
-        { title: "Predictive Analytics pipeline Dashboard", difficulty: "Advanced", impact: "High", value: "92%" },
-        { title: "Real-time Metrics Dashboard", difficulty: "Intermediate", impact: "Medium", value: "84%" }
-      ];
-    }
-
-    const compiled = {
-      roadmapLevel: level,
-      skillsGap: {
-        current: selectedSkills,
-        missing: missing.length > 0 ? missing : ["TypeScript"],
-        priority: missing.slice(0, 2)
-      },
-      recommendedProjects: recommended.slice(0, 5),
-      companyPrep: dreamCompanies.slice(0, 3)
-    };
-
-    setBlueprint(compiled);
-
-    // Trigger analytics event
-    if (user) {
-      supabase.from("analytics_events").insert({
-        event_type: "roadmap_generated",
-        user_id: user.id,
-        metadata: { roadmapLevel: level }
-      }).then(({ error }) => {
-        if (error) console.error("Error inserting analytics_event:", error);
+      const res = await fetch("/api/resume/roadmap", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          targetRole: primaryRole || "Software Engineer",
+          resumeText: resumeData?.rawText || "Selected skills: " + selectedSkills.join(", ") + ". Target dream companies: " + dreamCompanies.join(", "),
+          atsScore: resumeData?.ats_score || 70,
+          completedProjects: []
+        })
       });
+
+      const resData = await res.json();
+      if (!res.ok) {
+        throw new Error(resData.error || "Failed to generate placement roadmap from API.");
+      }
+
+      const roadmapData = resData.data;
+      if (!roadmapData) {
+        throw new Error("Empty response received from AI career coach.");
+      }
+
+      const compiled = {
+        roadmapLevel: level,
+        skillsGap: {
+          current: selectedSkills,
+          missing: roadmapData.skillGap?.missing || ["System Design"],
+          priority: roadmapData.skillGap?.critical || roadmapData.skillGap?.missing?.slice(0, 2) || ["System Design"]
+        },
+        recommendedProjects: (roadmapData.projects || []).map((p: any) => ({
+          title: p.title || "Project",
+          difficulty: p.difficulty || "Intermediate",
+          impact: p.desc || "Standard targeted project",
+          value: `${p.impactScore || 85}%`
+        })),
+        companyPrep: (roadmapData.companyRoadmaps || []).map((c: any) => `${c.companyName}: Match ${c.matchPercentage}%`),
+        thinking: roadmapData.thinking || "Evaluating candidate skills and experience gaps against target role expectations..."
+      };
+
+      setBlueprint(compiled);
+
+      // Map PRI result
+      const priScore = roadmapData.readinessPredictions?.placementReadiness || 65;
+      let category = "Placement Beginner";
+      if (priScore > 85) category = "Placement Elite";
+      else if (priScore > 70) category = "Strong Candidate";
+      else if (priScore > 50) category = "Interview Ready";
+      else if (priScore > 30) category = "Emerging Candidate";
+
+      setPriResult({ score: priScore, category });
+
+      // Map Action Plan Tasks
+      const tasks: string[] = [];
+      if (!resumeData || resumeData.ats_score < 75) {
+        tasks.push("Improve ATS Score to 75+ using AI Resume Enhancer");
+      }
+      if (compiled.recommendedProjects.length > 0) {
+        tasks.push(`Build Target Project: "${compiled.recommendedProjects[0].title}"`);
+      }
+      if (roadmapData.plan306090?.plan30Day?.weeklyTasks && roadmapData.plan306090.plan30Day.weeklyTasks.length > 0) {
+        roadmapData.plan306090.plan30Day.weeklyTasks.slice(0, 3).forEach((t: string) => {
+          tasks.push(t);
+        });
+      } else {
+        tasks.push("Complete LinkedIn profile optimization and headline suggestions");
+        tasks.push("Apply to 3 software job postings from Dashboard recommendations");
+      }
+      setActionPlanTasks(tasks.slice(0, 5));
+
+      // Trigger analytics events in background
+      if (user) {
+        supabase.from("analytics_events").insert({
+          event_type: "roadmap_generated",
+          user_id: user.id,
+          metadata: { roadmapLevel: level }
+        }).then(({ error }) => {
+          if (error) console.error("Error inserting analytics_event:", error);
+        });
+
+        supabase.from("analytics_events").insert({
+          event_type: "pri_generated",
+          user_id: user.id,
+          metadata: { score: priScore }
+        }).then(({ error }) => {
+          if (error) console.error("Error inserting analytics_event:", error);
+        });
+      }
+
+    } catch (err: any) {
+      console.error("AI Roadmap onboarding error:", err);
+      setErrorMessage(err.message || "Failed to reach AI Career Engine. Using offline metrics instead.");
+      
+      // Fallback compilation
+      const commonTargetSkills: Record<string, string[]> = {
+        "Software Engineer": ["Git", "Data Structures", "System Design", "Docker"],
+        "Frontend Developer": ["JavaScript", "React", "TypeScript", "Git"],
+        "Backend Developer": ["Java", "Python", "SQL", "Docker", "System Design"],
+        "Full Stack Developer": ["JavaScript", "React", "Node.js", "SQL", "Git"]
+      };
+
+      const targetList = commonTargetSkills[primaryRole] || ["Git", "Data Structures", "SQL"];
+      const missing = targetList.filter(s => !selectedSkills.includes(s));
+      
+      let recommended: any[] = [];
+      if (primaryRole.includes("Frontend")) {
+        recommended = [
+          { title: "E-Commerce Storefront SPA", difficulty: "Intermediate", impact: "High", value: "88%" },
+          { title: "Real-time Crypto Chart dashboard", difficulty: "Advanced", impact: "High", value: "92%" }
+        ];
+      } else {
+        recommended = [
+          { title: "Distributed WebSockets Chat Engine", difficulty: "Advanced", impact: "High", value: "94%" },
+          { title: "Redis Transaction Caching API Gateway", difficulty: "Advanced", impact: "High", value: "96%" }
+        ];
+      }
+
+      const fallbackBlueprint = {
+        roadmapLevel: level,
+        skillsGap: {
+          current: selectedSkills,
+          missing: missing.length > 0 ? missing : ["TypeScript"],
+          priority: missing.slice(0, 2)
+        },
+        recommendedProjects: recommended.slice(0, 5),
+        companyPrep: dreamCompanies.slice(0, 3),
+        thinking: "Offline Mode: Based on standard role criteria, you should focus on closing fundamental SDE skill gaps."
+      };
+
+      setBlueprint(fallbackBlueprint);
+
+      // Offline PRI
+      const resScore = resumeData?.ats_score || 65;
+      const skillsPct = (selectedSkills.length / 10) * 20;
+      const finalPri = Math.min(Math.max(Math.round((resScore * 0.25) + 60 + skillsPct), 0), 100);
+      let category = "Placement Beginner";
+      if (finalPri > 85) category = "Placement Elite";
+      else if (finalPri > 70) category = "Strong Candidate";
+      setPriResult({ score: finalPri, category });
+
+      // Offline Action Tasks
+      setActionPlanTasks([
+        "Improve ATS Score to 75+ using AI Resume Enhancer",
+        `Build Target Project: "${fallbackBlueprint.recommendedProjects[0].title}"`,
+        "Complete LinkedIn Profile Optimization",
+        "Apply to 3 Jobs"
+      ]);
+    } finally {
+      setIsGeneratingBlueprint(false);
     }
   };
 
-  // Step 10: PRI Calculation
+  // Step 10: PRI Calculation (no-op if already computed by step 9 AI)
   const compileInitialPRI = () => {
+    if (priResult && priResult.score > 0) return;
     let resScore = resumeData?.ats_score || 65;
     let linkScore = linkedInData?.score || 60;
     
@@ -626,21 +740,11 @@ export default function OnboardingPage() {
     else if (priScore > 30) category = "Emerging Candidate";
 
     setPriResult({ score: priScore, category });
-
-    // Trigger analytics event
-    if (user) {
-      supabase.from("analytics_events").insert({
-        event_type: "pri_generated",
-        user_id: user.id,
-        metadata: { score: priScore }
-      }).then(({ error }) => {
-        if (error) console.error("Error inserting analytics_event:", error);
-      });
-    }
   };
 
-  // Step 11: Action Plan
+  // Step 11: Action Plan (no-op if already computed by step 9 AI)
   const compileFirstActionPlan = () => {
+    if (actionPlanTasks && actionPlanTasks.length > 0 && !actionPlanTasks[0].startsWith("Improve ATS Score")) return;
     const tasks = [];
     if (!resumeData || resumeData.ats_score < 75) {
       tasks.push("Improve ATS Score to 75+ using AI Resume Enhancer");
@@ -1383,79 +1487,116 @@ export default function OnboardingPage() {
                   </div>
                 </div>
               </motion.div>
-            )}
-
-            {/* STEP 9: PERSONALIZED BLUEPRINT */}
-            {step === 9 && blueprint && (
-              <motion.div
-                key="step-9"
-                initial={{ opacity: 0, x: 15 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -15 }}
-                className="space-y-6"
-              >
-                <div className="space-y-2">
-                  <div className="w-12 h-12 bg-purple-50 text-purple-600 rounded-2xl flex items-center justify-center shadow-sm">
-                    <Award className="w-6 h-6" />
-                  </div>
-                  <h2 className="text-2xl font-black text-slate-900">Personalized Placement Blueprint</h2>
-                  <p className="text-slate-500 text-sm">Review the custom roadmap and milestones generated for your profile.</p>
-                </div>
-
-                <div className="space-y-4 max-h-[300px] overflow-y-auto pr-1">
-                  {/* Roadmap Level details */}
-                  <div className="bg-slate-50 border border-slate-200 p-5 rounded-2xl flex justify-between items-center">
-                    <div>
-                      <strong className="text-sm font-black text-slate-800 block">Roadmap Level Track</strong>
-                      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Assigned based on semester & current skills</span>
+            )}            {/* STEP 9: PERSONALIZED BLUEPRINT OR LOADING STATE */}
+            {step === 9 && (
+              blueprint ? (
+                <motion.div
+                  key="step-9"
+                  initial={{ opacity: 0, x: 15 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -15 }}
+                  className="space-y-5"
+                >
+                  <div className="space-y-2">
+                    <div className="w-12 h-12 bg-purple-50 text-purple-600 rounded-2xl flex items-center justify-center shadow-sm">
+                      <Award className="w-6 h-6" />
                     </div>
-                    <span className="px-4 py-2 bg-indigo-600 text-white text-xs font-black uppercase tracking-widest rounded-xl">
-                      {blueprint.roadmapLevel} Track
-                    </span>
+                    <h2 className="text-2xl font-black text-slate-900">Personalized Placement Blueprint</h2>
+                    <p className="text-slate-500 text-sm">Review the custom roadmap and milestones generated for your profile.</p>
                   </div>
 
-                  {/* Skills gaps analysis */}
-                  <div className="bg-slate-50 border border-slate-200 p-5 rounded-2xl space-y-3">
-                    <strong className="text-sm font-black text-slate-800 block">Skills Gap Analysis</strong>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Your Skills:</span>
-                        <div className="flex flex-wrap gap-1">
-                          {blueprint.skillsGap.current.slice(0, 4).map(s => (
-                            <span key={s} className="px-2 py-0.5 bg-emerald-50 border border-emerald-100 text-emerald-700 text-[9px] font-black rounded-lg uppercase">{s}</span>
-                          ))}
-                        </div>
+                  {/* AI Evaluation Reasoning Card */}
+                  {blueprint.thinking && (
+                    <div className="bg-indigo-50/50 border border-indigo-150 p-5 rounded-3xl space-y-3">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-indigo-650 animate-pulse" />
+                        <span className="text-[10px] font-black text-indigo-950 uppercase tracking-widest">AI Evaluation Reasoning</span>
                       </div>
-                      <div>
-                        <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest block mb-1">Priority Missing:</span>
-                        <div className="flex flex-wrap gap-1">
-                          {blueprint.skillsGap.priority.map(s => (
-                            <span key={s} className="px-2 py-0.5 bg-rose-50 border border-rose-100 text-rose-700 text-[9px] font-black rounded-lg uppercase">{s}</span>
-                          ))}
-                        </div>
-                      </div>
+                      <p className="text-[11px] font-bold text-slate-650 leading-relaxed italic whitespace-pre-line">
+                        {blueprint.thinking}
+                      </p>
                     </div>
-                  </div>
+                  )}
 
-                  {/* Recommended projects */}
-                  <div className="bg-slate-50 border border-slate-200 p-5 rounded-2xl space-y-3">
-                    <strong className="text-sm font-black text-slate-800 block">Recommended Projects</strong>
-                    <div className="space-y-2">
-                      {blueprint.recommendedProjects.map((p, idx) => (
-                        <div key={idx} className="flex justify-between items-center text-xs font-bold text-slate-650 bg-white p-2.5 rounded-xl border border-slate-150">
-                          <span className="font-black text-slate-800">{p.title}</span>
-                          <div className="flex gap-4">
-                            <span className="text-[10px] text-indigo-600">{p.difficulty}</span>
-                            <span className="text-[10px] text-emerald-600">Impact: {p.value}</span>
+                  <div className="space-y-4 max-h-[180px] overflow-y-auto pr-1">
+                    {/* Roadmap Level details */}
+                    <div className="bg-slate-50 border border-slate-200 p-5 rounded-2xl flex justify-between items-center">
+                      <div>
+                        <strong className="text-sm font-black text-slate-800 block">Roadmap Level Track</strong>
+                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Assigned based on semester & current skills</span>
+                      </div>
+                      <span className="px-4 py-2 bg-indigo-600 text-white text-xs font-black uppercase tracking-widest rounded-xl">
+                        {blueprint.roadmapLevel} Track
+                      </span>
+                    </div>
+
+                    {/* Skills gaps analysis */}
+                    <div className="bg-slate-50 border border-slate-200 p-5 rounded-2xl space-y-3">
+                      <strong className="text-sm font-black text-slate-800 block">Skills Gap Analysis</strong>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Your Skills:</span>
+                          <div className="flex flex-wrap gap-1">
+                            {blueprint.skillsGap.current.slice(0, 4).map(s => (
+                              <span key={s} className="px-2 py-0.5 bg-emerald-50 border border-emerald-100 text-emerald-700 text-[9px] font-black rounded-lg uppercase">{s}</span>
+                            ))}
                           </div>
                         </div>
-                      ))}
+                        <div>
+                          <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest block mb-1">Priority Missing:</span>
+                          <div className="flex flex-wrap gap-1">
+                            {blueprint.skillsGap.priority.map(s => (
+                              <span key={s} className="px-2 py-0.5 bg-rose-50 border border-rose-100 text-rose-700 text-[9px] font-black rounded-lg uppercase">{s}</span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Recommended projects */}
+                    <div className="bg-slate-50 border border-slate-200 p-5 rounded-2xl space-y-3">
+                      <strong className="text-sm font-black text-slate-800 block">Recommended Projects</strong>
+                      <div className="space-y-2">
+                        {blueprint.recommendedProjects.map((p, idx) => (
+                          <div key={idx} className="flex justify-between items-center text-xs font-bold text-slate-650 bg-white p-2.5 rounded-xl border border-slate-150">
+                            <span className="font-black text-slate-800">{p.title}</span>
+                            <div className="flex gap-4">
+                              <span className="text-[10px] text-indigo-600">{p.difficulty}</span>
+                              <span className="text-[10px] text-emerald-600 font-black">Impact: {p.value}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
-                </div>
-              </motion.div>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="step-9-loading"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="py-16 text-center space-y-6"
+                >
+                  <div className="relative w-20 h-20 mx-auto">
+                    <div className="absolute inset-0 bg-indigo-100 rounded-full animate-ping opacity-75"></div>
+                    <div className="relative w-20 h-20 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center shadow-md">
+                      <Sparkles className="w-10 h-10 animate-pulse text-indigo-600" />
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    <h3 className="text-lg font-black text-slate-850">Generating Your AI Placement Blueprint</h3>
+                    <p className="text-xs text-slate-450 font-semibold max-w-sm mx-auto leading-relaxed">
+                      Gemini is currently evaluating your resume, technical skills, target role: <strong className="text-slate-700">{primaryRole}</strong>, and target companies to formulate a customized roadmap.
+                    </p>
+                  </div>
+                  <div className="max-w-xs mx-auto bg-slate-50 border border-slate-200/60 p-4 rounded-xl flex items-center justify-center gap-3">
+                    <Loader2 className="w-4 h-4 text-indigo-650 animate-spin" />
+                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest animate-pulse">Running Profile Analytics...</span>
+                  </div>
+                </motion.div>
+              )
             )}
-
             {/* STEP 10: INITIAL PRI */}
             {step === 10 && priResult && (
               <motion.div
@@ -1526,8 +1667,8 @@ export default function OnboardingPage() {
               <button
                 type="button"
                 onClick={handlePrevStep}
-                disabled={isSubmitting}
-                className="px-5 py-3 border border-slate-250 text-slate-650 hover:bg-slate-100 rounded-2xl text-xs font-black uppercase tracking-wider transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                disabled={isSubmitting || isGeneratingBlueprint}
+                className="px-5 py-3 border border-slate-250 text-slate-655 hover:bg-slate-100 rounded-2xl text-xs font-black uppercase tracking-wider transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 <ArrowLeft className="w-4 h-4" />
                 Back
@@ -1540,10 +1681,10 @@ export default function OnboardingPage() {
               <button
                 type="button"
                 onClick={handleNextStep}
-                disabled={isParsingResume}
+                disabled={isParsingResume || isGeneratingBlueprint || (step === 9 && !blueprint)}
                 className="px-6 py-3 bg-slate-900 text-white hover:bg-blue-600 rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-md shadow-slate-200 flex items-center gap-2 cursor-pointer disabled:opacity-50"
               >
-                {isParsingResume ? "Evaluation running..." : "Next Step"}
+                {isParsingResume ? "Evaluation running..." : (step === 9 && !blueprint) ? "AI evaluation running..." : "Next Step"}
                 <ArrowRight className="w-4 h-4" />
               </button>
             ) : (

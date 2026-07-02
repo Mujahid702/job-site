@@ -111,9 +111,13 @@ const TEMPLATES = [
   { id: "1", name: "ATS Classic", font: "font-serif", alignment: "text-left", score: 98, desc: "Traditional academic/professional serif format. Highly recommended for conservative industries." },
   { id: "2", name: "Software Engineer Special", font: "font-sans", alignment: "text-left", score: 97, desc: "Sleek sans-serif design, highlighting skills at the very top for technical recruiters." },
   { id: "3", name: "Modern Minimalist", font: "font-sans", alignment: "text-left", score: 94, desc: "Lightweight margins, elegant styling dividers, optimized for spacing." },
-  { id: "4", name: "Data Science Special", font: "font-sans", alignment: "text-left", score: 96, desc: "Designed to structure analytics, database tags, and quantitative project metrics." },
+  { id: "4", name: "Data Science Special", font: "font-mono text-xs", alignment: "text-left", score: 96, desc: "Designed to structure analytics, database tags, and quantitative project metrics." },
   { id: "5", name: "Product & Analyst", font: "font-sans", alignment: "text-left", score: 95, desc: "Presents strong business impact bullet points, summaries, and leadership stats." },
-  { id: "6", name: "Fresher Placement Special", font: "font-serif", alignment: "text-left", score: 98, desc: "Prioritizes academic qualifications, coursework, and projects first for graduates." }
+  { id: "6", name: "Fresher Placement Special", font: "font-serif", alignment: "text-left", score: 98, desc: "Prioritizes academic qualifications, coursework, and projects first for graduates." },
+  { id: "7", name: "Creative Designer", font: "font-sans font-bold", alignment: "text-left", score: 90, desc: "Modern Poppins/Montserrat font styling with custom highlights, great for startup & UI design roles." },
+  { id: "8", name: "Executive Leader", font: "font-serif", alignment: "text-left", score: 95, desc: "High density layout prioritizing key strategic achievements, leadership milestones, and core board competencies." },
+  { id: "9", name: "Academic CV Standard", font: "font-serif", alignment: "text-center", score: 92, desc: "Traditional academic syllabus format for fellowships, research, publications, and university credentials." },
+  { id: "10", name: "Startup Generalist", font: "font-sans text-xs", alignment: "text-left", score: 94, desc: "Elegantly condensed, highlight-oriented formatting optimized for fast-paced growth companies." }
 ];
 
 export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreUpdate?: (score: number) => void; onTabChange?: (tab: string) => void }) {
@@ -123,6 +127,7 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
   ]);
   const [selectedTemplate, setSelectedTemplate] = useState<string>("1");
   const [targetRole, setTargetRole] = useState<string>("Software Engineer");
+  const [hasLoadedProfile, setHasLoadedProfile] = useState<boolean>(false);
   
   // Execution states
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
@@ -144,6 +149,54 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [apiKey, setApiKey] = useState<string>("");
   const [userId, setUserId] = useState<string | null>(null);
+
+  const normalizeProfileData = (raw: any): ProfileData => {
+    if (!raw) return INITIAL_PROFILE;
+    return {
+      name: raw.name || "",
+      email: raw.email || "",
+      phone: raw.phone || "",
+      linkedin: raw.linkedin || "",
+      github: raw.github || "",
+      portfolio: raw.portfolio || "",
+      summary: raw.summary || "",
+      education: Array.isArray(raw.education)
+        ? raw.education.map((edu: any) => ({
+            school: edu.school || "",
+            degree: edu.degree || "",
+            major: edu.major || "",
+            location: edu.location || "",
+            date: edu.date || "",
+            gpa: edu.gpa || "",
+          }))
+        : [],
+      skills: Array.isArray(raw.skills)
+        ? raw.skills.map((s: any) => ({
+            category: s.category || "",
+            items: Array.isArray(s.items) ? s.items.map(String) : [],
+          }))
+        : [],
+      projects: Array.isArray(raw.projects)
+        ? raw.projects.map((p: any) => ({
+            title: p.title || "",
+            role: p.role || "",
+            description: Array.isArray(p.description) ? p.description.map(String) : [],
+            technologies: Array.isArray(p.technologies) ? p.technologies.map(String) : [],
+          }))
+        : [],
+      experience: Array.isArray(raw.experience)
+        ? raw.experience.map((exp: any) => ({
+            company: exp.company || "",
+            role: exp.role || "",
+            location: exp.location || "",
+            date: exp.date || "",
+            description: Array.isArray(exp.description) ? exp.description.map(String) : [],
+          }))
+        : [],
+      certifications: Array.isArray(raw.certifications) ? raw.certifications.map(String) : [],
+      achievements: Array.isArray(raw.achievements) ? raw.achievements.map(String) : [],
+    };
+  };
 
 
   useEffect(() => {
@@ -182,11 +235,15 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
   // Sync profile & versions from Supabase
   useEffect(() => {
     async function syncProfile() {
+      if (hasLoadedProfile) return;
       if (!userId) {
         // Fallback to local storage for guest
         const savedProfile = localStorage.getItem("resume_builder_profile");
         if (savedProfile) {
-          try { setProfile(JSON.parse(savedProfile)); } catch(e){}
+          try {
+            setProfile(normalizeProfileData(JSON.parse(savedProfile)));
+            setHasLoadedProfile(true);
+          } catch(e){}
         }
         const savedVersions = localStorage.getItem("resume_builder_versions");
         if (savedVersions) {
@@ -200,13 +257,14 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
       if (dbProfile && dbProfile.raw_profile_data) {
         const raw = dbProfile.raw_profile_data;
         if (raw.profile) {
-          setProfile(raw.profile);
+          setProfile(normalizeProfileData(raw.profile));
         } else {
-          setProfile(raw);
+          setProfile(normalizeProfileData(raw));
         }
         if (raw.versions) {
           setVersions(raw.versions);
         }
+        setHasLoadedProfile(true);
       } else {
         // Migrate local storage to Supabase
         const localProfStr = localStorage.getItem("resume_builder_profile");
@@ -219,14 +277,16 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
         } catch (e) {}
 
         if (localProf) {
-          setProfile(localProf);
+          const normalized = normalizeProfileData(localProf);
+          setProfile(normalized);
           setVersions(localVers);
-          await upsertUserProfile(userId, { profile: localProf, versions: localVers, targetRole });
+          await upsertUserProfile(userId, { profile: normalized, versions: localVers, targetRole });
         }
+        setHasLoadedProfile(true);
       }
     }
     syncProfile();
-  }, [userId]);
+  }, [userId, hasLoadedProfile]);
 
   // Save changes to Supabase & local storage on profile, versions, or targetRole change
   useEffect(() => {
@@ -260,13 +320,37 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
   }, [profile, selectedTemplate]);
 
   // Import ATS scan cache data
-  const handleImportAtsData = () => {
-    const cachedText = localStorage.getItem("last_analyzed_resume_text");
+  const handleImportAtsData = async () => {
+    setIsProcessing(true);
+    setProcessingStep("Searching for scanned resume cache...");
+    setErrorMsg(null);
+
+    let cachedText = localStorage.getItem("last_analyzed_resume_text");
+
+    if (!cachedText && userId) {
+      try {
+        const { data: scans } = await supabase
+          .from("resume_scans")
+          .select("analysis")
+          .eq("user_id", userId)
+          .order("created_at", { ascending: false })
+          .limit(1);
+
+        if (scans && scans.length > 0) {
+          cachedText = scans[0].analysis?.rawText || "";
+        }
+      } catch (dbErr) {
+        console.error("Failed to fetch scan from Supabase:", dbErr);
+      }
+    }
+
     if (!cachedText) {
-      setErrorMsg("No previously analyzed resume text found. Run a check on the ATS Resume Analyzer tab first.");
+      setIsProcessing(false);
+      setErrorMsg("No previously analyzed resume text found. Please upload a file here instead, or run a check on the ATS Resume Analyzer first.");
       return;
     }
-    handleProcessText(cachedText);
+
+    await handleProcessText(cachedText);
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -288,7 +372,7 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
           body: formData
         });
         const evaluateData = await evaluateRes.json();
-        if (!evaluateRes.ok) throw new Error(evaluateData.error || "Failed to parse file.");
+        if (!evaluateRes.ok) throw new Error(evaluateData.message || evaluateData.error || "Failed to parse file.");
         
         if (evaluateData.rawText) {
           localStorage.setItem("last_analyzed_resume_text", evaluateData.rawText);
@@ -320,9 +404,9 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
         })
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to parse resume.");
+      if (!res.ok) throw new Error(data.message || data.error || "Failed to parse resume.");
 
-      setProfile(data.data);
+      setProfile(normalizeProfileData(data.data));
       setSuccessMessage("Resume imported successfully!");
     } catch (err: any) {
       console.error(err);
@@ -365,9 +449,9 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
         })
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to optimize resume for target job.");
+      if (!res.ok) throw new Error(data.message || data.error || "Failed to optimize resume for target job.");
 
-      setProfile(data.data);
+      setProfile(normalizeProfileData(data.data));
       setSuccessMessage("Resume successfully optimized for job description!");
     } catch (err: any) {
       console.error(err);
@@ -427,7 +511,7 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
   };
 
   const restoreVersion = (verData: ProfileData) => {
-    setProfile(verData);
+    setProfile(normalizeProfileData(verData));
     setSuccessMessage("Version restored successfully!");
   };
 
@@ -451,21 +535,32 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
     document.body.removeChild(link);
   };
 
-  // Print PDF
+  // Print PDF using a hidden iframe (prevents popup blocker and tab focus changes that reset auth state)
   const printPdf = () => {
-    const doc = iframeRef.current?.contentDocument;
-    if (!doc) return;
+    const previewHtml = document.getElementById("printable-resume")?.innerHTML;
+    if (!previewHtml) {
+      alert("No printable resume content found!");
+      return;
+    }
 
-    const previewHtml = doc.getElementById("printable-resume")?.innerHTML;
-    if (!previewHtml) return;
+    const iframe = iframeRef.current;
+    if (!iframe) {
+      alert("Print frame not initialized!");
+      return;
+    }
 
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) return;
+    const doc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (!doc) {
+      alert("Print document not accessible!");
+      return;
+    }
 
-    printWindow.document.write(`
+    doc.open();
+    doc.write(`
       <html>
         <head>
-          <title>${profile.name} - Resume</title>
+          <title>${profile.name || "Resume"} - Resume</title>
+          <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Poppins:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
           <script src="https://cdn.tailwindcss.com"></script>
           <style>
             @media print {
@@ -475,17 +570,257 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
           </style>
         </head>
         <body class="bg-white p-8">
-          ${previewHtml}
-          <script>
-            window.onload = function() {
-              window.print();
-              window.close();
-            }
-          </script>
+          <div id="printable-resume">
+            ${previewHtml}
+          </div>
         </body>
       </html>
     `);
-    printWindow.document.close();
+    doc.close();
+
+    // Trigger printing inside the context of the iframe window after styles apply
+    setTimeout(() => {
+      if (iframe.contentWindow) {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+      }
+    }, 600);
+  };
+
+  // Export as Word Document (.doc/.docx readable by Microsoft Word)
+  const downloadDocx = () => {
+    // Generate clean word-formatted HTML document with explicit CSS
+    const headerInfo = [
+      profile.phone,
+      profile.email,
+      profile.linkedin,
+      profile.github,
+      profile.portfolio
+    ].filter(Boolean).join("  |  ");
+
+    const htmlString = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+        <head>
+          <title>${profile.name || "Resume"} - Resume</title>
+          <meta charset="utf-8">
+          <!--[if gte mso 9]>
+          <xml>
+            <w:WordDocument>
+              <w:View>Print</w:View>
+              <w:Zoom>100</w:Zoom>
+              <w:DoNotOptimizeForBrowser/>
+            </w:WordDocument>
+          </xml>
+          <![endif]-->
+          <style>
+            @page {
+              size: 8.5in 11in;
+              margin: 0.75in 0.75in 0.75in 0.75in;
+              mso-header-margin: 0.5in;
+              mso-footer-margin: 0.5in;
+            }
+            body {
+              font-family: "Arial", sans-serif;
+              font-size: 10.5pt;
+              line-height: 1.25;
+              color: #1a1a1a;
+            }
+            h1 {
+              font-size: 22pt;
+              margin: 0 0 2pt 0;
+              text-align: center;
+              font-weight: bold;
+              font-family: "Arial Black", Arial, sans-serif;
+            }
+            h2 {
+              font-size: 11.5pt;
+              margin-top: 14pt;
+              margin-bottom: 5pt;
+              font-weight: bold;
+              border-bottom: 1.5pt solid #2d3748;
+              padding-bottom: 2pt;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+            }
+            p {
+              margin: 0 0 4pt 0;
+              font-size: 10pt;
+            }
+            ul {
+              margin: 0 0 6pt 0;
+              padding-left: 15pt;
+            }
+            li {
+              margin-bottom: 2.5pt;
+              font-size: 9.5pt;
+              color: #2d3748;
+            }
+            .header-info {
+              text-align: center;
+              font-size: 9pt;
+              color: #4a5568;
+              margin-bottom: 14pt;
+              font-weight: bold;
+            }
+            .section-table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-bottom: 5pt;
+            }
+            .section-table td {
+              padding: 0;
+              vertical-align: top;
+            }
+            .col-title {
+              font-weight: bold;
+              font-size: 10pt;
+              color: #1a1a1a;
+            }
+            .col-right {
+              text-align: right;
+              font-weight: bold;
+              font-size: 10pt;
+              color: #2d3748;
+            }
+            .col-subtitle {
+              font-style: italic;
+              font-size: 9.5pt;
+              color: #4a5568;
+            }
+            .col-subright {
+              text-align: right;
+              font-size: 9.5pt;
+              color: #718096;
+            }
+            .skills-table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-bottom: 4pt;
+            }
+            .skills-table td {
+              padding: 2pt 0;
+              font-size: 9.5pt;
+              vertical-align: top;
+            }
+            .skills-cat {
+              font-weight: bold;
+              width: 120px;
+              color: #1a1a1a;
+            }
+          </style>
+        </head>
+        <body>
+          <div style="text-align: center; margin-bottom: 8pt;">
+            <h1>${profile.name}</h1>
+            <div class="header-info">
+              ${headerInfo}
+            </div>
+          </div>
+
+          ${sectionOrder.map(sectionKey => {
+            if (sectionKey === "summary" && profile.summary) {
+              return `
+                <h2>Professional Summary</h2>
+                <p style="text-align: justify;">${profile.summary}</p>
+              `;
+            }
+            if (sectionKey === "education" && profile.education.length > 0) {
+              return `
+                <h2>Education</h2>
+                ${profile.education.map(edu => `
+                  <table class="section-table">
+                    <tr>
+                      <td class="col-title">${edu.school}</td>
+                      <td class="col-right">${edu.location}</td>
+                    </tr>
+                    <tr>
+                      <td class="col-subtitle">${edu.degree} in ${edu.major} ${edu.gpa ? `(GPA: ${edu.gpa})` : ""}</td>
+                      <td class="col-subright">${edu.date}</td>
+                    </tr>
+                  </table>
+                `).join("")}
+              `;
+            }
+            if (sectionKey === "skills" && profile.skills.length > 0) {
+              return `
+                <h2>Technical Skills</h2>
+                <table class="skills-table">
+                  ${profile.skills.map(group => `
+                    <tr>
+                      <td class="skills-cat">${group.category}:</td>
+                      <td>${group.items.join(", ")}</td>
+                    </tr>
+                  `).join("")}
+                </table>
+              `;
+            }
+            if (sectionKey === "experience" && profile.experience.length > 0) {
+              return `
+                <h2>Professional Experience</h2>
+                ${profile.experience.map(exp => `
+                  <table class="section-table">
+                    <tr>
+                      <td class="col-title">${exp.company}</td>
+                      <td class="col-right">${exp.location}</td>
+                    </tr>
+                    <tr>
+                      <td class="col-subtitle">${exp.role}</td>
+                      <td class="col-subright">${exp.date}</td>
+                    </tr>
+                  </table>
+                  <ul style="margin-top: 1pt; margin-bottom: 6pt;">
+                    ${exp.description.map(bullet => `<li>${bullet}</li>`).join("")}
+                  </ul>
+                `).join("")}
+              `;
+            }
+            if (sectionKey === "projects" && profile.projects.length > 0) {
+              return `
+                <h2>Projects</h2>
+                ${profile.projects.map(proj => `
+                  <table class="section-table">
+                    <tr>
+                      <td class="col-title">${proj.title} <span style="font-weight: normal; font-size: 8.5pt; color: #718096; font-style: italic;">(${proj.technologies.join(", ")})</span></td>
+                      <td class="col-subright">${proj.role}</td>
+                    </tr>
+                  </table>
+                  <ul style="margin-top: 1pt; margin-bottom: 6pt;">
+                    ${proj.description.map(bullet => `<li>${bullet}</li>`).join("")}
+                  </ul>
+                `).join("")}
+              `;
+            }
+            if (sectionKey === "certifications" && profile.certifications.length > 0) {
+              return `
+                <h2>Certifications</h2>
+                <ul style="margin-top: 2pt;">
+                  ${profile.certifications.map(cert => `<li>${cert}</li>`).join("")}
+                </ul>
+              `;
+            }
+            if (sectionKey === "achievements" && profile.achievements.length > 0) {
+              return `
+                <h2>Key Achievements</h2>
+                <ul style="margin-top: 2pt;">
+                  ${profile.achievements.map(ach => `<li>${ach}</li>`).join("")}
+                </ul>
+              `;
+            }
+            return "";
+          }).join("")}
+        </body>
+      </html>
+    `;
+
+    // Download as a Microsoft Word compatible HTML document
+    const blob = new Blob(['\ufeff' + htmlString], { type: "application/msword" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${profile.name.replace(/\s+/g, "_")}_Resume.doc`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   // Quality score metrics calculation
@@ -524,6 +859,11 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
     if (t === "3") return { font: "font-sans font-light", header: "text-left", border: "border-b border-slate-200 pb-0.5" };
     if (t === "4") return { font: "font-mono text-xs", header: "text-left", border: "border-b border-teal-700 pb-1" };
     if (t === "5") return { font: "font-sans", header: "text-left", border: "border-b-2 border-slate-800 pb-1" };
+    if (t === "6") return { font: "font-serif", header: "text-center", border: "border-b border-slate-900 pb-1" };
+    if (t === "7") return { font: "font-[Poppins,sans-serif] tracking-tight", header: "text-left border-l-4 border-indigo-600 pl-4 py-2 bg-slate-50 rounded-r-xl", border: "border-b-2 border-indigo-500 pb-1 text-indigo-700 font-bold" };
+    if (t === "8") return { font: "font-serif text-[11px]", header: "text-left border-b-2 border-slate-950 pb-2", border: "border-b-2 border-slate-950 pb-0.5 font-black" };
+    if (t === "9") return { font: "font-serif text-xs", header: "text-center pb-2", border: "border-b border-slate-300 pb-1 text-center" };
+    if (t === "10") return { font: "font-[Inter,sans-serif] text-[11px]", header: "text-left", border: "border-b-2 border-teal-500 pb-1 text-teal-600" };
     return { font: "font-serif", header: "text-center", border: "border-b border-slate-900 pb-1" };
   };
 
@@ -643,6 +983,7 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
                 <div className="space-y-1">
                   <span className="text-[8px] font-black text-indigo-400 uppercase tracking-widest">Job description detected</span>
                   <p className="text-xs font-black truncate">{cachedJdTitle}</p>
+                  <p className="text-[8px] text-slate-400 font-medium">Detected from your latest run in the JD Matcher tab.</p>
                 </div>
                 <button
                   id="btn-optimize-jd-builder"
@@ -675,7 +1016,7 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
                     <input
                       type="text"
                       id="input-builder-name"
-                      value={profile.name}
+                      value={profile.name || ""}
                       onChange={(e) => setProfile({ ...profile, name: e.target.value })}
                       className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     />
@@ -684,7 +1025,7 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Email Address</label>
                     <input
                       type="email"
-                      value={profile.email}
+                      value={profile.email || ""}
                       onChange={(e) => setProfile({ ...profile, email: e.target.value })}
                       className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     />
@@ -693,7 +1034,7 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Phone Number</label>
                     <input
                       type="text"
-                      value={profile.phone}
+                      value={profile.phone || ""}
                       onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
                       className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     />
@@ -702,7 +1043,7 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">LinkedIn Profile</label>
                     <input
                       type="text"
-                      value={profile.linkedin}
+                      value={profile.linkedin || ""}
                       onChange={(e) => setProfile({ ...profile, linkedin: e.target.value })}
                       placeholder="linkedin.com/in/username"
                       className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -712,7 +1053,7 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">GitHub URL</label>
                     <input
                       type="text"
-                      value={profile.github}
+                      value={profile.github || ""}
                       onChange={(e) => setProfile({ ...profile, github: e.target.value })}
                       placeholder="github.com/username"
                       className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -722,7 +1063,7 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Portfolio Link</label>
                     <input
                       type="text"
-                      value={profile.portfolio}
+                      value={profile.portfolio || ""}
                       onChange={(e) => setProfile({ ...profile, portfolio: e.target.value })}
                       placeholder="portfolio.dev"
                       className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -737,7 +1078,7 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
                   Professional Summary
                 </label>
                 <textarea
-                  value={profile.summary}
+                  value={profile.summary || ""}
                   onChange={(e) => setProfile({ ...profile, summary: e.target.value })}
                   rows={3}
                   className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold leading-relaxed focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -760,7 +1101,7 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
                     <div className="grid grid-cols-2 gap-3 pr-8">
                       <input
                         type="text"
-                        value={edu.school}
+                        value={edu.school || ""}
                         placeholder="School/University"
                         onChange={(e) => {
                           const list = [...profile.education];
@@ -771,7 +1112,7 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
                       />
                       <input
                         type="text"
-                        value={edu.degree}
+                        value={edu.degree || ""}
                         placeholder="Degree (e.g. B.S.)"
                         onChange={(e) => {
                           const list = [...profile.education];
@@ -782,7 +1123,7 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
                       />
                       <input
                         type="text"
-                        value={edu.major}
+                        value={edu.major || ""}
                         placeholder="Major (e.g. Computer Science)"
                         onChange={(e) => {
                           const list = [...profile.education];
@@ -793,7 +1134,7 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
                       />
                       <input
                         type="text"
-                        value={edu.gpa}
+                        value={edu.gpa || ""}
                         placeholder="GPA (e.g. 3.8/4.0)"
                         onChange={(e) => {
                           const list = [...profile.education];
@@ -804,7 +1145,7 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
                       />
                       <input
                         type="text"
-                        value={edu.location}
+                        value={edu.location || ""}
                         placeholder="Location"
                         onChange={(e) => {
                           const list = [...profile.education];
@@ -815,7 +1156,7 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
                       />
                       <input
                         type="text"
-                        value={edu.date}
+                        value={edu.date || ""}
                         placeholder="Dates (e.g. 2020 - 2024)"
                         onChange={(e) => {
                           const list = [...profile.education];
@@ -845,7 +1186,7 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
                     <div className="space-y-2 pr-8">
                       <input
                         type="text"
-                        value={group.category}
+                        value={group.category || ""}
                         placeholder="Category (e.g. Languages, Frameworks)"
                         onChange={(e) => {
                           const list = [...profile.skills];
@@ -856,7 +1197,7 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
                       />
                       <input
                         type="text"
-                        value={group.items.join(", ")}
+                        value={(group.items || []).join(", ")}
                         placeholder="Comma-separated items (e.g. React, Vue, Angular)"
                         onChange={(e) => {
                           const list = [...profile.skills];
@@ -886,7 +1227,7 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
                     <div className="grid grid-cols-2 gap-3 pr-8">
                       <input
                         type="text"
-                        value={exp.company}
+                        value={exp.company || ""}
                         placeholder="Company"
                         onChange={(e) => {
                           const list = [...profile.experience];
@@ -897,7 +1238,7 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
                       />
                       <input
                         type="text"
-                        value={exp.role}
+                        value={exp.role || ""}
                         placeholder="Job Title"
                         onChange={(e) => {
                           const list = [...profile.experience];
@@ -908,7 +1249,7 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
                       />
                       <input
                         type="text"
-                        value={exp.location}
+                        value={exp.location || ""}
                         placeholder="Location"
                         onChange={(e) => {
                           const list = [...profile.experience];
@@ -919,7 +1260,7 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
                       />
                       <input
                         type="text"
-                        value={exp.date}
+                        value={exp.date || ""}
                         placeholder="Dates (e.g. Summer 2023)"
                         onChange={(e) => {
                           const list = [...profile.experience];
@@ -932,7 +1273,7 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
                     <div>
                       <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block mb-1">Experience Bullets (one per line)</label>
                       <textarea
-                        value={exp.description.join("\n")}
+                        value={(exp.description || []).join("\n")}
                         rows={3}
                         placeholder="Bullet 1&#10;Bullet 2"
                         onChange={(e) => {
@@ -963,7 +1304,7 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
                     <div className="grid grid-cols-2 gap-3 pr-8">
                       <input
                         type="text"
-                        value={proj.title}
+                        value={proj.title || ""}
                         placeholder="Project Name"
                         onChange={(e) => {
                           const list = [...profile.projects];
@@ -974,7 +1315,7 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
                       />
                       <input
                         type="text"
-                        value={proj.role}
+                        value={proj.role || ""}
                         placeholder="Role (e.g. Fullstack Developer)"
                         onChange={(e) => {
                           const list = [...profile.projects];
@@ -987,7 +1328,7 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
                     <div className="space-y-2">
                       <input
                         type="text"
-                        value={proj.technologies.join(", ")}
+                        value={(proj.technologies || []).join(", ")}
                         placeholder="Technologies (comma-separated, e.g. React, Go)"
                         onChange={(e) => {
                           const list = [...profile.projects];
@@ -997,7 +1338,7 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
                         className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold"
                       />
                       <textarea
-                        value={proj.description.join("\n")}
+                        value={(proj.description || []).join("\n")}
                         rows={3}
                         placeholder="Bullet 1&#10;Bullet 2"
                         onChange={(e) => {
@@ -1084,7 +1425,7 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
             <div className="flex gap-2">
               <input
                 type="text"
-                value={versionLabel}
+                value={versionLabel || ""}
                 onChange={(e) => setVersionLabel(e.target.value)}
                 placeholder="Name this version (e.g. TechCorp Tailored)"
                 className="flex-grow p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none"
@@ -1163,7 +1504,7 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
               </div>
               <h3 className="text-2xl font-black text-slate-900 font-display">Resume Quality Index</h3>
               
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <button
                   onClick={printPdf}
                   className="px-4 py-2.5 bg-slate-900 text-white font-black text-[9px] uppercase tracking-widest rounded-xl hover:bg-indigo-600 transition-all flex items-center gap-1.5 cursor-pointer shadow-md"
@@ -1178,6 +1519,14 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span>Download .TEX Source</span>
+                </button>
+
+                <button
+                  onClick={downloadDocx}
+                  className="px-4 py-2.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 font-black text-[9px] uppercase tracking-widest rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-md"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>Export to Word (.docx)</span>
                 </button>
               </div>
             </div>

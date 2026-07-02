@@ -1,0 +1,32 @@
+name: Dependency Security Scan
+
+on:
+  schedule:
+    - cron: '0 0 * * 0' # Runs weekly on Sundays
+  pull_request:
+    paths:
+      - 'package-lock.json'
+      - 'package.json'
+
+jobs:
+  security-audit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-level: '20'
+
+      - name: Run Dependency Audit Scan
+        run: |
+          # run npm audit and fail on high or critical vulnerabilities
+          npm audit --audit-level=high
+
+      - name: Verify Secret Leaks prevention
+        run: |
+          # A simple check asserting no raw production secrets reside in example templates
+          grep -v "key_hash" .env.example

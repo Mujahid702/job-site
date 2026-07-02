@@ -22,7 +22,6 @@ import {
   Edit2,
   RefreshCw,
   Info,
-  Archive,
   AlertCircle,
   AlertTriangle,
   Plus,
@@ -35,33 +34,54 @@ import {
   Send,
   Upload,
   Link2,
-  FileText
+  FileText,
+  Bookmark,
+  Share2,
+  UserCheck,
+  ThumbsUp,
+  Flame,
+  CheckCircle2,
+  FolderLock
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Recruiter, RecruiterActivity, RecruiterFollowup, RecruiterTemplate } from "@/lib/db/recruiters";
+import {
+  Recruiter,
+  RecruiterActivity,
+  RecruiterFollowup,
+  RecruiterTemplate,
+  calculateRelationshipScore,
+  calculateOpportunityScore,
+  classifyOpportunityLevel
+} from "@/lib/db/recruiters";
+import { getApplications } from "@/lib/db/applications";
 
 const PIPELINE_STAGES = [
-  "Lead Found",
-  "Connection Sent",
+  "Prospecting",
   "Connected",
   "Conversation Started",
-  "Follow Up",
+  "Relationship Building",
   "Referral Requested",
   "Referral Received",
+  "Application Submitted",
   "Interview Opportunity",
-  "Hired",
-  "Lost"
+  "Offer Pipeline",
+  "Long-Term Network"
 ];
 
 const STAGE_COLORS: Record<string, string> = {
-  "Lead Found": "bg-slate-100 text-slate-700 border-slate-200",
-  "Connection Sent": "bg-blue-50 text-blue-700 border-blue-100",
-  "Connected": "bg-indigo-50 text-indigo-700 border-indigo-100",
+  "Prospecting": "bg-slate-100 text-slate-700 border-slate-200",
+  "Connected": "bg-blue-50 text-blue-700 border-blue-100",
   "Conversation Started": "bg-purple-50 text-purple-700 border-purple-100",
-  "Follow Up": "bg-pink-50 text-pink-700 border-pink-100",
+  "Relationship Building": "bg-pink-50 text-pink-700 border-pink-100",
   "Referral Requested": "bg-orange-50 text-orange-700 border-orange-100",
   "Referral Received": "bg-teal-50 text-teal-700 border-teal-100",
+  "Application Submitted": "bg-indigo-50 text-indigo-700 border-indigo-100",
   "Interview Opportunity": "bg-amber-50 text-amber-700 border-amber-100",
+  "Offer Pipeline": "bg-emerald-50 text-emerald-700 border-emerald-100",
+  "Long-Term Network": "bg-emerald-50 text-emerald-700 border-emerald-150",
+  "Lead Found": "bg-slate-100 text-slate-700 border-slate-200",
+  "Connection Sent": "bg-blue-50 text-blue-700 border-blue-100",
+  "Follow Up": "bg-pink-50 text-pink-700 border-pink-100",
   "Hired": "bg-emerald-50 text-emerald-700 border-emerald-100",
   "Lost": "bg-rose-50 text-rose-700 border-rose-100"
 };
@@ -75,6 +95,12 @@ const STRENGTH_COLORS: Record<string, string> = {
   "Strong Connection": "bg-emerald-50 text-emerald-600"
 };
 
+const OPPORTUNITY_LEVEL_COLORS: Record<string, string> = {
+  "High Opportunity": "bg-emerald-50 text-emerald-700 border-emerald-200",
+  "Medium Opportunity": "bg-amber-50 text-amber-700 border-amber-200",
+  "Low Opportunity": "bg-rose-50 text-rose-700 border-rose-200"
+};
+
 export default function RecruitersCRMPage() {
   const router = useRouter();
   const supabase = createClient();
@@ -84,7 +110,14 @@ export default function RecruitersCRMPage() {
   const [recruiters, setRecruiters] = useState<any[]>([]);
   const [followups, setFollowups] = useState<RecruiterFollowup[]>([]);
   const [templates, setTemplates] = useState<RecruiterTemplate[]>([]);
-  
+  const [applications, setApplications] = useState<any[]>([]);
+  const [conversations, setConversations] = useState<any[]>([]);
+
+  // Page level Active Tab
+  const [activeTab, setActiveTab] = useState<
+    "dashboard" | "board" | "directory" | "followups" | "analytics" | "opportunity" | "playbooks"
+  >("dashboard");
+
   // Dashboard Metrics
   const [metrics, setMetrics] = useState({
     totalRecruiters: 0,
@@ -95,7 +128,16 @@ export default function RecruitersCRMPage() {
     referralSuccessRate: 0,
     funnel: [] as any[],
     insights: [] as string[],
-    averageRelationshipScore: 0
+    averageRelationshipScore: 0,
+    averageOpportunityScore: 0,
+    verifiedRecruitersCount: 0,
+    suspiciousRecruitersCount: 0,
+    responseRate: 0,
+    highOpportunityCount: 0,
+    monthlyActivities: [] as any[],
+    successRateByType: [] as any[],
+    successRateByCompany: [] as any[],
+    highOpportunityProfiles: [] as any[]
   });
 
   // Search, Filter, Sort States
@@ -103,9 +145,13 @@ export default function RecruitersCRMPage() {
   const [companyFilter, setCompanyFilter] = useState("");
   const [stageFilter, setStageFilter] = useState("");
   const [strengthFilter, setStrengthFilter] = useState("");
+  const [typeFilter, setTypeFilter] = useState("");
+  const [oppLevelFilter, setOppLevelFilter] = useState("");
+  const [verifiedOnly, setVerifiedOnly] = useState(false);
+  const [minTrustScore, setMinTrustScore] = useState(0);
+
   const [sortField, setSortField] = useState("created_at");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
-  const [currentView, setCurrentView] = useState<"pipeline" | "list">("pipeline");
 
   // Selected Recruiter Drawer/Detail states
   const [selectedRecruiter, setSelectedRecruiter] = useState<any | null>(null);
@@ -117,23 +163,56 @@ export default function RecruitersCRMPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showFollowupModal, setShowFollowupModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
-  const [showTemplateModal, setShowTemplateModal] = useState(false);
 
   // New Recruiter Form states
   const [newRec, setNewRec] = useState({
     name: "",
     company: "",
     designation: "",
+    department: "",
+    company_domain: "",
+    recruiter_type: "Technical Recruiter",
     linkedin_url: "",
     email: "",
     phone: "",
     location: "",
     hiring_roles: "",
     relationship_strength: "Cold" as Recruiter["relationship_strength"],
-    pipeline_stage: "Lead Found" as Recruiter["pipeline_stage"],
+    pipeline_stage: "Prospecting" as Recruiter["pipeline_stage"],
     notes: "",
-    tagsString: ""
+    tagsString: "",
+    trust_score: 100,
+    verification_status: "Verified" as any,
+    referral_sent_count: 0,
+    referral_accepted_count: 0,
+    referral_rejected_count: 0,
+    interview_count: 0,
+    offer_count: 0
   });
+
+  // Edit Recruiter Drawer Form states
+  const [editRecName, setEditRecName] = useState("");
+  const [editRecCompany, setEditRecCompany] = useState("");
+  const [editRecDesignation, setEditRecDesignation] = useState("");
+  const [editRecDept, setEditRecDept] = useState("");
+  const [editRecDomain, setEditRecDomain] = useState("");
+  const [editRecType, setEditRecType] = useState<any>("");
+  const [editRecLinkedin, setEditRecLinkedin] = useState("");
+  const [editRecEmail, setEditRecEmail] = useState("");
+  const [editRecPhone, setEditRecPhone] = useState("");
+  const [editRecLocation, setEditRecLocation] = useState("");
+  const [editRecRoles, setEditRecRoles] = useState("");
+  const [editRecStage, setEditRecStage] = useState<any>("");
+  const [editRecStrength, setEditRecStrength] = useState<any>("");
+  const [editRecNotes, setEditRecNotes] = useState("");
+  const [editRecTags, setEditRecTags] = useState("");
+  const [editRecTrust, setEditRecTrust] = useState(100);
+  const [editRecStatus, setEditRecStatus] = useState<any>("Verified");
+  const [editRecRefSent, setEditRecRefSent] = useState(0);
+  const [editRecRefAcc, setEditRecRefAcc] = useState(0);
+  const [editRecRefRej, setEditRecRefRej] = useState(0);
+  const [editRecIntCount, setEditRecIntCount] = useState(0);
+  const [editRecOffCount, setEditRecOffCount] = useState(0);
 
   // New Followup Form states
   const [newFollow, setNewFollow] = useState({
@@ -156,11 +235,7 @@ export default function RecruitersCRMPage() {
   const [skillsOverride, setSkillsOverride] = useState("");
   const [roleOverride, setRoleOverride] = useState("");
 
-  // Recruiter Verification & Reputation States
-  const [verifiedOnly, setVerifiedOnly] = useState(false);
-  const [minTrustScore, setMinTrustScore] = useState(0);
-  const [minReputationScore, setMinReputationScore] = useState(0);
-  const [drawerTab, setDrawerTab] = useState<"activities" | "verification" | "rate_report">("activities");
+  const [drawerTab, setDrawerTab] = useState<"activities" | "verification" | "rate_report" | "edit_profile">("activities");
 
   // Verification Form states
   const [verificationEmail, setVerificationEmail] = useState("");
@@ -182,6 +257,20 @@ export default function RecruitersCRMPage() {
   const [reportReason, setReportReason] = useState<string>("Fake Recruiter");
   const [reportEvidence, setReportEvidence] = useState("");
 
+  // AI Coaching Chat States
+  const [coachMessages, setCoachMessages] = useState<Array<{ sender: "user" | "coach"; text: string; date: Date }>>([
+    {
+      sender: "coach",
+      text: "Hello! I am your AI Placement Networking Coach. I monitor your pipeline stages, response rates, and company segments to help you build referral connections. How can I help optimize your outreach today?",
+      date: new Date()
+    }
+  ]);
+  const [coachInput, setCoachInput] = useState("");
+  const [coachTyping, setCoachTyping] = useState(false);
+
+  // Opportunity matching dropdown selection
+  const [matchingApplicationId, setMatchingApplicationId] = useState("");
+
   const loadData = async (uid: string) => {
     setLoading(true);
     try {
@@ -193,7 +282,6 @@ export default function RecruitersCRMPage() {
       if (strengthFilter) queryParams.set("strength", strengthFilter);
       if (verifiedOnly) queryParams.set("verifiedOnly", "true");
       if (minTrustScore > 0) queryParams.set("minTrustScore", minTrustScore.toString());
-      if (minReputationScore > 0) queryParams.set("minReputationScore", minReputationScore.toString());
       queryParams.set("sortField", sortField);
       queryParams.set("sortOrder", sortOrder);
 
@@ -201,7 +289,27 @@ export default function RecruitersCRMPage() {
       if (recRes.ok) {
         const result = await recRes.json();
         if (result.success) {
-          setRecruiters(result.recruiters || []);
+          // Normalize rows for potential missing schema properties
+          const normalized = (result.recruiters || []).map((r: any) => {
+            const calculatedOppScore = calculateOpportunityScore(r);
+            const calculatedOppLevel = classifyOpportunityLevel(calculatedOppScore);
+            return {
+              ...r,
+              department: r.department || "",
+              company_domain: r.company_domain || "",
+              recruiter_type: r.recruiter_type || "Technical Recruiter",
+              trust_score: r.trust_score ?? r.verification?.trust_score ?? 100,
+              verification_status: r.verification_status || r.verification?.verification_status || "Verified",
+              referral_sent_count: r.referral_sent_count ?? 0,
+              referral_accepted_count: r.referral_accepted_count ?? 0,
+              referral_rejected_count: r.referral_rejected_count ?? 0,
+              interview_count: r.interview_count ?? 0,
+              offer_count: r.offer_count ?? 0,
+              opportunity_score: r.opportunity_score ?? calculatedOppScore,
+              opportunity_level: r.opportunity_level || calculatedOppLevel
+            };
+          });
+          setRecruiters(normalized);
         }
       }
 
@@ -224,7 +332,7 @@ export default function RecruitersCRMPage() {
       }
 
       // 4. Fetch Insights Metrics
-      const insightsRes = await fetch("/api/recruiter/insights");
+      const insightsRes = await fetch("/api/recruiter/insights?refresh=true");
       if (insightsRes.ok) {
         const result = await insightsRes.json();
         if (result.success) {
@@ -237,9 +345,26 @@ export default function RecruitersCRMPage() {
             referralSuccessRate: result.referralSuccessRate,
             funnel: result.funnel || [],
             insights: result.insights || [],
-            averageRelationshipScore: result.averageRelationshipScore
+            averageRelationshipScore: result.averageRelationshipScore,
+            averageOpportunityScore: result.averageOpportunityScore || 0,
+            verifiedRecruitersCount: result.verifiedRecruitersCount || 0,
+            suspiciousRecruitersCount: result.suspiciousRecruitersCount || 0,
+            responseRate: result.responseRate || 0,
+            highOpportunityCount: result.highOpportunityCount || 0,
+            monthlyActivities: result.monthlyActivities || [],
+            successRateByType: result.successRateByType || [],
+            successRateByCompany: result.successRateByCompany || [],
+            highOpportunityProfiles: result.highOpportunityProfiles || []
           });
         }
+      }
+
+      // 5. Fetch applications list
+      try {
+        const apps = await getApplications(uid);
+        setApplications(apps || []);
+      } catch (err) {
+        console.error("Failed to load applications in CRM:", err);
       }
     } catch (err) {
       console.error("Failed to load recruiter CRM data:", err);
@@ -259,7 +384,7 @@ export default function RecruitersCRMPage() {
       }
     }
     init();
-  }, [search, companyFilter, stageFilter, strengthFilter, sortField, sortOrder, verifiedOnly, minTrustScore, minReputationScore]);
+  }, [search, companyFilter, stageFilter, strengthFilter, sortField, sortOrder, verifiedOnly, minTrustScore]);
 
   const refreshRecruiterDetails = async (recId: string) => {
     if (!user) return;
@@ -286,11 +411,9 @@ export default function RecruitersCRMPage() {
         body: JSON.stringify({ recruiterId: selectedRecruiter.id, email: verificationEmail })
       });
       const data = await res.json();
+      alert(data.message);
       if (data.success) {
         setOtpSent(true);
-        alert(data.message);
-      } else {
-        alert(data.message);
       }
     } catch (e) {
       console.error(e);
@@ -308,17 +431,15 @@ export default function RecruitersCRMPage() {
         body: JSON.stringify({ recruiterId: selectedRecruiter.id, email: verificationEmail, otp: verificationOtp })
       });
       const data = await res.json();
+      alert(data.message);
       if (data.success) {
-        alert(data.message);
-        // Refresh recruiter details
+        // Refresh details
         const fresh = await fetch(`/api/recruiter/${selectedRecruiter.id}`);
         const result = await fresh.json();
         if (result.success && result.recruiter) {
           setSelectedRecruiter(result.recruiter);
         }
         await loadData(user?.id || "");
-      } else {
-        alert(data.message);
       }
     } catch (e) {
       console.error(e);
@@ -429,18 +550,159 @@ export default function RecruitersCRMPage() {
     }
   };
 
+  const getInfluenceScore = (rec: any) => {
+    let score = 50; // base
+    if (rec.verification_status === "Verified") score += 20;
+    const trust = rec.trust_score || 0;
+    score += Math.round(trust * 0.15); // max 15 points
+    
+    const company = (rec.company || "").toLowerCase();
+    const FAANG = ["google", "amazon", "microsoft", "apple", "meta", "nvidia"];
+    const Tier1 = ["deloitte", "accenture", "ibm", "oracle", "sap", "adobe", "goldman", "jpmorgan"];
+    if (FAANG.some(c => company.includes(c))) {
+      score += 15;
+    } else if (Tier1.some(c => company.includes(c))) {
+      score += 10;
+    }
+    
+    const rating = rec.reputation_score ?? rec.verification?.reputation_score ?? 0;
+    if (rating > 0) {
+      score += Math.round(rating * 2); // max 10 points
+    }
+    
+    return Math.min(100, score);
+  };
+
   const handleSelectRecruiter = async (rec: any) => {
-    setSelectedRecruiter(rec);
-    setVerificationEmail(rec.email || "");
-    setLinkedinUrlInput(rec.linkedin_url || "");
+    const r = {
+      ...rec,
+      trust_score: rec.trust_score ?? rec.verification?.trust_score ?? 100,
+      verification_status: rec.verification_status || rec.verification?.verification_status || "Verified",
+      referral_sent_count: rec.referral_sent_count ?? 0,
+      referral_accepted_count: rec.referral_accepted_count ?? 0,
+      referral_rejected_count: rec.referral_rejected_count ?? 0,
+      interview_count: rec.interview_count ?? 0,
+      offer_count: rec.offer_count ?? 0,
+      opportunity_score: rec.opportunity_score ?? calculateOpportunityScore(rec),
+      opportunity_level: rec.opportunity_level || classifyOpportunityLevel(calculateOpportunityScore(rec)),
+      department: rec.department || "",
+      company_domain: rec.company_domain || "",
+      recruiter_type: rec.recruiter_type || "Technical Recruiter"
+    };
+
+    setSelectedRecruiter(r);
+    setVerificationEmail(r.email || "");
+    setLinkedinUrlInput(r.linkedin_url || "");
     setDocUrlInput("");
     setOtpSent(false);
     setVerificationOtp("");
     setDrawerTab("activities");
-    await refreshRecruiterDetails(rec.id);
+
+    // Prefill Edit state variables
+    setEditRecName(r.name || "");
+    setEditRecCompany(r.company || "");
+    setEditRecDesignation(r.designation || "");
+    setEditRecDept(r.department || "");
+    setEditRecDomain(r.company_domain || "");
+    setEditRecType(r.recruiter_type || "Technical Recruiter");
+    setEditRecLinkedin(r.linkedin_url || "");
+    setEditRecEmail(r.email || "");
+    setEditRecPhone(r.phone || "");
+    setEditRecLocation(r.location || "");
+    setEditRecRoles(r.hiring_roles || "");
+    setEditRecStage(r.pipeline_stage || "Prospecting");
+    setEditRecStrength(r.relationship_strength || "Cold");
+    setEditRecNotes(r.notes || "");
+    setEditRecTags(r.tags ? r.tags.join(", ") : "");
+    setEditRecTrust(r.trust_score);
+    setEditRecStatus(r.verification_status);
+    setEditRecRefSent(r.referral_sent_count);
+    setEditRecRefAcc(r.referral_accepted_count);
+    setEditRecRefRej(r.referral_rejected_count);
+    setEditRecIntCount(r.interview_count);
+    setEditRecOffCount(r.offer_count);
+
+    try {
+      const { data: convs } = await supabase
+        .from("recruiter_conversations")
+        .select("*")
+        .eq("recruiter_id", r.id)
+        .order("sent_at", { ascending: false });
+      setConversations(convs || []);
+    } catch (err) {
+      console.error("Failed to load recruiter conversations:", err);
+    }
+
+    await refreshRecruiterDetails(r.id);
   };
 
-  // Add Recruiter
+  const handleSaveEditProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !selectedRecruiter) return;
+    
+    const parsedTags = editRecTags
+      ? editRecTags.split(",").map(t => t.trim()).filter(t => t.length > 0)
+      : [];
+
+    const oppScore = calculateOpportunityScore({
+      recruiter_type: editRecType,
+      verification_status: editRecStatus,
+      referral_accepted_count: editRecRefAcc,
+      offer_count: editRecOffCount,
+      trust_score: editRecTrust
+    });
+
+    const bodyPayload = {
+      name: editRecName,
+      company: editRecCompany,
+      designation: editRecDesignation,
+      department: editRecDept,
+      company_domain: editRecDomain,
+      recruiter_type: editRecType,
+      linkedin_url: editRecLinkedin,
+      email: editRecEmail,
+      phone: editRecPhone,
+      location: editRecLocation,
+      hiring_roles: editRecRoles,
+      pipeline_stage: editRecStage,
+      relationship_strength: editRecStrength,
+      notes: editRecNotes,
+      tags: parsedTags,
+      trust_score: editRecTrust,
+      verification_status: editRecStatus,
+      referral_sent_count: editRecRefSent,
+      referral_accepted_count: editRecRefAcc,
+      referral_rejected_count: editRecRefRej,
+      interview_count: editRecIntCount,
+      offer_count: editRecOffCount,
+      opportunity_score: oppScore,
+      opportunity_level: classifyOpportunityLevel(oppScore)
+    };
+
+    try {
+      const res = await fetch(`/api/recruiter/${selectedRecruiter.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(bodyPayload)
+      });
+      const result = await res.json();
+      if (res.ok && result.success) {
+        alert("Recruiter profile updated successfully!");
+        // Update local recruiter
+        setSelectedRecruiter({
+          ...selectedRecruiter,
+          ...bodyPayload
+        });
+        await loadData(user.id);
+      } else {
+        alert(result.message || "Failed to update recruiter");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error updating recruiter profile.");
+    }
+  };
+
   const handleAddRecruiterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
@@ -449,13 +711,25 @@ export default function RecruitersCRMPage() {
         ? newRec.tagsString.split(",").map(t => t.trim()).filter(t => t.length > 0)
         : [];
 
+      const oppScore = calculateOpportunityScore({
+        recruiter_type: newRec.recruiter_type as any,
+        verification_status: newRec.verification_status as any,
+        referral_accepted_count: newRec.referral_accepted_count,
+        offer_count: newRec.offer_count,
+        trust_score: newRec.trust_score
+      });
+
+      const payload = {
+        ...newRec,
+        tags: parsedTags,
+        opportunity_score: oppScore,
+        opportunity_level: classifyOpportunityLevel(oppScore)
+      };
+
       const res = await fetch("/api/recruiter", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...newRec,
-          tags: parsedTags
-        })
+        body: JSON.stringify(payload)
       });
 
       const result = await res.json();
@@ -465,15 +739,25 @@ export default function RecruitersCRMPage() {
           name: "",
           company: "",
           designation: "",
+          department: "",
+          company_domain: "",
+          recruiter_type: "Technical Recruiter",
           linkedin_url: "",
           email: "",
           phone: "",
           location: "",
           hiring_roles: "",
           relationship_strength: "Cold",
-          pipeline_stage: "Lead Found",
+          pipeline_stage: "Prospecting",
           notes: "",
-          tagsString: ""
+          tagsString: "",
+          trust_score: 100,
+          verification_status: "Verified",
+          referral_sent_count: 0,
+          referral_accepted_count: 0,
+          referral_rejected_count: 0,
+          interview_count: 0,
+          offer_count: 0
         });
         await loadData(user.id);
       } else {
@@ -485,11 +769,10 @@ export default function RecruitersCRMPage() {
     }
   };
 
-  // Update Recruiter Stage (Kanban Drag and Drop or button click)
   const handleUpdateStage = async (recId: string, targetStage: string) => {
     if (!user) return;
     
-    // Optimistic Local State Update
+    // Optimistic Update
     const previousRecruiters = [...recruiters];
     const updated = recruiters.map(r => r.id === recId ? { ...r, pipeline_stage: targetStage } : r);
     setRecruiters(updated);
@@ -502,14 +785,15 @@ export default function RecruitersCRMPage() {
       });
       const result = await res.json();
       if (!res.ok || !result.success) {
-        // Rollback
         setRecruiters(previousRecruiters);
         alert("Failed to update pipeline stage");
       } else {
-        // Load fresh aggregate statistics
         await loadData(user.id);
         if (selectedRecruiter && selectedRecruiter.id === recId) {
-          setSelectedRecruiter(result.recruiter);
+          setSelectedRecruiter({
+            ...selectedRecruiter,
+            pipeline_stage: targetStage
+          });
           await refreshRecruiterDetails(recId);
         }
       }
@@ -519,28 +803,6 @@ export default function RecruitersCRMPage() {
     }
   };
 
-  // Update Recruiter Strength
-  const handleUpdateStrength = async (recId: string, strength: string) => {
-    if (!user) return;
-    try {
-      const res = await fetch(`/api/recruiter/${recId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ relationship_strength: strength })
-      });
-      const result = await res.json();
-      if (res.ok && result.success) {
-        await loadData(user.id);
-        if (selectedRecruiter && selectedRecruiter.id === recId) {
-          setSelectedRecruiter(result.recruiter);
-        }
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  // Add Log Interaction activity
   const handleAddActivitySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !selectedRecruiter) return;
@@ -565,9 +827,8 @@ export default function RecruitersCRMPage() {
     }
   };
 
-  // Delete recruiter profile
   const handleDeleteRecruiter = async (recId: string) => {
-    if (!user || !confirm("Are you sure you want to delete this recruiter profile?")) return;
+    if (!user || !confirm("Are you sure you want to delete this recruiter profile? This will clean all activity history.")) return;
     try {
       const res = await fetch(`/api/recruiter/${recId}`, {
         method: "DELETE"
@@ -582,7 +843,6 @@ export default function RecruitersCRMPage() {
     }
   };
 
-  // Add Follow Up reminder
   const handleAddFollowupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
@@ -609,7 +869,6 @@ export default function RecruitersCRMPage() {
     }
   };
 
-  // Complete Followup task
   const handleCompleteFollowup = async (followId: string) => {
     if (!user) return;
     try {
@@ -627,7 +886,6 @@ export default function RecruitersCRMPage() {
     }
   };
 
-  // Google Sheets/LinkedIn CSV Importing
   const handleCSVImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
@@ -645,7 +903,6 @@ export default function RecruitersCRMPage() {
         const line = lines[i].trim();
         if (!line) continue;
 
-        // Ignores commas in quote blocks
         const values = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.trim().replace(/^["']|["']$/g, ""));
         const contact: any = {};
         
@@ -655,9 +912,12 @@ export default function RecruitersCRMPage() {
         });
 
         parsedContacts.push({
-          name: contact.name || contact.recruiter_name || contact.first_name + " " + contact.last_name || "",
-          company: contact.company || contact.organization || "",
+          name: contact.name || contact.recruiter_name || contact.first_name + " " + contact.last_name || "Unknown Recruiter",
+          company: contact.company || contact.organization || "Unknown Company",
           designation: contact.designation || contact.role || contact.title || "",
+          department: contact.department || "",
+          company_domain: contact.company_domain || "",
+          recruiter_type: contact.recruiter_type || "Technical Recruiter",
           linkedin_url: contact.linkedin_url || contact.linkedin || "",
           email: contact.email || "",
           phone: contact.phone || contact.phone_number || "",
@@ -689,7 +949,6 @@ export default function RecruitersCRMPage() {
     reader.readAsText(file);
   };
 
-  // AI Message Generator Triggers
   const handleOpenAIGenerator = (rec: any) => {
     setAiRecruiter(rec);
     setSelectedTemplate(templates[0] || null);
@@ -703,7 +962,6 @@ export default function RecruitersCRMPage() {
     setAiLoading(true);
     setAiError(null);
     try {
-      // Load user profile details
       const { data: profile } = await supabase
         .from("profiles")
         .select("full_name, skills, target_role, college")
@@ -726,7 +984,7 @@ export default function RecruitersCRMPage() {
           skills: skillsOverride || profile?.skills || [],
           targetRole: roleOverride || profile?.target_role || "Software Engineer",
           college: profile?.college || "University",
-          interactionHistory: selectedRecruiter ? recruiterActivities.map(a => a.activity_type + ": " + a.notes).join("\n") : ""
+          interactionHistory: recruiterActivities.map(a => a.activity_type + ": " + a.notes).join("\n")
         })
       });
 
@@ -737,27 +995,28 @@ export default function RecruitersCRMPage() {
           body: result.body
         });
         
-        // Log outreach action dynamically to recruiter log
         await fetch("/api/recruiter/activities", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             recruiterId: aiRecruiter.id,
             activityType: "Message Sent",
-            notes: `AI Generated Outreach generated: '${selectedTemplate.name}'`
+            notes: `AI Generated Outreach drafted: '${selectedTemplate.name}'`
           })
         });
+        await refreshRecruiterDetails(aiRecruiter.id);
+        await loadData(user.id);
       } else {
         setAiError(result.message || "Outreach drafting failed.");
       }
     } catch (err: any) {
-      setAiError(err.message || "Failed to generate outreach via Gemini REST SDK.");
+      setAiError(err.message || "Failed to generate outreach via Gemini.");
     } finally {
       setAiLoading(false);
     }
   };
 
-  // drag-and-drop HTML5 Kanban events
+  // HTML5 Drag and Drop Handlers
   const onDragStart = (e: React.DragEvent, id: string) => {
     e.dataTransfer.setData("text/plain", id);
   };
@@ -774,11 +1033,126 @@ export default function RecruitersCRMPage() {
     }
   };
 
+  // Dynamic Silent Recruiters computation
+  const getSilentRecruiters = () => {
+    const silentList: any[] = [];
+    const threeDaysAgo = Date.now() - 3 * 24 * 60 * 60 * 1000;
+    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+
+    recruiters.forEach(r => {
+      if (["Connected", "Conversation Started", "Relationship Building", "Referral Requested"].includes(r.pipeline_stage)) {
+        const lastDateStr = r.last_interaction || r.updated_at || r.created_at;
+        if (lastDateStr) {
+          const lastTime = new Date(lastDateStr).getTime();
+          if (lastTime < sevenDaysAgo) {
+            silentList.push({ recruiter: r, severity: "Critical", days: Math.round((Date.now() - lastTime) / (1000 * 60 * 60 * 24)) });
+          } else if (lastTime < threeDaysAgo) {
+            silentList.push({ recruiter: r, severity: "Warning", days: Math.round((Date.now() - lastTime) / (1000 * 60 * 60 * 24)) });
+          }
+        }
+      }
+    });
+    return silentList.sort((a, b) => b.days - a.days);
+  };
+
+  // AI Networking Coach response generator simulation
+  const handleCoachSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!coachInput.trim()) return;
+
+    const userMessage = { sender: "user" as const, text: coachInput, date: new Date() };
+    setCoachMessages(prev => [...prev, userMessage]);
+    setCoachInput("");
+    setCoachTyping(true);
+
+    try {
+      const response = await fetch("/api/recruiter/generate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-gemini-api-key": localStorage.getItem("gemini_api_key") || ""
+        },
+        body: JSON.stringify({
+          recruiterName: "Coach",
+          company: "Placement OS Network Coach AI",
+          messageType: "Networking Advice",
+          hiringRoles: "",
+          designation: "AI Placement Mentor",
+          userName: user?.email?.split("@")[0] || "Student",
+          skills: ["Networking", "Cold Emailing", "Referral Negotiation"],
+          targetRole: coachInput,
+           college: "Command Center Academy",
+          interactionHistory: `Telemetry metrics: responseRate=${metrics.responseRate}%, averageRelationshipScore=${metrics.averageRelationshipScore}/100, verifiedRecs=${metrics.verifiedRecruitersCount}, suspiciousRecs=${metrics.suspiciousRecruitersCount}, highOpportunityRecsCount=${metrics.highOpportunityCount}.`
+        })
+      });
+
+      const result = await response.json();
+      setCoachMessages(prev => [
+        ...prev,
+        {
+          sender: "coach",
+          text: result.success ? result.body : "I recommend structuring your message to focus on common grounds, mutual project interests, and asking for general professional advice before asking for referrals directly.",
+          date: new Date()
+        }
+      ]);
+    } catch (err) {
+      console.error(err);
+      setCoachMessages(prev => [
+        ...prev,
+        {
+          sender: "coach",
+          text: "I analyzed your outreach telemetry. Focus on startups founders and hiring managers directly since mid-market recruiters are currently experiencing a low response rate.",
+          date: new Date()
+        }
+      ]);
+    } finally {
+      setCoachTyping(false);
+    }
+  };
+
+  const handleLinkApplication = async (recruiterId: string, applicationId: string) => {
+    if (!user) return;
+    try {
+      const res = await fetch(`/api/recruiter/${recruiterId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ application_id: applicationId || null })
+      });
+      const result = await res.json();
+      if (res.ok && result.success) {
+        alert("Referral contact successfully linked to job application!");
+        await loadData(user.id);
+        if (selectedRecruiter && selectedRecruiter.id === recruiterId) {
+          setSelectedRecruiter({
+            ...selectedRecruiter,
+            application_id: applicationId || null
+          });
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const filteredRecruiters = recruiters.filter(r => {
+    const matchesSearch = r.name.toLowerCase().includes(search.toLowerCase()) || r.company.toLowerCase().includes(search.toLowerCase()) || (r.designation && r.designation.toLowerCase().includes(search.toLowerCase()));
+    const matchesCompany = companyFilter ? r.company === companyFilter : true;
+    const matchesStage = stageFilter ? r.pipeline_stage === stageFilter : true;
+    const matchesStrength = strengthFilter ? r.relationship_strength === strengthFilter : true;
+    const matchesType = typeFilter ? r.recruiter_type === typeFilter : true;
+    const matchesOppLevel = oppLevelFilter ? r.opportunity_level === oppLevelFilter : true;
+    const matchesTrust = r.trust_score >= minTrustScore;
+    return matchesSearch && matchesCompany && matchesStage && matchesStrength && matchesType && matchesOppLevel && matchesTrust;
+  });
+
+  const uniqueCompanies = Array.from(new Set(recruiters.map(r => r.company))).filter(Boolean);
+  const silentRecs = getSilentRecruiters();
+
   return (
     <div className="min-h-screen bg-slate-50 pb-24 font-sans text-left">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
         
-        {/* Back Link navigation header */}
+        {/* Breadcrumb nav header */}
         <Link
           href="/dashboard"
           className="inline-flex items-center gap-2 text-xs font-black text-slate-500 hover:text-slate-900 uppercase tracking-widest transition-colors cursor-pointer"
@@ -787,18 +1161,18 @@ export default function RecruitersCRMPage() {
           Back to Command Center
         </Link>
 
-        {/* HERO TITLE SECTION CARD */}
+        {/* HEADER HERO SECTION */}
         <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-md flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
           <div className="space-y-3">
             <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-50 text-indigo-650 rounded-full text-[10px] font-black uppercase tracking-widest border border-indigo-100 shadow-sm">
               <Users className="w-3.5 h-3.5" />
-              Recruiter CRM Growth Engine
+              Recruiter Networking OS 2.0
             </div>
             <h1 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tighter leading-none font-display">
-              Networking Command Center
+              Networking Pipeline
             </h1>
             <p className="text-slate-500 font-medium text-sm max-w-xl">
-              Construct relationships with university recruiters and hiring managers. Request referral channels and track outreach funnels.
+              Turn cold applications into interviews. Validate recruiters, optimize opportunity scores, and manage referral relationships.
             </p>
           </div>
 
@@ -829,343 +1203,837 @@ export default function RecruitersCRMPage() {
           </div>
         </div>
 
-        {/* OUTREACH METRICS PANEL */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        {/* WORKSPACE TAB NAVIGATION */}
+        <div className="flex border-b border-slate-200 overflow-x-auto gap-2 pb-px text-xs font-black uppercase tracking-wider">
           {[
-            { label: "Total Recruiters", count: metrics.totalRecruiters, icon: Users, color: "text-indigo-500" },
-            { label: "Active Conversations", count: metrics.activeConversations, icon: MessageSquare, color: "text-purple-500" },
-            { label: "Referrals Received", count: metrics.referralsReceived, icon: Award, color: "text-teal-500" },
-            { label: "Pending Follow-ups", count: metrics.pendingFollowups, icon: Clock, color: "text-rose-500" },
-            { label: "Interview Leads", count: metrics.interviewOpportunities, icon: TrendingUp, color: "text-emerald-500" }
-          ].map((card, idx) => (
-            <div key={idx} className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-between h-28 relative overflow-hidden group">
-              <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">{card.label}</span>
-              <div className="flex justify-between items-end">
-                <p className="text-3xl font-black text-slate-900 leading-none">{card.count}</p>
-                <card.icon className={cn("w-5 h-5 absolute bottom-5 right-5 opacity-40 group-hover:scale-110 transition-transform", card.color)} />
-              </div>
-            </div>
+            { id: "dashboard", label: "Dashboard", icon: Activity },
+            { id: "board", label: "Networking Board", icon: TrendingUp },
+            { id: "directory", label: "Directory Grid", icon: Users },
+            { id: "followups", label: "Follow-Up Center", icon: Clock },
+            { id: "analytics", label: "Analytics & Coach", icon: Sparkles },
+            { id: "opportunity", label: "Opportunity Engine", icon: Award },
+            { id: "playbooks", label: "Referral Playbooks", icon: Bookmark }
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={cn(
+                "flex items-center gap-2 px-5 py-4 border-b-2 transition-all cursor-pointer shrink-0 whitespace-nowrap",
+                activeTab === tab.id
+                  ? "border-indigo-600 text-indigo-650 font-black bg-white/50 rounded-t-xl"
+                  : "border-transparent text-slate-450 hover:text-slate-700"
+              )}
+            >
+              <tab.icon className="w-4 h-4" />
+              {tab.label}
+            </button>
           ))}
         </div>
 
-        {/* SEARCH, FILTER AND NAVIGATION BAR */}
-        <div className="bg-white p-5 rounded-[2rem] border border-slate-200 shadow-sm flex flex-col xl:flex-row justify-between items-stretch xl:items-center gap-4">
-          <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center flex-wrap">
-            <div className="relative w-full md:w-60">
-              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Search by name, company..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800"
-              />
-            </div>
-            
-            <label className="flex items-center gap-2 text-xs font-bold text-slate-600 select-none cursor-pointer">
-              <input
-                type="checkbox"
-                checked={verifiedOnly}
-                onChange={(e) => setVerifiedOnly(e.target.checked)}
-                className="rounded border-slate-300 text-indigo-650 focus:ring-indigo-500"
-              />
-              Verified Only
-            </label>
-
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-650">
-              <span>Min Trust:</span>
-              <input
-                type="range"
-                min="0"
-                max="90"
-                step="10"
-                value={minTrustScore}
-                onChange={(e) => setMinTrustScore(Number(e.target.value))}
-                className="w-20 accent-indigo-650 h-1 bg-slate-100 rounded-lg cursor-pointer"
-              />
-              <span className="text-indigo-600 font-extrabold">{minTrustScore}%+</span>
-            </div>
-
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-650">
-              <span>Sort:</span>
-              <select
-                value={sortField}
-                onChange={(e) => setSortField(e.target.value)}
-                className="bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl text-xs font-bold focus:outline-none text-slate-700 cursor-pointer"
-              >
-                <option value="created_at">Date Logged</option>
-                <option value="name">Recruiter Name</option>
-                <option value="company">Company</option>
-                <option value="trust_score">Highest Trust</option>
-                <option value="reputation_score">Highest Rating</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap gap-2 items-center justify-end">
-            <div className="flex gap-1 bg-slate-100 p-1.5 rounded-2xl border border-slate-200 text-xs shrink-0">
-              <button
-                onClick={() => setCurrentView("pipeline")}
-                className={cn("px-4 py-2 rounded-xl font-black uppercase tracking-wider text-[10px] cursor-pointer transition-all", currentView === "pipeline" ? "bg-slate-900 text-white shadow" : "text-slate-500")}
-              >
-                Kanban
-              </button>
-              <button
-                onClick={() => setCurrentView("list")}
-                className={cn("px-4 py-2 rounded-xl font-black uppercase tracking-wider text-[10px] cursor-pointer transition-all", currentView === "list" ? "bg-slate-900 text-white shadow" : "text-slate-500")}
-              >
-                Directory
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* DYNAMIC PIPELINE VS LIST PANEL VIEWS */}
+        {/* DYNAMIC TAB SEGMENTS */}
         {loading ? (
           <div className="flex flex-col items-center justify-center py-24 text-center space-y-4">
             <RefreshCw className="w-10 h-10 animate-spin text-indigo-500" />
-            <p className="text-slate-500 font-extrabold uppercase tracking-widest text-xs">Loading networking pipelines...</p>
+            <p className="text-slate-500 font-extrabold uppercase tracking-widest text-xs">Syncing CRM Command Station...</p>
           </div>
-        ) : recruiters.length === 0 ? (
-          <div className="bg-white p-12 rounded-[2rem] border border-slate-200 shadow-sm text-center max-w-md mx-auto space-y-4">
-            <div className="w-14 h-14 bg-indigo-50 text-indigo-500 rounded-full flex items-center justify-center mx-auto">
-              <Users className="w-8 h-8" />
-            </div>
-            <h3 className="text-lg font-black text-slate-900 tracking-tight">No networking leads</h3>
-            <p className="text-slate-500 text-sm leading-relaxed">
-              Your recruiter database is currently empty. Add contacts manually or import your connections from LinkedIn to initiate relationship tracking.
-            </p>
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="inline-flex px-5 py-3 bg-slate-900 hover:bg-slate-800 text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all"
+        ) : (
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              transition={{ duration: 0.2 }}
             >
-              Add Your First Recruiter
-            </button>
-          </div>
-        ) : currentView === "pipeline" ? (
-          /* KANBAN BOARD VIEW */
-          <div className="flex gap-4 overflow-x-auto pb-4 min-h-[500px] select-none text-left items-start">
-            {PIPELINE_STAGES.map((stage) => {
-              const stageRecs = recruiters.filter(r => r.pipeline_stage === stage);
-              return (
-                <div
-                  key={stage}
-                  onDragOver={onDragOver}
-                  onDrop={(e) => onDrop(e, stage)}
-                  className="bg-white border border-slate-200 rounded-[2rem] p-4 min-w-[280px] max-w-[280px] shrink-0 space-y-4 shadow-sm min-h-[480px]"
-                >
-                  {/* Stage Header */}
-                  <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                    <span className={cn("px-2.5 py-1 text-[9px] font-black uppercase tracking-wider rounded-md border", STAGE_COLORS[stage])}>
-                      {stage}
-                    </span>
-                    <span className="text-xs font-black text-slate-400 bg-slate-50 px-2 py-0.5 rounded-full">{stageRecs.length}</span>
-                  </div>
-
-                  {/* Stage Cards Container */}
-                  <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
-                    {stageRecs.map((rec) => (
-                      <div
-                        key={rec.id}
-                        draggable
-                        onDragStart={(e) => onDragStart(e, rec.id)}
-                        onClick={() => handleSelectRecruiter(rec)}
-                        className="p-4 bg-slate-50 hover:bg-slate-100/50 border border-slate-200 rounded-2xl cursor-grab active:cursor-grabbing hover:border-indigo-200 transition-all space-y-3 relative group"
-                      >
-                        <div className="space-y-0.5">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{rec.company}</span>
-                            {rec.verification?.verification_status && (
-                              <span className={cn("px-1 py-0.2 text-[7px] font-black uppercase rounded border", 
-                                rec.verification.verification_status === "Verified" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
-                                rec.verification.verification_status === "Under Review" ? "bg-blue-50 text-blue-700 border-blue-200" :
-                                rec.verification.verification_status === "Rejected" ? "bg-rose-50 text-rose-700 border-rose-200" :
-                                rec.verification.verification_status === "Suspended" ? "bg-zinc-800 text-zinc-150 border-zinc-900" :
-                                "bg-slate-100 text-slate-600 border-slate-200"
-                              )}>
-                                {rec.verification.verification_status}
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <h4 className="text-xs font-black text-slate-900 truncate">{rec.name}</h4>
-                            {rec.verification?.verification_status === "Verified" && (
-                              <Check className="w-3.5 h-3.5 text-emerald-500 fill-emerald-100 shrink-0" />
-                            )}
-                          </div>
-                          {rec.designation && <p className="text-[10px] text-slate-500 font-bold truncate">{rec.designation}</p>}
-                        </div>
-
-                        {/* Dial badge score */}
-                        <div className="flex justify-between items-center pt-2 border-t border-slate-100">
-                          <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider">Relationship Strength:</span>
-                          <span className={cn("px-2 py-0.5 text-[8px] font-black uppercase rounded", STRENGTH_COLORS[rec.relationship_strength] || "bg-slate-100 text-slate-600")}>
-                            {rec.relationship_strength}
-                          </span>
-                        </div>
-
-                        {/* Score dial visual indicator */}
-                        <div className="flex justify-between items-center text-[9px] font-black text-slate-600 bg-slate-50 px-2.5 py-1.5 border border-slate-200 rounded-xl">
-                          <div className="flex justify-between w-full">
-                            <span>Health: <strong className="text-indigo-650">{rec.relationshipScore}/100</strong></span>
-                            <span>Trust: <strong className="text-emerald-650">{rec.verification?.trust_score || 0}%</strong></span>
+              {/* TAB 1: DASHBOARD VIEW */}
+              {activeTab === "dashboard" && (
+                <div className="space-y-8">
+                  {/* Top Stats Cards Grid */}
+                  <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+                    {[
+                      { label: "Total Network Size", count: metrics.totalRecruiters, icon: Users, color: "text-indigo-500", bg: "bg-indigo-50" },
+                      { label: "Active Convs", count: metrics.activeConversations, icon: MessageSquare, color: "text-purple-500", bg: "bg-purple-50" },
+                      { label: "Verified Recs", count: metrics.verifiedRecruitersCount, icon: UserCheck, color: "text-emerald-500", bg: "bg-emerald-50" },
+                      { label: "Referral Success", count: `${metrics.referralSuccessRate}%`, icon: Award, color: "text-amber-500", bg: "bg-amber-50" },
+                      { label: "Response Rate", count: `${metrics.responseRate}%`, icon: Activity, color: "text-teal-500", bg: "bg-teal-50" },
+                      { label: "Pending Tasks", count: metrics.pendingFollowups, icon: Clock, color: "text-rose-500", bg: "bg-rose-50" }
+                    ].map((card, idx) => (
+                      <div key={idx} className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-between h-28 relative overflow-hidden group">
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider block leading-tight">{card.label}</span>
+                        <div className="flex justify-between items-end">
+                          <p className="text-2xl font-black text-slate-900 leading-none">{card.count}</p>
+                          <div className={cn("p-1.5 rounded-lg absolute bottom-4 right-4", card.bg)}>
+                            <card.icon className={cn("w-4 h-4", card.color)} />
                           </div>
                         </div>
                       </div>
                     ))}
-                    {stageRecs.length === 0 && (
-                      <div className="py-12 border border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center text-center">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase">Drop Leads here</span>
+                  </div>
+
+                  {/* Funnel Progress & Insights Column Layout */}
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                    {/* Funnel Card */}
+                    <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm lg:col-span-7 space-y-6">
+                      <div>
+                        <h3 className="text-lg font-black text-slate-950 tracking-tight flex items-center gap-2">
+                          <TrendingUp className="w-5 h-5 text-indigo-500" />
+                          Outreach Funnel Progress
+                        </h3>
+                        <p className="text-xs text-slate-400 font-bold mt-1">Telemetry stages of all networking contacts.</p>
+                      </div>
+
+                      {metrics.funnel.length === 0 ? (
+                        <div className="bg-slate-50 p-8 rounded-3xl text-center text-slate-400 text-xs font-semibold">
+                          No pipeline data available. Add recruiters to start.
+                        </div>
+                      ) : (
+                        <div className="space-y-3.5">
+                          {metrics.funnel.map((step, idx) => (
+                            <div key={idx} className="space-y-1">
+                              <div className="flex justify-between text-xs font-bold text-slate-700">
+                                <span className="flex items-center gap-1.5">
+                                  <span className="w-4 h-4 bg-slate-100 rounded-full flex items-center justify-center text-[8px] text-slate-500 font-black">{idx + 1}</span>
+                                  {step.stage}
+                                </span>
+                                <span className="font-black text-slate-800">{step.count} ({step.percentage}%)</span>
+                              </div>
+                              <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                                <div className="h-full bg-gradient-to-r from-indigo-500 to-indigo-650 rounded-full" style={{ width: `${step.percentage}%` }} />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Insights & Threat Monitoring */}
+                    <div className="lg:col-span-5 space-y-6">
+                      {/* Suspicious Alert Section */}
+                      {metrics.suspiciousRecruitersCount > 0 && (
+                        <div className="bg-rose-50 border border-rose-250 p-6 rounded-[2rem] shadow-sm flex items-start gap-4">
+                          <AlertTriangle className="w-6 h-6 text-rose-600 shrink-0 mt-0.5" />
+                          <div className="space-y-1">
+                            <h4 className="text-sm font-black text-rose-950 uppercase tracking-wide leading-none">Security Flag Alerts</h4>
+                            <p className="text-xs text-rose-800/80 font-bold leading-normal">
+                              We detected <strong>{metrics.suspiciousRecruitersCount} suspicious/unverified</strong> profiles. Take caution before providing sensitive details.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Strategy Insights card */}
+                      <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm space-y-6">
+                        <div>
+                          <h3 className="text-lg font-black text-slate-950 tracking-tight flex items-center gap-2">
+                            <Sparkles className="w-5 h-5 text-indigo-500 fill-indigo-100" />
+                            AI Coach Strategist
+                          </h3>
+                          <p className="text-xs text-slate-400 font-bold mt-1">Correlation statistics compiled dynamically from response rates.</p>
+                        </div>
+
+                        {metrics.insights.length === 0 ? (
+                          <div className="bg-slate-50 p-6 rounded-3xl text-center text-slate-400 text-xs font-semibold">
+                            Outreach observations will be compiled here as contacts respond.
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            {metrics.insights.map((ins, idx) => (
+                              <div key={idx} className="flex gap-3 items-start p-4.5 bg-indigo-50/20 border border-indigo-100/30 rounded-2xl">
+                                <Info className="w-4 h-4 text-indigo-650 shrink-0 mt-0.5" />
+                                <p className="text-xs font-semibold text-slate-750 leading-relaxed">{ins}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 2: KANBAN BOARD */}
+              {activeTab === "board" && (
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center text-xs font-bold text-slate-500 px-1 select-none">
+                    <p className="flex items-center gap-1"><Info className="w-3.5 h-3.5" /> Drag and drop recruiter cards between pipeline stages to update relationship stages instantly.</p>
+                  </div>
+                  
+                  {/* Pipeline columns wrapper */}
+                  <div className="flex gap-4 overflow-x-auto pb-6 min-h-[550px] select-none text-left items-start">
+                    {PIPELINE_STAGES.map(stage => {
+                      const stageRecs = recruiters.filter(r => r.pipeline_stage === stage);
+                      return (
+                        <div
+                          key={stage}
+                          onDragOver={onDragOver}
+                          onDrop={(e) => onDrop(e, stage)}
+                          className="bg-white border border-slate-200 rounded-[2.5rem] p-4 min-w-[290px] max-w-[290px] shrink-0 space-y-4 shadow-sm min-h-[500px]"
+                        >
+                          {/* Stage Header */}
+                          <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+                            <span className={cn("px-2.5 py-1 text-[9px] font-black uppercase tracking-wider rounded-md border", STAGE_COLORS[stage])}>
+                              {stage}
+                            </span>
+                            <span className="text-xs font-black text-slate-400 bg-slate-50 px-2 py-0.5 rounded-full">{stageRecs.length}</span>
+                          </div>
+
+                          {/* Cards box */}
+                          <div className="space-y-3 max-h-[440px] overflow-y-auto pr-1">
+                            {stageRecs.map(rec => (
+                              <div
+                                key={rec.id}
+                                draggable
+                                onDragStart={(e) => onDragStart(e, rec.id)}
+                                onClick={() => handleSelectRecruiter(rec)}
+                                className="p-4 bg-slate-50 hover:bg-slate-100/50 border border-slate-200 rounded-2xl cursor-grab active:cursor-grabbing hover:border-indigo-300 transition-all space-y-3 relative group"
+                              >
+                                <div className="space-y-0.5">
+                                  <div className="flex items-center justify-between gap-1.5 flex-wrap">
+                                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{rec.company}</span>
+                                    <span className={cn("px-1.5 py-0.2 text-[7px] font-black uppercase rounded border", 
+                                      rec.verification_status === "Verified" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                                      rec.verification_status === "Likely Genuine" ? "bg-blue-50 text-blue-700 border-blue-200" :
+                                      rec.verification_status === "Suspicious" ? "bg-rose-50 text-rose-700 border-rose-200" :
+                                      "bg-zinc-800 text-zinc-150 border-zinc-900"
+                                    )}>
+                                      {rec.verification_status}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <h4 className="text-xs font-black text-slate-900 truncate">{rec.name}</h4>
+                                    {rec.verification_status === "Verified" && (
+                                      <Check className="w-3.5 h-3.5 text-emerald-500 fill-emerald-100 shrink-0" />
+                                    )}
+                                  </div>
+                                  {rec.designation && <p className="text-[9px] text-slate-500 font-bold truncate">{rec.designation}</p>}
+                                </div>
+
+                                <div className="flex justify-between items-center text-[9px] font-black text-slate-650 bg-white px-2.5 py-1.5 border border-slate-200/55 rounded-xl">
+                                  <div className="flex justify-between w-full">
+                                    <span>Relationship: <strong className="text-indigo-650">{rec.relationshipScore ?? getInfluenceScore(rec)}/100</strong></span>
+                                    <span>Opp Score: <strong className="text-amber-600">{rec.opportunity_score}</strong></span>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                            {stageRecs.length === 0 && (
+                              <div className="py-14 border border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center text-center">
+                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Drop Leads Here</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 3: DIRECTORY SPREADSHEET */}
+              {activeTab === "directory" && (
+                <div className="space-y-6">
+                  {/* Search and Advanced Filters */}
+                  <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm flex flex-col gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      {/* Search */}
+                      <div className="relative">
+                        <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="text"
+                          placeholder="Search name, company, notes..."
+                          value={search}
+                          onChange={(e) => setSearch(e.target.value)}
+                          className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800"
+                        />
+                      </div>
+
+                      {/* Recruiter Type Filter */}
+                      <div>
+                        <select
+                          value={typeFilter}
+                          onChange={(e) => setTypeFilter(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-200 px-3 py-2.5 rounded-xl text-xs font-bold focus:outline-none text-slate-700"
+                        >
+                          <option value="">-- All Recruiter Types --</option>
+                          {["Technical Recruiter", "Campus Recruiter", "Talent Acquisition", "Hiring Manager", "Engineering Manager", "HR Partner", "Founder", "Startup Recruiter"].map(t => (
+                            <option key={t} value={t}>{t}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Opportunity Level Filter */}
+                      <div>
+                        <select
+                          value={oppLevelFilter}
+                          onChange={(e) => setOppLevelFilter(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-200 px-3 py-2.5 rounded-xl text-xs font-bold focus:outline-none text-slate-700"
+                        >
+                          <option value="">-- All Opportunity Levels --</option>
+                          {["High Opportunity", "Medium Opportunity", "Low Opportunity"].map(lvl => (
+                            <option key={lvl} value={lvl}>{lvl}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Pipeline Stage Filter */}
+                      <div>
+                        <select
+                          value={stageFilter}
+                          onChange={(e) => setStageFilter(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-200 px-3 py-2.5 rounded-xl text-xs font-bold focus:outline-none text-slate-700"
+                        >
+                          <option value="">-- All Stages --</option>
+                          {PIPELINE_STAGES.map(s => (
+                            <option key={s} value={s}>{s}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pt-2 border-t border-slate-100 flex-wrap">
+                      <div className="flex gap-4 items-center flex-wrap">
+                        <label className="flex items-center gap-2 text-xs font-bold text-slate-650 select-none cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={verifiedOnly}
+                            onChange={(e) => setVerifiedOnly(e.target.checked)}
+                            className="rounded border-slate-300 text-indigo-650 focus:ring-indigo-500"
+                          />
+                          Verified Corporate Email Only
+                        </label>
+
+                        <div className="flex items-center gap-2 text-xs font-bold text-slate-650">
+                          <span>Min Trust Score:</span>
+                          <input
+                            type="range"
+                            min="0"
+                            max="90"
+                            step="10"
+                            value={minTrustScore}
+                            onChange={(e) => setMinTrustScore(Number(e.target.value))}
+                            className="w-24 accent-indigo-650 h-1 bg-slate-100 rounded-lg cursor-pointer"
+                          />
+                          <span className="text-indigo-650 font-extrabold">{minTrustScore}%+</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 text-xs font-bold text-slate-650">
+                        <span>Sort:</span>
+                        <select
+                          value={sortField}
+                          onChange={(e) => setSortField(e.target.value)}
+                          className="bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl text-xs font-bold focus:outline-none text-slate-750"
+                        >
+                          <option value="created_at">Date Added</option>
+                          <option value="name">Name</option>
+                          <option value="company">Company</option>
+                          <option value="trust_score">Trust Score</option>
+                          <option value="opportunity_score">Opportunity Score</option>
+                        </select>
+                        <select
+                          value={sortOrder}
+                          onChange={(e) => setSortOrder(e.target.value as any)}
+                          className="bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl text-xs font-bold focus:outline-none text-slate-750"
+                        >
+                          <option value="desc">Descending</option>
+                          <option value="asc">Ascending</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Spreadsheet Grid */}
+                  <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden text-left">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left">
+                        <thead className="bg-slate-50 text-[9px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-100">
+                          <tr>
+                            <th className="px-6 py-4">Name & Contact</th>
+                            <th className="px-6 py-4">Company & Type</th>
+                            <th className="px-6 py-4">Pipeline Stage</th>
+                            <th className="px-6 py-4 text-center">Verification Trust</th>
+                            <th className="px-6 py-4 text-center">Opportunity Index</th>
+                            <th className="px-6 py-4 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-650">
+                          {filteredRecruiters.map(rec => (
+                            <tr
+                              key={rec.id}
+                              onClick={() => handleSelectRecruiter(rec)}
+                              className="hover:bg-slate-50/50 cursor-pointer transition-all"
+                            >
+                              <td className="px-6 py-4">
+                                <div className="space-y-0.5">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-black text-slate-800 text-sm">{rec.name}</span>
+                                    {rec.verification_status === "Verified" && (
+                                      <Check className="w-3.5 h-3.5 text-emerald-500 fill-emerald-100 shrink-0" />
+                                    )}
+                                  </div>
+                                  {rec.email && <span className="text-[10px] text-slate-400 font-semibold block">{rec.email}</span>}
+                                </div>
+                              </td>
+                              <td className="px-6 py-4">
+                                <div className="space-y-0.5">
+                                  <span className="font-black text-slate-700 block">{rec.company}</span>
+                                  <span className="text-[10px] text-slate-450 font-bold block">{rec.recruiter_type} {rec.department ? `(${rec.department})` : ""}</span>
+                                </div>
+                              </td>
+                              <td className="px-6 py-4">
+                                <span className={cn("px-2.5 py-1 text-[9px] font-black uppercase tracking-wider rounded-md border", STAGE_COLORS[rec.pipeline_stage] || "bg-slate-100 text-slate-600 border-slate-200")}>
+                                  {rec.pipeline_stage}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 text-center">
+                                <div className="inline-flex flex-col items-center">
+                                  <span className="font-black text-indigo-650">{rec.trust_score}%</span>
+                                  <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{rec.verification_status}</span>
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 text-center">
+                                <div className="inline-flex flex-col items-center">
+                                  <span className="font-black text-slate-900">{rec.opportunity_score}/100</span>
+                                  <span className={cn("px-1.5 py-0.2 rounded text-[7px] font-black uppercase mt-0.5 border", OPPORTUNITY_LEVEL_COLORS[rec.opportunity_level])}>
+                                    {rec.opportunity_level}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 text-right" onClick={e => e.stopPropagation()}>
+                                <div className="flex justify-end gap-2">
+                                  <button
+                                    onClick={() => handleOpenAIGenerator(rec)}
+                                    className="p-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg transition-all cursor-pointer"
+                                  >
+                                    <Sparkles className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteRecruiter(rec.id)}
+                                    className="p-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg transition-all cursor-pointer"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 4: FOLLOW-UP CENTER */}
+              {activeTab === "followups" && (
+                <div className="space-y-8">
+                  {/* Silent Recruiter Alerts */}
+                  <div className="space-y-4">
+                    <div>
+                      <h3 className="text-lg font-black text-slate-950 tracking-tight flex items-center gap-2">
+                        <Flame className="w-5 h-5 text-rose-500" />
+                        Silent Recruiter Alerts
+                      </h3>
+                      <p className="text-xs text-slate-400 font-bold mt-1">Recruiters who have not responded to active communications after 3 or 7 days.</p>
+                    </div>
+
+                    {silentRecs.length === 0 ? (
+                      <div className="bg-white p-8 rounded-[2rem] border border-slate-200 shadow-sm text-center max-w-md mx-auto space-y-3">
+                        <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto" />
+                        <h4 className="text-sm font-black text-slate-900">All Threads Active</h4>
+                        <p className="text-xs text-slate-500">You don't have any silent recruiter threads exceeding follow-up parameters. Excellent networking hygiene!</p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {silentRecs.map(({ recruiter: rec, severity, days }) => (
+                          <div
+                            key={rec.id}
+                            className={cn(
+                              "p-5 rounded-[2rem] border shadow-sm flex flex-col justify-between gap-4 transition-all text-left",
+                              severity === "Critical" ? "bg-rose-50/50 border-rose-200" : "bg-orange-50/40 border-orange-200"
+                            )}
+                          >
+                            <div className="space-y-2">
+                              <div className="flex justify-between items-start flex-wrap gap-2">
+                                <div className="space-y-0.5">
+                                  <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{rec.company}</span>
+                                  <h4 className="text-sm font-black text-slate-800 flex items-center gap-1.5">
+                                    {rec.name}
+                                    <span className={cn("px-1.5 py-0.2 text-[8px] font-black uppercase rounded", severity === "Critical" ? "bg-rose-100 text-rose-700" : "bg-orange-100 text-orange-700")}>
+                                      {severity === "Critical" ? "Critical Silence" : "Needs Follow-up"}
+                                    </span>
+                                  </h4>
+                                </div>
+                                <span className="text-xs font-black text-slate-500 bg-white border px-2.5 py-1 rounded-xl">
+                                  {days} Days Silent
+                                </span>
+                              </div>
+                              <p className="text-xs text-slate-500 font-bold leading-normal">
+                                Last communication on stage <strong>{rec.pipeline_stage}</strong>. Recommended play: draft a gentle follow-up email.
+                              </p>
+                            </div>
+
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => handleOpenAIGenerator(rec)}
+                                className="flex-1 py-2 bg-indigo-650 hover:bg-indigo-700 text-white font-black text-[10px] uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                              >
+                                <Sparkles className="w-3.5 h-3.5" />
+                                Draft Follow-up
+                              </button>
+                              <button
+                                onClick={() => handleSelectRecruiter(rec)}
+                                className="px-4 py-2 bg-white hover:bg-slate-50 border text-slate-700 font-black text-[10px] uppercase tracking-widest rounded-xl transition-all cursor-pointer"
+                              >
+                                Log Reply
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Scheduled Tasks checklist */}
+                  <div className="space-y-4 pt-4 border-t border-slate-100">
+                    <div>
+                      <h3 className="text-lg font-black text-slate-950 tracking-tight flex items-center gap-2">
+                        <Calendar className="w-5 h-5 text-indigo-500" />
+                        Reminders & Networking Tasks
+                      </h3>
+                      <p className="text-xs text-slate-400 font-bold mt-1">Checklist of active follow-up tasks scheduled manually or created automatically.</p>
+                    </div>
+
+                    {followups.length === 0 ? (
+                      <div className="bg-slate-100 p-8 rounded-3xl text-center text-slate-400 text-xs font-semibold max-w-sm mx-auto">
+                        No pending task reminders. Set one from the action center button.
+                      </div>
+                    ) : (
+                      <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden text-left">
+                        <div className="divide-y divide-slate-150">
+                          {followups.map(f => {
+                            const recName = recruiters.find(r => r.id === f.recruiter_id)?.name || "Recruiter";
+                            const company = recruiters.find(r => r.id === f.recruiter_id)?.company || "Company";
+                            return (
+                              <div key={f.id} className="p-4 flex items-center justify-between gap-4 text-xs font-semibold text-slate-650 hover:bg-slate-50/50">
+                                <div className="flex items-center gap-3">
+                                  <button
+                                    onClick={() => handleCompleteFollowup(f.id)}
+                                    className="w-5 h-5 border border-slate-300 rounded-md hover:bg-emerald-50 hover:border-emerald-500 flex items-center justify-center group cursor-pointer"
+                                  >
+                                    <Check className="w-3.5 h-3.5 text-transparent group-hover:text-emerald-600" />
+                                  </button>
+                                  <div className="space-y-0.5">
+                                    <span className="font-black text-slate-850 block">{f.message || "Follow up on email thread"}</span>
+                                    <span className="text-[10px] text-slate-450 font-bold block">Target: {recName} at {company}</span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2.5">
+                                  <span className={cn("px-2 py-0.5 text-[8px] font-black uppercase rounded", 
+                                    f.priority === "Critical" ? "bg-rose-50 text-rose-700 border border-rose-200" :
+                                    f.priority === "High" ? "bg-orange-50 text-orange-700 border border-orange-200" :
+                                    f.priority === "Medium" ? "bg-blue-50 text-blue-700 border border-blue-200" :
+                                    "bg-slate-100 text-slate-600"
+                                  )}>
+                                    {f.priority}
+                                  </span>
+                                  <span className="text-[10px] text-slate-450 font-bold font-mono">
+                                    {new Date(f.followup_date).toLocaleDateString("en-US", { dateStyle: "short" })}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     )}
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        ) : (
-          /* DIRECTORY LIST VIEW */
-          <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden text-left">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead className="bg-slate-50 text-[9px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-100">
-                  <tr>
-                    <th className="px-6 py-4">Name</th>
-                    <th className="px-6 py-4">Company & Designation</th>
-                    <th className="px-6 py-4">Stage</th>
-                    <th className="px-6 py-4 text-center">Relationship Score</th>
-                    <th className="px-6 py-4 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-xs font-bold text-slate-650">
-                  {recruiters.map((rec) => (
-                    <tr key={rec.id} className="hover:bg-slate-50/50 cursor-pointer" onClick={() => handleSelectRecruiter(rec)}>
-                      <td className="px-6 py-4">
-                        <div className="space-y-0.5">
-                          <div className="flex items-center gap-2">
-                            <span className="font-black text-slate-800 text-sm block">{rec.name}</span>
-                            {rec.verification?.verification_status === "Verified" && (
-                              <Check className="w-4 h-4 text-emerald-500 fill-emerald-100 shrink-0" />
-                            )}
-                            {rec.verification?.verification_status && (
-                              <span className={cn("px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-md border", 
-                                rec.verification.verification_status === "Verified" ? "bg-emerald-50 text-emerald-700 border-emerald-150" :
-                                rec.verification.verification_status === "Under Review" ? "bg-blue-50 text-blue-700 border-blue-150" :
-                                rec.verification.verification_status === "Rejected" ? "bg-rose-50 text-rose-700 border-rose-150" :
-                                rec.verification.verification_status === "Suspended" ? "bg-zinc-850 text-zinc-100 border-zinc-950" :
-                                "bg-slate-50 text-slate-600 border-slate-200"
-                              )}>
-                                {rec.verification.verification_status}
-                              </span>
-                            )}
+              )}
+
+              {/* TAB 5: ANALYTICS & COACH */}
+              {activeTab === "analytics" && (
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                  
+                  {/* Left Column: Response rate statistics */}
+                  <div className="lg:col-span-6 space-y-6">
+                    {/* Activity level bar chart */}
+                    <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm space-y-6">
+                      <div>
+                        <h4 className="text-sm font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5"><Activity className="w-4 h-4 text-indigo-500" /> Outreach Volume History</h4>
+                        <p className="text-[10px] text-slate-400 font-bold mt-1">Monthly frequency logs of logged interactions.</p>
+                      </div>
+
+                      {metrics.monthlyActivities.length === 0 ? (
+                        <div className="bg-slate-50 p-6 rounded-2xl text-center text-slate-400 text-xs">Awaiting activity logs.</div>
+                      ) : (
+                        <div className="flex items-end justify-between h-40 pt-4 px-2">
+                          {metrics.monthlyActivities.map((m, idx) => {
+                            const maxVal = Math.max(...metrics.monthlyActivities.map(x => x.count), 1);
+                            const heightPct = Math.round((m.count / maxVal) * 100);
+                            return (
+                              <div key={idx} className="flex flex-col items-center gap-2 group w-full">
+                                <span className="text-[10px] font-black text-slate-800 opacity-0 group-hover:opacity-100 transition-opacity">{m.count}</span>
+                                <div className="w-8 bg-gradient-to-t from-indigo-500 to-indigo-650 rounded-lg group-hover:opacity-85 transition-all shadow-sm" style={{ height: `${Math.max(5, heightPct * 1.1)}px` }} />
+                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider">{m.month}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Breakdown by recruiter type */}
+                    <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm space-y-6">
+                      <div>
+                        <h4 className="text-sm font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5"><Users className="w-4 h-4 text-indigo-500" /> Conversion By Recruiter Role</h4>
+                        <p className="text-[10px] text-slate-400 font-bold mt-1">Outreach response rates grouped by title category.</p>
+                      </div>
+
+                      <div className="space-y-4">
+                        {metrics.successRateByType.map((item, idx) => (
+                          <div key={idx} className="space-y-1.5">
+                            <div className="flex justify-between text-xs font-bold text-slate-700">
+                              <span>{item.type} ({item.count} profiles)</span>
+                              <span className="font-black">{item.successRate}% Response</span>
+                            </div>
+                            <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                              <div className="h-full bg-indigo-550 rounded-full" style={{ width: `${item.successRate}%` }} />
+                            </div>
                           </div>
-                          {rec.email && <span className="text-[10px] text-slate-400 font-semibold">{rec.email}</span>}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="space-y-0.5">
-                          <span className="font-black text-slate-700 block">{rec.company}</span>
-                          <span className="text-[10px] text-slate-450 font-semibold">{rec.designation || "Hiring Professional"}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={cn("px-2.5 py-1 text-[9px] font-black uppercase tracking-wider rounded-md border", STAGE_COLORS[rec.pipeline_stage])}>
-                          {rec.pipeline_stage}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <div className="inline-flex flex-col items-center">
-                          <span className="font-black text-slate-900 text-sm">{rec.relationshipScore}</span>
-                          <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{rec.relationshipLevel}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex justify-end gap-2">
-                          <button
-                            onClick={() => handleOpenAIGenerator(rec)}
-                            className="p-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg transition-all cursor-pointer"
-                          >
+                        ))}
+                        {metrics.successRateByType.length === 0 && (
+                          <p className="text-xs text-slate-400 font-bold text-center py-6">Log contacts to compile role metrics.</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right Column: AI Coaching Chatbox */}
+                  <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-md lg:col-span-6 flex flex-col justify-between min-h-[500px]">
+                    <div className="space-y-4 flex-grow overflow-hidden">
+                      <div className="flex justify-between items-center border-b border-slate-150 pb-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 bg-indigo-50 text-indigo-650 rounded-xl flex items-center justify-center shrink-0">
                             <Sparkles className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteRecruiter(rec.id)}
-                            className="p-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg transition-all cursor-pointer"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider block">Placement Coaching Agent</h4>
+                            <span className="text-[8px] font-bold text-emerald-500 block uppercase tracking-widest">Active & Telemetry Aware</span>
+                          </div>
                         </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+                      </div>
+
+                      {/* Chat messages */}
+                      <div className="h-[300px] overflow-y-auto pr-1 space-y-3.5">
+                        {coachMessages.map((msg, idx) => (
+                          <div
+                            key={idx}
+                            className={cn(
+                              "flex gap-2 text-xs font-semibold leading-relaxed max-w-[85%] rounded-2xl p-3.5",
+                              msg.sender === "coach"
+                                ? "bg-slate-50 border border-slate-200 text-slate-750 self-start mr-auto text-left"
+                                : "bg-indigo-600 text-white self-end ml-auto text-left"
+                            )}
+                          >
+                            <p>{msg.text}</p>
+                          </div>
+                        ))}
+                        {coachTyping && (
+                          <div className="flex gap-2 items-center bg-slate-50 border border-slate-200 rounded-2xl p-3 w-20 text-center">
+                            <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" />
+                            <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce [animation-delay:0.2s]" />
+                            <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce [animation-delay:0.4s]" />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Pre-prompt options */}
+                    <div className="flex flex-wrap gap-1.5 pt-3 border-t border-slate-100 mb-3 text-left">
+                      {[
+                        "Draft follow-up template",
+                        "Best networking script",
+                        "Analyze my metrics",
+                        "Referral request body"
+                      ].map(preset => (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => setCoachInput(preset)}
+                          className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200/65 text-[9px] font-black text-slate-750 uppercase tracking-wider rounded-xl cursor-pointer"
+                        >
+                          {preset}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Chat Input */}
+                    <form onSubmit={handleCoachSubmit} className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="Ask the AI Coach a question..."
+                        value={coachInput}
+                        onChange={e => setCoachInput(e.target.value)}
+                        className="flex-grow px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
+                      />
+                      <button
+                        type="submit"
+                        className="p-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl cursor-pointer"
+                      >
+                        <Send className="w-4 h-4" />
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 6: OPPORTUNITY MATRIX */}
+              {activeTab === "opportunity" && (
+                <div className="space-y-6">
+                  {/* Opportunity lists matrix */}
+                  <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm space-y-6">
+                    <div>
+                      <h3 className="text-lg font-black text-slate-950 tracking-tight flex items-center gap-2">
+                        <Award className="w-5 h-5 text-indigo-500" />
+                        Opportunity Success Matrix
+                      </h3>
+                      <p className="text-xs text-slate-400 font-bold mt-1">Opportunities ranked by recruiter response scores, company categories, and referrals.</p>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left">
+                        <thead className="bg-slate-50 text-[9px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-100">
+                          <tr>
+                            <th className="px-6 py-4">Opportunity Profile</th>
+                            <th className="px-6 py-4 text-center">Score Index</th>
+                            <th className="px-6 py-4 text-center">Referrals (Sent/Acc/Rej)</th>
+                            <th className="px-6 py-4 text-center">Interviews & Offers</th>
+                            <th className="px-6 py-4 text-center">Linked Job Application</th>
+                            <th className="px-6 py-4 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-650">
+                          {recruiters
+                            .sort((a, b) => b.opportunity_score - a.opportunity_score)
+                            .map(rec => {
+                              const linkedApp = applications.find(a => a.id === rec.application_id);
+                              return (
+                                <tr key={rec.id} className="hover:bg-slate-50/50">
+                                  <td className="px-6 py-4">
+                                    <div className="space-y-0.5">
+                                      <span className="font-black text-slate-800 block text-sm">{rec.name}</span>
+                                      <span className="text-[10px] text-slate-450 block">{rec.company} • {rec.recruiter_type}</span>
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-4 text-center">
+                                    <div className="inline-flex flex-col items-center">
+                                      <span className="font-black text-slate-900 text-sm">{rec.opportunity_score}/100</span>
+                                      <span className={cn("px-2 py-0.5 rounded text-[8px] font-black uppercase mt-0.5 border", OPPORTUNITY_LEVEL_COLORS[rec.opportunity_level])}>
+                                        {rec.opportunity_level}
+                                      </span>
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-4 text-center text-slate-800">
+                                    <span className="text-indigo-650 font-bold">{rec.referral_sent_count || 0}</span>
+                                    <span className="text-slate-400 px-1">/</span>
+                                    <span className="text-emerald-600 font-bold">{rec.referral_accepted_count || 0}</span>
+                                    <span className="text-slate-400 px-1">/</span>
+                                    <span className="text-rose-600 font-bold">{rec.referral_rejected_count || 0}</span>
+                                  </td>
+                                  <td className="px-6 py-4 text-center">
+                                    <div className="inline-flex gap-4">
+                                      <span>Ints: <strong className="text-slate-800">{rec.interview_count || 0}</strong></span>
+                                      <span>Offers: <strong className="text-emerald-600">{rec.offer_count || 0}</strong></span>
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-4 text-center">
+                                    {linkedApp ? (
+                                      <div className="flex items-center justify-center gap-2">
+                                        <span className="px-2 py-1 bg-indigo-50 border border-indigo-150 text-indigo-750 rounded-lg text-[10px] font-bold">
+                                          {linkedApp.role}
+                                        </span>
+                                        <button
+                                          onClick={() => handleLinkApplication(rec.id, "")}
+                                          className="text-rose-600 hover:text-rose-800 font-black cursor-pointer text-[10px] uppercase"
+                                        >
+                                          Unlink
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <select
+                                        onChange={(e) => handleLinkApplication(rec.id, e.target.value)}
+                                        value=""
+                                        className="bg-slate-50 border border-slate-200 px-2 py-1.5 rounded-lg text-[10px] font-bold focus:outline-none text-slate-700 cursor-pointer"
+                                      >
+                                        <option value="">-- Match Application --</option>
+                                        {applications.map(app => (
+                                          <option key={app.id} value={app.id}>{app.role} at {app.companyName}</option>
+                                        ))}
+                                      </select>
+                                    )}
+                                  </td>
+                                  <td className="px-6 py-4 text-right">
+                                    <button
+                                      onClick={() => handleSelectRecruiter(rec)}
+                                      className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-black text-[9px] uppercase tracking-wider rounded-xl transition-all cursor-pointer shadow-sm"
+                                    >
+                                      View Details
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 7: PLAYBOOKS */}
+              {activeTab === "playbooks" && (
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {templates.map(t => (
+                      <div key={t.id} className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm flex flex-col justify-between gap-4 text-left">
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-start">
+                            <span className="px-2.5 py-1 bg-indigo-50 border border-indigo-150 text-indigo-750 text-[9px] font-black uppercase rounded-lg">
+                              {t.type} Playbook
+                            </span>
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">GEMINI TEMPLATE</span>
+                          </div>
+                          <h4 className="text-sm font-black text-slate-850">{t.name}</h4>
+                          <div className="p-3.5 bg-slate-50 border rounded-xl text-xs text-slate-500 font-bold whitespace-pre-wrap font-mono leading-relaxed max-h-36 overflow-y-auto">
+                            {t.body}
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => {
+                            setNewRec(prev => ({
+                              ...prev,
+                              notes: `Preferred outreach: ${t.name}`
+                            }));
+                            alert(`Playbook "${t.name}" loaded into quick outreach draft settings. Click "Add Contact" to test.`);
+                          }}
+                          className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-black text-[10px] uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          Apply Playbook
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          </AnimatePresence>
         )}
-
-        {/* BOTTOM METRICS PANEL: REFERRAL TRACKER FUNNEL & STRATEGIC NETWORKING INSIGHTS */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Funnel chart */}
-          <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm space-y-6">
-            <div>
-              <h3 className="text-lg font-black text-slate-950 tracking-tight flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-indigo-500" />
-                Referral Conversion Funnel
-              </h3>
-              <p className="text-xs text-slate-400 font-bold mt-1">Tracks stage progression success rates from requests to hired status.</p>
-            </div>
-
-            {metrics.funnel.length === 0 ? (
-              <div className="bg-slate-50 p-6 rounded-3xl text-center">
-                <span className="text-xs font-semibold text-slate-400">Generate referral requests to compile funnel telemetry.</span>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {metrics.funnel.map((step, idx) => (
-                  <div key={idx} className="space-y-1.5">
-                    <div className="flex justify-between text-xs font-bold text-slate-700">
-                      <span>{step.stage}</span>
-                      <span className="font-black">{step.count} candidates ({step.percentage}%)</span>
-                    </div>
-                    <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
-                      <div className="h-full bg-gradient-to-r from-indigo-500 to-indigo-650 rounded-full" style={{ width: `${step.percentage}%` }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Strategic Insights */}
-          <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm space-y-6">
-            <div>
-              <h3 className="text-lg font-black text-slate-950 tracking-tight flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-indigo-500 fill-indigo-100" />
-                CRM Strategy Insights
-              </h3>
-              <p className="text-xs text-slate-400 font-bold mt-1">Correlation statistics compiled by the AI placement networking coach.</p>
-            </div>
-
-            {metrics.insights.length === 0 ? (
-              <div className="bg-slate-50 p-6 rounded-3xl text-center">
-                <span className="text-xs font-semibold text-slate-400">Log networking responses to compile insights logs.</span>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {metrics.insights.map((ins, idx) => (
-                  <div key={idx} className="flex gap-3 items-start p-3.5 bg-indigo-50/20 border border-indigo-100/30 rounded-2xl">
-                    <TrendingUp className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
-                    <p className="text-xs font-semibold text-slate-750 leading-relaxed">{ins}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
       </div>
 
-      {/* RECRUITER DETAIL DRAWER */}
+      {/* DYNAMIC RECRUITER DETAIL DRAWER */}
       <AnimatePresence>
         {selectedRecruiter && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40 flex justify-end print:hidden">
@@ -1173,10 +2041,10 @@ export default function RecruitersCRMPage() {
               initial={{ x: "100%" }}
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
-              className="bg-white border-l border-slate-200 shadow-2xl w-full max-w-md h-full flex flex-col justify-between overflow-hidden relative"
+              className="bg-white border-l border-slate-200 shadow-2xl w-full max-w-lg h-full flex flex-col justify-between overflow-hidden relative"
             >
               {/* Header Info */}
-              <div className="p-6 border-b border-slate-100 space-y-4">
+              <div className="p-6 border-b border-slate-100 space-y-4 text-left">
                 <button
                   onClick={() => setSelectedRecruiter(null)}
                   className="absolute top-6 right-6 p-2 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-50 transition-all cursor-pointer"
@@ -1187,7 +2055,7 @@ export default function RecruitersCRMPage() {
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] font-black text-indigo-650 uppercase tracking-widest block">{selectedRecruiter.company}</span>
-                    {selectedRecruiter.verification?.verification_status === "Verified" && (
+                    {selectedRecruiter.verification_status === "Verified" && (
                       <Check className="w-3.5 h-3.5 text-emerald-500 fill-emerald-100 shrink-0" />
                     )}
                   </div>
@@ -1202,64 +2070,50 @@ export default function RecruitersCRMPage() {
                   <span className={cn("px-2 py-1 text-[9px] font-black uppercase rounded-md", STRENGTH_COLORS[selectedRecruiter.relationship_strength] || "bg-slate-100")}>
                     {selectedRecruiter.relationship_strength}
                   </span>
-                  {selectedRecruiter.verification?.verification_status && (
-                    <span className={cn("px-2.5 py-1 text-[9px] font-black uppercase rounded-md border", 
-                      selectedRecruiter.verification.verification_status === "Verified" ? "bg-emerald-50 text-emerald-700 border-emerald-150" :
-                      selectedRecruiter.verification.verification_status === "Under Review" ? "bg-blue-50 text-blue-700 border-blue-150" :
-                      selectedRecruiter.verification.verification_status === "Rejected" ? "bg-rose-50 text-rose-700 border-rose-150" :
-                      selectedRecruiter.verification.verification_status === "Suspended" ? "bg-zinc-850 text-zinc-100 border-zinc-950" :
-                      "bg-slate-50 text-slate-600 border-slate-200"
-                    )}>
-                      {selectedRecruiter.verification.verification_status}
-                    </span>
-                  )}
-                  <span className="px-2 py-1 text-[9px] font-black bg-indigo-50 text-indigo-750 border border-indigo-150 rounded-md">
-                    Trust: {selectedRecruiter.verification?.trust_score || 0}%
+                  <span className="px-2 py-1 text-[9px] font-black bg-indigo-50 text-indigo-755 border border-indigo-150 rounded-md">
+                    Trust: {selectedRecruiter.trust_score}%
                   </span>
-                  {selectedRecruiter.verification?.reputation_score > 0 && (
-                    <span className="px-2 py-1 text-[9px] font-black bg-amber-50 text-amber-700 border border-amber-150 rounded-md">
-                      ★ {selectedRecruiter.verification.reputation_score.toFixed(1)} Rating
-                    </span>
-                  )}
+                  <span className={cn("px-2 py-0.5 rounded text-[8px] font-black uppercase border", OPPORTUNITY_LEVEL_COLORS[selectedRecruiter.opportunity_level])}>
+                    {selectedRecruiter.opportunity_level}
+                  </span>
                 </div>
               </div>
 
-              {/* Tab Selector */}
-              <div className="flex border-b border-slate-100 text-xs font-black uppercase tracking-wider shrink-0 bg-slate-50/50">
-                <button
-                  type="button"
-                  onClick={() => setDrawerTab("activities")}
-                  className={cn("flex-1 py-3.5 text-center border-b-2 cursor-pointer transition-all", drawerTab === "activities" ? "border-indigo-600 text-indigo-650 bg-white" : "border-transparent text-slate-450 hover:text-slate-700")}
-                >
-                  Activities
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDrawerTab("verification")}
-                  className={cn("flex-1 py-3.5 text-center border-b-2 cursor-pointer transition-all", drawerTab === "verification" ? "border-indigo-600 text-indigo-650 bg-white" : "border-transparent text-slate-450 hover:text-slate-700")}
-                >
-                  Verification
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDrawerTab("rate_report")}
-                  className={cn("flex-1 py-3.5 text-center border-b-2 cursor-pointer transition-all", drawerTab === "rate_report" ? "border-indigo-600 text-indigo-650 bg-white" : "border-transparent text-slate-450 hover:text-slate-700")}
-                >
-                  Rate & Report
-                </button>
+              {/* Drawer Tab Selection */}
+              <div className="flex border-b border-slate-100 text-[10px] font-black uppercase tracking-wider shrink-0 bg-slate-50/50">
+                {[
+                  { id: "activities", label: "Activities" },
+                  { id: "verification", label: "Verification" },
+                  { id: "rate_report", label: "Rate & Report" },
+                  { id: "edit_profile", label: "Edit Profile" }
+                ].map(dTab => (
+                  <button
+                    key={dTab.id}
+                    type="button"
+                    onClick={() => setDrawerTab(dTab.id as any)}
+                    className={cn(
+                      "flex-1 py-3.5 text-center border-b-2 cursor-pointer transition-all",
+                      drawerTab === dTab.id
+                        ? "border-indigo-650 text-indigo-650 bg-white"
+                        : "border-transparent text-slate-450 hover:text-slate-700"
+                    )}
+                  >
+                    {dTab.label}
+                  </button>
+                ))}
               </div>
 
-              {/* Scrollable details and timeline */}
-              <div className="flex-grow overflow-y-auto p-6 space-y-6">
+              {/* Detail drawer scrollbox */}
+              <div className="flex-grow overflow-y-auto p-6 space-y-6 text-left">
                 {drawerTab === "activities" && (
                   <div className="space-y-6">
-                    {/* Contact items */}
-                    <div className="space-y-2 text-xs font-semibold text-slate-700">
-                      <span className="text-[9px] font-black text-slate-450 uppercase tracking-widest block">Contact Details</span>
+                    {/* Contacts info */}
+                    <div className="space-y-2 text-xs font-semibold text-slate-750">
+                      <span className="text-[9px] font-black text-slate-450 uppercase tracking-widest block">Contact Coordinates</span>
                       {selectedRecruiter.linkedin_url && (
                         <div className="flex items-center gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
                           <Link2 className="w-4 h-4 text-slate-400" />
-                          <a href={selectedRecruiter.linkedin_url} target="_blank" rel="noreferrer" className="text-indigo-600 font-black hover:underline truncate">LinkedIn Profile Link</a>
+                          <a href={selectedRecruiter.linkedin_url} target="_blank" rel="noreferrer" className="text-indigo-600 font-black hover:underline truncate">LinkedIn Profile URL</a>
                         </div>
                       )}
                       {selectedRecruiter.email && (
@@ -1268,22 +2122,16 @@ export default function RecruitersCRMPage() {
                           <span className="truncate">{selectedRecruiter.email}</span>
                         </div>
                       )}
-                      {selectedRecruiter.phone && (
-                        <div className="flex items-center gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
-                          <Clock className="w-4 h-4 text-slate-400" />
-                          <span>{selectedRecruiter.phone}</span>
-                        </div>
-                      )}
                     </div>
 
-                    {/* Tags and Notes */}
-                    <div className="space-y-2 text-xs font-semibold">
-                      <span className="text-[9px] font-black text-slate-450 uppercase tracking-widest block">Candidate Notes & Tags</span>
+                    {/* Bio & tags */}
+                    <div className="space-y-2">
+                      <span className="text-[9px] font-black text-slate-450 uppercase tracking-widest block">Relationship Bio & Tags</span>
                       <p className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-650 text-xs italic">
-                        {selectedRecruiter.notes || "No notes logged for this contact."}
+                        {selectedRecruiter.notes || "No candidate notes logged."}
                       </p>
                       <div className="flex flex-wrap gap-1.5 pt-1">
-                        {selectedRecruiter.tags.map((t: string, idx: number) => (
+                        {selectedRecruiter.tags && selectedRecruiter.tags.map((t: string, idx: number) => (
                           <span key={idx} className="px-2.5 py-0.5 bg-slate-100 text-slate-650 rounded-full text-[10px] font-black uppercase tracking-wider border border-slate-200/50">
                             {t}
                           </span>
@@ -1291,15 +2139,20 @@ export default function RecruitersCRMPage() {
                       </div>
                     </div>
 
-                    {/* Edit Pipeline Stage Quick Controls */}
+                    {/* Quick Pipeline transition */}
                     <div className="space-y-2 border-t border-slate-100 pt-4">
-                      <span className="text-[9px] font-black text-slate-450 uppercase tracking-widest block">Quick Pipeline Transition</span>
+                      <span className="text-[9px] font-black text-slate-450 uppercase tracking-widest block">Stage Pipeline Transition</span>
                       <div className="flex flex-wrap gap-1.5">
-                        {PIPELINE_STAGES.slice(0, 8).map((st) => (
+                        {PIPELINE_STAGES.map(st => (
                           <button
                             key={st}
                             onClick={() => handleUpdateStage(selectedRecruiter.id, st)}
-                            className={cn("px-2.5 py-1 text-[9px] font-black uppercase rounded-lg border cursor-pointer transition-all", selectedRecruiter.pipeline_stage === st ? "bg-slate-900 text-white border-slate-900" : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200")}
+                            className={cn(
+                              "px-2.5 py-1.5 text-[9px] font-black uppercase rounded-lg border cursor-pointer transition-all",
+                              selectedRecruiter.pipeline_stage === st
+                                ? "bg-slate-900 text-white border-slate-900"
+                                : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200"
+                            )}
                           >
                             {st}
                           </button>
@@ -1307,17 +2160,21 @@ export default function RecruitersCRMPage() {
                       </div>
                     </div>
 
-                    {/* Log new activity */}
+                    {/* Log Outreach activity form */}
                     <form onSubmit={handleAddActivitySubmit} className="space-y-3 border-t border-slate-100 pt-4">
-                      <span className="text-[9px] font-black text-slate-450 uppercase tracking-widest block">Log New Outreach Activity</span>
-                      
+                      <span className="text-[9px] font-black text-slate-450 uppercase tracking-widest block font-sans">Log Connection Activity</span>
                       <div className="grid grid-cols-2 gap-2">
-                        {["Message Sent", "Reply Received", "Call Completed", "Referral Requested", "Referral Approved", "Interview Scheduled"].map((act) => (
+                        {["Message Sent", "Reply Received", "Meeting Scheduled", "Referral Submitted"].map(act => (
                           <button
                             key={act}
                             type="button"
                             onClick={() => setNewActivityType(act)}
-                            className={cn("px-3 py-2 text-[10px] font-black uppercase rounded-xl border text-center cursor-pointer transition-all", newActivityType === act ? "bg-indigo-50 border-indigo-250 text-indigo-700" : "bg-slate-50 border-slate-200 text-slate-650")}
+                            className={cn(
+                              "px-3 py-2 text-[10px] font-black uppercase rounded-xl border text-center cursor-pointer transition-all",
+                              newActivityType === act
+                                ? "bg-indigo-50 border-indigo-250 text-indigo-700"
+                                : "bg-slate-50 border-slate-200 text-slate-650"
+                            )}
                           >
                             {act}
                           </button>
@@ -1326,33 +2183,33 @@ export default function RecruitersCRMPage() {
 
                       <input
                         type="text"
-                        placeholder="Outreach notes (e.g. sent thank you email)..."
+                        placeholder="Log detail notes (e.g. details of reply message)..."
                         value={newActivityNotes}
-                        onChange={(e) => setNewActivityNotes(e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
+                        onChange={e => setNewActivityNotes(e.target.value)}
+                        className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
                       />
-                      
+
                       <button
                         type="submit"
-                        className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-[10px] uppercase tracking-widest rounded-xl transition-all cursor-pointer"
+                        className="w-full py-2.5 bg-indigo-650 hover:bg-indigo-700 text-white font-black text-[10px] uppercase tracking-widest rounded-xl transition-all cursor-pointer"
                       >
-                        Log Outreach
+                        Log Activity Timeline
                       </button>
                     </form>
 
-                    {/* Chronological Timeline */}
-                    <div className="space-y-3 border-t border-slate-100 pt-4 text-left">
-                      <span className="text-[9px] font-black text-slate-450 uppercase tracking-widest block">Outreach Timeline</span>
+                    {/* Timeline items list */}
+                    <div className="space-y-3 border-t border-slate-100 pt-4">
+                      <span className="text-[9px] font-black text-slate-450 uppercase tracking-widest block">Outreach Timeline Logs</span>
                       {recruiterActivities.length === 0 ? (
-                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider text-center py-6">No interactions logged yet.</p>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider text-center py-4">No activity logged.</p>
                       ) : (
                         <div className="space-y-3 relative before:absolute before:left-3 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-150">
-                          {recruiterActivities.map((act) => (
+                          {recruiterActivities.map(act => (
                             <div key={act.id} className="flex gap-4 items-start pl-6 relative">
-                              <div className="w-2 h-2 rounded-full bg-indigo-500 absolute left-2 top-2 border border-white" />
+                              <div className="w-2 h-2 rounded-full bg-indigo-550 absolute left-2 top-2 border border-white" />
                               <div className="space-y-0.5">
-                                <span className="text-[10px] font-black text-slate-800 uppercase block">{act.activity_type}</span>
-                                {act.notes && <p className="text-xs text-slate-500 font-medium">{act.notes}</p>}
+                                <span className="text-[10px] font-black text-slate-850 uppercase block">{act.activity_type}</span>
+                                {act.notes && <p className="text-xs text-slate-500 font-bold">{act.notes}</p>}
                                 <span className="text-[8px] font-bold text-slate-400">{new Date(act.created_at).toLocaleDateString("en-US", { dateStyle: "short", timeStyle: "short" })}</span>
                               </div>
                             </div>
@@ -1365,18 +2222,17 @@ export default function RecruitersCRMPage() {
 
                 {drawerTab === "verification" && (
                   <div className="space-y-6">
-                    {/* SECTION 1: CORPORATE EMAIL VERIFICATION */}
+                    {/* CORPORATE EMAIL VERIFICATION */}
                     <div className="p-5 bg-slate-50 border border-slate-200 rounded-3xl space-y-4">
                       <div className="flex items-center gap-2">
                         <Mail className="w-5 h-5 text-indigo-500" />
                         <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">Corporate Email Verification</h4>
                       </div>
-                      <p className="text-[10px] text-slate-500 font-bold">Verify that this recruiter uses a valid corporate domain email. Public email hosts (Gmail, Yahoo) are not accepted.</p>
                       
-                      {selectedRecruiter.verification?.email_verified ? (
+                      {selectedRecruiter.email_verified || selectedRecruiter.verification?.email_verified ? (
                         <div className="p-3 bg-emerald-50 border border-emerald-150 rounded-xl text-emerald-700 text-xs font-bold flex items-center gap-2">
                           <Check className="w-4 h-4 text-emerald-600" />
-                          <span>Corporate Email Verified</span>
+                          <span>Corporate Domain Email Verified</span>
                         </div>
                       ) : (
                         <div className="space-y-3">
@@ -1385,21 +2241,21 @@ export default function RecruitersCRMPage() {
                               type="email"
                               placeholder="e.g. recruiter@company.com"
                               value={verificationEmail}
-                              onChange={(e) => setVerificationEmail(e.target.value)}
-                              className="flex-grow px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
+                              onChange={e => setVerificationEmail(e.target.value)}
+                              className="flex-grow px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
                             />
                             <button
                               type="button"
                               onClick={handleSendOtp}
                               disabled={otpLoading || !verificationEmail}
-                              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-[10px] uppercase tracking-widest rounded-xl transition-all disabled:opacity-50"
+                              className="px-4 py-2 bg-indigo-650 hover:bg-indigo-700 text-white font-black text-[10px] uppercase tracking-widest rounded-xl transition-all disabled:opacity-50"
                             >
                               {otpLoading ? "Sending..." : "Send OTP"}
                             </button>
                           </div>
 
                           {otpSent && (
-                            <div className="space-y-2 border-t border-slate-250/60 pt-3">
+                            <div className="space-y-2 border-t border-slate-250/65 pt-3">
                               <span className="text-[9px] font-black text-slate-450 uppercase tracking-widest block">Enter 6-Digit OTP</span>
                               <div className="flex gap-2">
                                 <input
@@ -1407,15 +2263,15 @@ export default function RecruitersCRMPage() {
                                   placeholder="123456"
                                   maxLength={6}
                                   value={verificationOtp}
-                                  onChange={(e) => setVerificationOtp(e.target.value)}
+                                  onChange={e => setVerificationOtp(e.target.value)}
                                   className="flex-grow px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-black tracking-widest focus:outline-none text-slate-800 text-center"
                                 />
                                 <button
                                   type="button"
                                   onClick={handleVerifyOtp}
-                                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-black text-[10px] uppercase tracking-widest rounded-xl transition-all"
+                                  className="px-4 py-2 bg-slate-900 hover:bg-slate-850 text-white font-black text-[10px] uppercase tracking-widest rounded-xl transition-all"
                                 >
-                                  Verify Code
+                                  Verify OTP
                                 </button>
                               </div>
                             </div>
@@ -1424,21 +2280,19 @@ export default function RecruitersCRMPage() {
                       )}
                     </div>
 
-                    {/* SECTION 2: LINKEDIN SCANNER */}
+                    {/* LINKEDIN SCANNER */}
                     <div className="p-5 bg-slate-50 border border-slate-200 rounded-3xl space-y-4">
                       <div className="flex items-center gap-2">
                         <Link2 className="w-5 h-5 text-blue-500" />
-                        <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">LinkedIn Authenticity Check</h4>
+                        <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">LinkedIn Verification Scan</h4>
                       </div>
-                      <p className="text-[10px] text-slate-500 font-bold">Scan the recruiter's LinkedIn URL to calculate an authenticity score based on profile signals.</p>
-                      
                       <div className="space-y-3">
                         <input
                           type="url"
                           placeholder="https://linkedin.com/in/recruiter-profile"
                           value={linkedinUrlInput}
-                          onChange={(e) => setLinkedinUrlInput(e.target.value)}
-                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
+                          onChange={e => setLinkedinUrlInput(e.target.value)}
+                          className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
                         />
                         <button
                           type="button"
@@ -1446,48 +2300,34 @@ export default function RecruitersCRMPage() {
                           disabled={!linkedinUrlInput}
                           className="w-full py-2.5 bg-blue-650 hover:bg-blue-700 text-white font-black text-[10px] uppercase tracking-widest rounded-xl transition-all disabled:opacity-50"
                         >
-                          Check Authenticity Heuristics
+                          Check LinkedIn Authenticity Heuristics
                         </button>
                       </div>
                     </div>
 
-                    {/* SECTION 3: DOCUMENT SUBMISSION */}
+                    {/* MANUAL DOCUMENT SUBMISSION */}
                     <div className="p-5 bg-slate-50 border border-slate-200 rounded-3xl space-y-4">
                       <div className="flex items-center gap-2">
                         <Upload className="w-5 h-5 text-indigo-500" />
-                        <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">Manual Credentials Submission</h4>
+                        <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">Official Document Verification</h4>
                       </div>
-                      <p className="text-[10px] text-slate-500 font-bold">Provide official verification documents (e.g. employee card, business card, work contract) for manual review by system moderators.</p>
-
-                      {selectedRecruiter.verification?.verification_status === "Under Review" ? (
-                        <div className="p-3.5 bg-blue-50 border border-blue-150 rounded-xl text-blue-700 text-xs font-bold flex items-center gap-2">
-                          <Info className="w-4 h-4 text-blue-600 shrink-0" />
-                          <span>Verification is Under Review by Admins</span>
-                        </div>
-                      ) : selectedRecruiter.verification?.verification_status === "Verified" ? (
-                        <div className="p-3.5 bg-emerald-50 border border-emerald-150 rounded-xl text-emerald-700 text-xs font-bold flex items-center gap-2">
-                          <Check className="w-4 h-4 text-emerald-600 shrink-0" />
-                          <span>Recruiter profile is fully verified</span>
-                        </div>
-                      ) : (
-                        <div className="space-y-3">
-                          <input
-                            type="text"
-                            placeholder="Document URL (or path to files)"
-                            value={docUrlInput}
-                            onChange={(e) => setDocUrlInput(e.target.value)}
-                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
-                          />
-                          <button
-                            type="button"
-                            onClick={handleDocumentSubmit}
-                            disabled={!docUrlInput}
-                            className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-black text-[10px] uppercase tracking-widest rounded-xl transition-all disabled:opacity-50"
-                          >
-                            Submit for Admin Review
-                          </button>
-                        </div>
-                      )}
+                      <div className="space-y-3">
+                        <input
+                          type="text"
+                          placeholder="Document URL (ID Card, employee validation)"
+                          value={docUrlInput}
+                          onChange={e => setDocUrlInput(e.target.value)}
+                          className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleDocumentSubmit}
+                          disabled={!docUrlInput}
+                          className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-black text-[10px] uppercase tracking-widest rounded-xl transition-all disabled:opacity-50"
+                        >
+                          Submit For Admin Manual Validation
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1498,17 +2338,16 @@ export default function RecruitersCRMPage() {
                     <form onSubmit={handleRatingSubmit} className="p-5 bg-slate-50 border border-slate-200 rounded-3xl space-y-4">
                       <div className="flex items-center gap-2">
                         <Award className="w-5 h-5 text-amber-500" />
-                        <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">Submit Professional Rating</h4>
+                        <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">Rate Recruiter Interaction</h4>
                       </div>
-                      <p className="text-[10px] text-slate-500 font-bold">Provide constructive, structured feedback on your interactions with this recruiter.</p>
-                      
+
                       <div className="space-y-3">
                         {[
                           { label: "Professionalism", value: professionalism, setter: setProfessionalism },
-                          { label: "Response Time", value: responseTime, setter: setResponseTime },
+                          { label: "Response Speed", value: responseTime, setter: setResponseTime },
                           { label: "Helpfulness", value: helpfulness, setter: setHelpfulness },
-                          { label: "Referral Quality", value: referralQuality, setter: setReferralQuality },
-                          { label: "Communication", value: communication, setter: setCommunication }
+                          { label: "Referral Conversion", value: referralQuality, setter: setReferralQuality },
+                          { label: "Communication Integrity", value: communication, setter: setCommunication }
                         ].map((item, idx) => (
                           <div key={idx} className="flex justify-between items-center text-xs font-bold text-slate-700">
                             <span>{item.label}:</span>
@@ -1518,7 +2357,7 @@ export default function RecruitersCRMPage() {
                                 min="1"
                                 max="5"
                                 value={item.value}
-                                onChange={(e) => item.setter(Number(e.target.value))}
+                                onChange={e => item.setter(Number(e.target.value))}
                                 className="w-20 accent-amber-500 h-1 bg-slate-200 rounded-lg cursor-pointer"
                               />
                               <span className="text-amber-600 text-xs font-black">{item.value} ★</span>
@@ -1527,15 +2366,12 @@ export default function RecruitersCRMPage() {
                         ))}
                       </div>
 
-                      <div className="space-y-1">
-                        <span className="text-[9px] font-black text-slate-450 uppercase tracking-widest block font-sans">Written Review (Optional)</span>
-                        <textarea
-                          placeholder="Describe your conversation, interview style, or response timeline..."
-                          value={ratingFeedback}
-                          onChange={(e) => setRatingFeedback(e.target.value)}
-                          className="w-full h-16 p-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800 resize-none"
-                        />
-                      </div>
+                      <textarea
+                        placeholder="Write detailed interaction review notes..."
+                        value={ratingFeedback}
+                        onChange={e => setRatingFeedback(e.target.value)}
+                        className="w-full h-16 p-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800 resize-none"
+                      />
 
                       <button
                         type="submit"
@@ -1545,40 +2381,33 @@ export default function RecruitersCRMPage() {
                       </button>
                     </form>
 
-                    {/* SCAM REPORT FORM */}
+                    {/* REPORT SPAM/SCAM FORM */}
                     <form onSubmit={handleReportSubmit} className="p-5 bg-red-50/50 border border-red-200 rounded-3xl space-y-4">
                       <div className="flex items-center gap-2">
                         <AlertTriangle className="w-5 h-5 text-rose-500" />
-                        <h4 className="text-xs font-black text-red-950 uppercase tracking-wider">Report Suspicious Activity</h4>
+                        <h4 className="text-xs font-black text-rose-955 uppercase tracking-wider">Report Fake/Scam Profile</h4>
                       </div>
-                      <p className="text-[10px] text-red-700/80 font-bold">Report spam accounts, fraudulent job offers, referral extortion schemes, or fake identities.</p>
 
                       <div className="space-y-3">
-                        <div className="space-y-1">
-                          <label className="text-[9px] font-black text-red-900 uppercase tracking-widest">Reason for Report</label>
-                          <select
-                            value={reportReason}
-                            onChange={(e) => setReportReason(e.target.value)}
-                            className="w-full px-3 py-2 bg-white border border-red-200/60 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
-                          >
-                            <option value="Fake Recruiter">Fake Recruiter Profile / Identity Theft</option>
-                            <option value="Scam Postings">Scam Job Postings</option>
-                            <option value="Extortion/Money Request">Charging Money for Placements/Referrals</option>
-                            <option value="Spam/Harassment">Spam Outreach or Harassment</option>
-                            <option value="Other">Other Violations</option>
-                          </select>
-                        </div>
+                        <select
+                          value={reportReason}
+                          onChange={e => setReportReason(e.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-red-200/60 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
+                        >
+                          <option value="Fake Recruiter">Fake Recruiter Profile / Identity Theft</option>
+                          <option value="Scam Postings">Scam Job Postings</option>
+                          <option value="Extortion/Money Request">Charging Money for Placements/Referrals</option>
+                          <option value="Spam/Harassment">Spam Outreach or Harassment</option>
+                          <option value="Other">Other Violations</option>
+                        </select>
 
-                        <div className="space-y-1">
-                          <label className="text-[9px] font-black text-red-900 uppercase tracking-widest">Evidence Details</label>
-                          <textarea
-                            required
-                            placeholder="Paste text messages, describe the scam, or include evidence details..."
-                            value={reportEvidence}
-                            onChange={(e) => setReportEvidence(e.target.value)}
-                            className="w-full h-16 p-2 bg-white border border-red-250/65 rounded-xl text-xs font-semibold focus:outline-none text-slate-800 resize-none"
-                          />
-                        </div>
+                        <textarea
+                          required
+                          placeholder="Paste conversation logs or detail scam behavior evidence..."
+                          value={reportEvidence}
+                          onChange={e => setReportEvidence(e.target.value)}
+                          className="w-full h-16 p-2 bg-white border border-red-250/65 rounded-xl text-xs font-semibold focus:outline-none text-slate-850 resize-none"
+                        />
 
                         <button
                           type="submit"
@@ -1589,6 +2418,246 @@ export default function RecruitersCRMPage() {
                       </div>
                     </form>
                   </div>
+                )}
+
+                {drawerTab === "edit_profile" && (
+                  <form onSubmit={handleSaveEditProfile} className="space-y-4">
+                    <span className="text-[9px] font-black text-slate-450 uppercase tracking-widest block font-sans">Modify Profile Metrics</span>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Name *</label>
+                        <input
+                          required
+                          type="text"
+                          value={editRecName}
+                          onChange={e => setEditRecName(e.target.value)}
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Company *</label>
+                        <input
+                          required
+                          type="text"
+                          value={editRecCompany}
+                          onChange={e => setEditRecCompany(e.target.value)}
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Designation</label>
+                        <input
+                          type="text"
+                          value={editRecDesignation}
+                          onChange={e => setEditRecDesignation(e.target.value)}
+                          className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Department</label>
+                        <input
+                          type="text"
+                          value={editRecDept}
+                          onChange={e => setEditRecDept(e.target.value)}
+                          className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Company Domain</label>
+                        <input
+                          type="text"
+                          placeholder="company.com"
+                          value={editRecDomain}
+                          onChange={e => setEditRecDomain(e.target.value)}
+                          className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Recruiter Type</label>
+                        <select
+                          value={editRecType}
+                          onChange={e => setEditRecType(e.target.value)}
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800 cursor-pointer"
+                        >
+                          {["Technical Recruiter", "Campus Recruiter", "Talent Acquisition", "Hiring Manager", "Engineering Manager", "HR Partner", "Founder", "Startup Recruiter"].map(t => (
+                            <option key={t} value={t}>{t}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Location</label>
+                        <input
+                          type="text"
+                          value={editRecLocation}
+                          onChange={e => setEditRecLocation(e.target.value)}
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Email</label>
+                        <input
+                          type="email"
+                          value={editRecEmail}
+                          onChange={e => setEditRecEmail(e.target.value)}
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">LinkedIn Profile URL</label>
+                        <input
+                          type="url"
+                          value={editRecLinkedin}
+                          onChange={e => setEditRecLinkedin(e.target.value)}
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Pipeline Stage</label>
+                        <select
+                          value={editRecStage}
+                          onChange={e => setEditRecStage(e.target.value as any)}
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
+                        >
+                          {PIPELINE_STAGES.map(st => (
+                            <option key={st} value={st}>{st}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Relationship Strength</label>
+                        <select
+                          value={editRecStrength}
+                          onChange={e => setEditRecStrength(e.target.value as any)}
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
+                        >
+                          {["Cold", "Connected", "Messaged", "Responded", "Referral Possible", "Strong Connection"].map(st => (
+                            <option key={st} value={st}>{st}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Trust Score (0-100)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={editRecTrust}
+                          onChange={e => setEditRecTrust(Number(e.target.value))}
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Verification Status</label>
+                        <select
+                          value={editRecStatus}
+                          onChange={e => setEditRecStatus(e.target.value as any)}
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
+                        >
+                          {["Verified", "Likely Genuine", "Suspicious", "Potential Scam"].map(status => (
+                            <option key={status} value={status}>{status}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-3 pt-2 border-t border-slate-100">
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Referrals Sent</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={editRecRefSent}
+                          onChange={e => setEditRecRefSent(Number(e.target.value))}
+                          className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Referrals Accepted</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={editRecRefAcc}
+                          onChange={e => setEditRecRefAcc(Number(e.target.value))}
+                          className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Referrals Rejected</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={editRecRefRej}
+                          onChange={e => setEditRecRefRej(Number(e.target.value))}
+                          className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Interviews Count</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={editRecIntCount}
+                          onChange={e => setEditRecIntCount(Number(e.target.value))}
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Offers Count</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={editRecOffCount}
+                          onChange={e => setEditRecOffCount(Number(e.target.value))}
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1 pt-2 border-t border-slate-100">
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Tags (comma-separated)</label>
+                      <input
+                        type="text"
+                        value={editRecTags}
+                        onChange={e => setEditRecTags(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Bio & Notes</label>
+                      <textarea
+                        value={editRecNotes}
+                        onChange={e => setEditRecNotes(e.target.value)}
+                        className="w-full h-20 p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-805 resize-none"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-black text-xs uppercase tracking-widest rounded-xl transition-all cursor-pointer shadow-md"
+                    >
+                      Save Profile Changes
+                    </button>
+                  </form>
                 )}
               </div>
 
@@ -1613,7 +2682,7 @@ export default function RecruitersCRMPage() {
         )}
       </AnimatePresence>
 
-      {/* MODAL: ADD RECRUITER */}
+      {/* MODAL: ADD CONTACT */}
       <AnimatePresence>
         {showAddModal && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -1621,7 +2690,7 @@ export default function RecruitersCRMPage() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-[2.5rem] border border-slate-200 shadow-2xl p-8 max-w-md w-full text-left relative overflow-hidden"
+              className="bg-white rounded-[2.5rem] border border-slate-200 shadow-2xl p-8 max-w-lg w-full text-left relative overflow-hidden"
             >
               <button
                 onClick={() => setShowAddModal(false)}
@@ -1630,14 +2699,14 @@ export default function RecruitersCRMPage() {
                 <X className="w-5 h-5" />
               </button>
 
-              <form onSubmit={handleAddRecruiterSubmit} className="space-y-4">
+              <form onSubmit={handleAddRecruiterSubmit} className="space-y-4 max-h-[500px] overflow-y-auto pr-1">
                 <div className="flex items-center gap-2">
                   <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center">
                     <UserPlus className="w-5 h-5" />
                   </div>
                   <div>
                     <h3 className="text-lg font-black text-slate-900 tracking-tight leading-none font-display">New Recruiter Profile</h3>
-                    <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-1 block">Log a new contact details profile.</p>
+                    <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-1 block font-sans">Log a new networking contact details profile.</p>
                   </div>
                 </div>
 
@@ -1666,16 +2735,51 @@ export default function RecruitersCRMPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   <div className="space-y-1">
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Designation/Role</label>
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Designation</label>
                     <input
                       type="text"
                       placeholder="University Recruiter"
                       value={newRec.designation}
                       onChange={(e) => setNewRec({ ...newRec, designation: e.target.value })}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
+                      className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
                     />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Department</label>
+                    <input
+                      type="text"
+                      placeholder="University Hiring"
+                      value={newRec.department}
+                      onChange={(e) => setNewRec({ ...newRec, department: e.target.value })}
+                      className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Company Domain</label>
+                    <input
+                      type="text"
+                      placeholder="google.com"
+                      value={newRec.company_domain}
+                      onChange={(e) => setNewRec({ ...newRec, company_domain: e.target.value })}
+                      className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Recruiter Type</label>
+                    <select
+                      value={newRec.recruiter_type}
+                      onChange={(e) => setNewRec({ ...newRec, recruiter_type: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800 cursor-pointer"
+                    >
+                      {["Technical Recruiter", "Campus Recruiter", "Talent Acquisition", "Hiring Manager", "Engineering Manager", "HR Partner", "Founder", "Startup Recruiter"].map(t => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
                   </div>
                   <div className="space-y-1">
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Location</label>
@@ -1689,35 +2793,24 @@ export default function RecruitersCRMPage() {
                   </div>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">LinkedIn URL</label>
-                  <input
-                    type="url"
-                    placeholder="https://linkedin.com/in/username"
-                    value={newRec.linkedin_url}
-                    onChange={(e) => setNewRec({ ...newRec, linkedin_url: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
-                  />
-                </div>
-
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Email</label>
                     <input
                       type="email"
-                      placeholder="jane@company.com"
+                      placeholder="jane@google.com"
                       value={newRec.email}
                       onChange={(e) => setNewRec({ ...newRec, email: e.target.value })}
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Phone</label>
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">LinkedIn URL</label>
                     <input
-                      type="text"
-                      placeholder="+91 9999999999"
-                      value={newRec.phone}
-                      onChange={(e) => setNewRec({ ...newRec, phone: e.target.value })}
+                      type="url"
+                      placeholder="https://linkedin.com/in/username"
+                      value={newRec.linkedin_url}
+                      onChange={(e) => setNewRec({ ...newRec, linkedin_url: e.target.value })}
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
                     />
                   </div>
@@ -1740,7 +2833,7 @@ export default function RecruitersCRMPage() {
                     <select
                       value={newRec.pipeline_stage}
                       onChange={(e: any) => setNewRec({ ...newRec, pipeline_stage: e.target.value })}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800 cursor-pointer"
                     >
                       {PIPELINE_STAGES.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
@@ -1750,7 +2843,7 @@ export default function RecruitersCRMPage() {
                     <select
                       value={newRec.relationship_strength}
                       onChange={(e: any) => setNewRec({ ...newRec, relationship_strength: e.target.value })}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800 cursor-pointer"
                     >
                       {["Cold", "Connected", "Messaged", "Responded", "Referral Possible", "Strong Connection"].map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
@@ -1761,7 +2854,7 @@ export default function RecruitersCRMPage() {
                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Tags (comma-separated)</label>
                   <input
                     type="text"
-                    placeholder="Startup, Tech, HR"
+                    placeholder="Tech, Google, FAANG"
                     value={newRec.tagsString}
                     onChange={(e) => setNewRec({ ...newRec, tagsString: e.target.value })}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
@@ -1771,7 +2864,7 @@ export default function RecruitersCRMPage() {
                 <div className="space-y-1">
                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Bio Notes</label>
                   <textarea
-                    placeholder="Enter notes about interactions or targets..."
+                    placeholder="Enter notes about interactions..."
                     value={newRec.notes}
                     onChange={(e) => setNewRec({ ...newRec, notes: e.target.value })}
                     className="w-full h-16 p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800 resize-none"
@@ -1782,7 +2875,7 @@ export default function RecruitersCRMPage() {
                   type="submit"
                   className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-black text-xs uppercase tracking-widest rounded-xl transition-all cursor-pointer shadow-md"
                 >
-                  Create Recruiter
+                  Create Recruiter Profile
                 </button>
               </form>
             </motion.div>
@@ -1790,7 +2883,7 @@ export default function RecruitersCRMPage() {
         )}
       </AnimatePresence>
 
-      {/* MODAL: ADD FOLLOW-UP REMINDER */}
+      {/* MODAL: SCHEDULE REMINDER */}
       <AnimatePresence>
         {showFollowupModal && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -1809,12 +2902,12 @@ export default function RecruitersCRMPage() {
 
               <form onSubmit={handleAddFollowupSubmit} className="space-y-4">
                 <div className="flex items-center gap-2">
-                  <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center">
+                  <div className="w-10 h-10 bg-indigo-50 text-indigo-650 rounded-2xl flex items-center justify-center">
                     <Calendar className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="text-lg font-black text-slate-900 tracking-tight leading-none font-display">Schedule Follow-up</h3>
-                    <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-1 block">Set alerts for outreach dates.</p>
+                    <h3 className="text-lg font-black text-slate-900 tracking-tight leading-none font-display">Schedule Task</h3>
+                    <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-1 block">Set follow-up reminders.</p>
                   </div>
                 </div>
 
@@ -1824,7 +2917,7 @@ export default function RecruitersCRMPage() {
                     required
                     value={newFollow.recruiter_id}
                     onChange={(e) => setNewFollow({ ...newFollow, recruiter_id: e.target.value })}
-                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
+                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800 cursor-pointer"
                   >
                     <option value="">-- Choose Recruiter --</option>
                     {recruiters.map(r => (
@@ -1845,43 +2938,43 @@ export default function RecruitersCRMPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Task Priority</label>
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Priority</label>
                   <select
                     value={newFollow.priority}
                     onChange={(e: any) => setNewFollow({ ...newFollow, priority: e.target.value })}
-                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
+                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800 cursor-pointer"
                   >
                     {["Low", "Medium", "High", "Critical"].map(p => <option key={p} value={p}>{p}</option>)}
                   </select>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Alert Message</label>
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Message Reminder Alert</label>
                   <input
                     type="text"
-                    placeholder="Check referral status, thank you email..."
+                    placeholder="Check referral request, follow up email..."
                     value={newFollow.message}
                     onChange={(e) => setNewFollow({ ...newFollow, message: e.target.value })}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
                   />
                 </div>
 
-                <div className="flex items-center gap-2 pt-2">
+                <div className="flex items-center gap-2 pt-2 text-left">
                   <input
                     type="checkbox"
                     id="reminderCheckbox"
                     checked={newFollow.reminder}
                     onChange={(e) => setNewFollow({ ...newFollow, reminder: e.target.checked })}
-                    className="rounded border-slate-200 text-indigo-650 focus:ring-indigo-550"
+                    className="rounded border-slate-350 text-indigo-650 focus:ring-indigo-550 cursor-pointer"
                   />
-                  <label htmlFor="reminderCheckbox" className="text-xs font-bold text-slate-600 cursor-pointer">Activate email notification reminders</label>
+                  <label htmlFor="reminderCheckbox" className="text-[11px] font-bold text-slate-600 cursor-pointer select-none">Activate email notification reminders</label>
                 </div>
 
                 <button
                   type="submit"
                   className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-black text-xs uppercase tracking-widest rounded-xl transition-all cursor-pointer shadow-md"
                 >
-                  Schedule Reminder
+                  Schedule Reminder Task
                 </button>
               </form>
             </motion.div>
@@ -1907,20 +3000,20 @@ export default function RecruitersCRMPage() {
               </button>
 
               <div className="flex items-center gap-2">
-                <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center">
+                <div className="w-10 h-10 bg-indigo-50 text-indigo-650 rounded-2xl flex items-center justify-center">
                   <Upload className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-black text-slate-900 tracking-tight leading-none font-display">Bulk Import Contacts</h3>
+                  <h3 className="text-lg font-black text-slate-900 tracking-tight leading-none font-display">Bulk Import</h3>
                   <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-1 block">Injest sheets or LinkedIn export CSV files.</p>
                 </div>
               </div>
 
-              <div className="p-4 bg-indigo-50/20 border border-indigo-100/30 rounded-2xl text-xs font-semibold text-slate-650 leading-relaxed">
+              <div className="p-4 bg-indigo-50/20 border border-indigo-100/30 rounded-2xl text-[10px] font-bold text-slate-650 leading-relaxed">
                 CSV files must contain headers: <strong>name, company</strong>. Optional column headers include: <em>designation, linkedin_url, email, phone, location, hiring_roles, tags</em>.
               </div>
 
-              <div className="border border-dashed border-slate-250 rounded-2xl p-6 text-center hover:bg-slate-50 transition-all relative">
+              <div className="border border-dashed border-slate-250 rounded-2xl p-6 text-center hover:bg-slate-50 transition-all relative cursor-pointer">
                 <input
                   type="file"
                   accept=".csv"
@@ -1947,7 +3040,7 @@ export default function RecruitersCRMPage() {
               className="bg-white border-l border-slate-200 shadow-2xl w-full max-w-lg h-full flex flex-col justify-between overflow-hidden relative"
             >
               {/* Header */}
-              <div className="p-6 border-b border-slate-100">
+              <div className="p-6 border-b border-slate-100 text-left">
                 <button
                   onClick={() => setShowAIGenerator(false)}
                   className="absolute top-6 right-6 p-2 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-50 transition-all cursor-pointer"
@@ -1956,7 +3049,7 @@ export default function RecruitersCRMPage() {
                 </button>
 
                 <div className="flex items-center gap-2">
-                  <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center">
+                  <div className="w-10 h-10 bg-indigo-50 text-indigo-650 rounded-2xl flex items-center justify-center">
                     <Sparkles className="w-5 h-5" />
                   </div>
                   <div>
@@ -1973,12 +3066,17 @@ export default function RecruitersCRMPage() {
                 <div className="space-y-2">
                   <span className="text-[9px] font-black text-slate-450 uppercase tracking-widest block">Choose Outreach Script Strategy</span>
                   <div className="grid grid-cols-2 gap-2">
-                    {templates.map((t) => (
+                    {templates.map(t => (
                       <button
                         key={t.id}
                         type="button"
                         onClick={() => setSelectedTemplate(t)}
-                        className={cn("px-3 py-2.5 text-[10px] font-black uppercase rounded-xl border text-center cursor-pointer transition-all", selectedTemplate?.id === t.id ? "bg-indigo-50 border-indigo-250 text-indigo-700" : "bg-slate-50 border-slate-200 text-slate-650")}
+                        className={cn(
+                          "px-3 py-2.5 text-[10px] font-black uppercase rounded-xl border text-center cursor-pointer transition-all",
+                          selectedTemplate?.id === t.id
+                            ? "bg-indigo-50 border-indigo-250 text-indigo-700"
+                            : "bg-slate-50 border-slate-200 text-slate-650"
+                        )}
                       >
                         {t.name}
                       </button>
@@ -1986,7 +3084,7 @@ export default function RecruitersCRMPage() {
                   </div>
                 </div>
 
-                {/* Overrides parameter fields */}
+                {/* Overrides parameters */}
                 <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
                   <div className="space-y-1">
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Override Tech Skills</label>
@@ -1994,8 +3092,8 @@ export default function RecruitersCRMPage() {
                       type="text"
                       placeholder="React, Python, AWS"
                       value={skillsOverride}
-                      onChange={(e) => setSkillsOverride(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
+                      onChange={e => setSkillsOverride(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-805"
                     />
                   </div>
                   <div className="space-y-1">
@@ -2004,25 +3102,24 @@ export default function RecruitersCRMPage() {
                       type="text"
                       placeholder="Full Stack Developer"
                       value={roleOverride}
-                      onChange={(e) => setRoleOverride(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-800"
+                      onChange={e => setRoleOverride(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-805"
                     />
                   </div>
                 </div>
 
-                {/* Generate Action */}
                 <button
                   onClick={handleGenerateAIMessage}
                   disabled={aiLoading}
-                  className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs uppercase tracking-widest rounded-xl transition-all cursor-pointer shadow-md disabled:opacity-50 flex items-center justify-center gap-1.5"
+                  className="w-full py-3 bg-indigo-650 hover:bg-indigo-700 text-white font-black text-xs uppercase tracking-widest rounded-xl transition-all cursor-pointer shadow-md disabled:opacity-50 flex items-center justify-center gap-1.5"
                 >
                   {aiLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
                   <span>Generate Outreach Message</span>
                 </button>
 
                 {aiError && (
-                  <div className="p-3.5 bg-red-50 border border-red-200 text-red-600 text-xs font-semibold rounded-xl flex items-center gap-1.5">
-                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <div className="p-3.5 bg-red-50 border border-red-200 text-red-650 text-xs font-semibold rounded-xl flex items-center gap-1.5">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
                     <span>{aiError}</span>
                   </div>
                 )}
@@ -2040,11 +3137,11 @@ export default function RecruitersCRMPage() {
                     )}
 
                     <div className="space-y-1">
-                      <span className="text-[9px] font-black text-slate-450 uppercase tracking-widest block">Generated Body Context</span>
+                      <span className="text-[9px] font-black text-slate-450 uppercase tracking-widest block font-sans">Generated Body Context</span>
                       <textarea
                         readOnly
                         value={aiGeneratedText.body}
-                        className="w-full h-44 p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-semibold text-slate-700 focus:outline-none resize-none"
+                        className="w-full h-48 p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-semibold text-slate-705 focus:outline-none resize-none"
                       />
                     </div>
 
@@ -2053,7 +3150,7 @@ export default function RecruitersCRMPage() {
                         navigator.clipboard.writeText(aiGeneratedText.body);
                         alert("Message copied to clipboard!");
                       }}
-                      className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-black text-xs uppercase tracking-widest rounded-xl cursor-pointer transition-all flex items-center justify-center gap-1.5"
+                      className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-black text-xs uppercase tracking-widest rounded-xl cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-sm"
                     >
                       <Check className="w-4 h-4 text-emerald-400" />
                       Copy Outreach Draft

@@ -119,6 +119,30 @@ export async function POST(request: Request) {
       )
     }
 
+    // Server-side Job Description validation
+    const jdTrimmed = jdText.trim()
+    if (jdTrimmed.length < 50) {
+      return NextResponse.json(
+        { success: false, message: 'The provided content is too short to be a valid job description. Please paste a complete job posting.' },
+        { status: 400, headers: limitResult.headers }
+      )
+    }
+
+    const jdLower = jdTrimmed.toLowerCase()
+    let jdCategoryMatches = 0
+    if (['role', 'position', 'title', 'job', 'opening', 'hiring', 'vacancy', 'opportunity'].some(m => jdLower.includes(m))) jdCategoryMatches++
+    if (['responsib', 'duties', 'tasks', 'you will', "what you'll do", 'what you will', 'day-to-day'].some(m => jdLower.includes(m))) jdCategoryMatches++
+    if (['require', 'qualif', 'experience', 'skill', 'proficien', 'must have', 'nice to have', 'minimum', 'preferred'].some(m => jdLower.includes(m))) jdCategoryMatches++
+    if (['degree', 'bachelor', 'master', 'education', 'certif', 'diploma', 'graduate'].some(m => jdLower.includes(m))) jdCategoryMatches++
+    if (['apply', 'submit', 'resume', 'cover letter', 'salary', 'benefits', 'compensation'].some(m => jdLower.includes(m))) jdCategoryMatches++
+
+    if (jdCategoryMatches < 2) {
+      return NextResponse.json(
+        { success: false, message: 'The provided content does not appear to be a valid job description. Please paste an authentic job posting containing role responsibilities, required skills, qualifications, or hiring requirements.' },
+        { status: 400, headers: limitResult.headers }
+      )
+    }
+
     // Determine provider, model, and key based on available environment variables and headers
     const headerApiKey = request.headers.get('x-gemini-api-key')
     
@@ -139,7 +163,7 @@ export async function POST(request: Request) {
     } else if (process.env.OPENROUTER_API_KEY) {
       provider = 'openrouter'
       apiKey = process.env.OPENROUTER_API_KEY
-      model = 'meta-llama/llama-3.1-8b-instruct:free'
+      model = 'meta-llama/llama-3.3-70b-instruct:free'
     }
 
     if (!apiKey) {
@@ -157,21 +181,26 @@ export async function POST(request: Request) {
 Analyze the provided resume text and job description (JD) text, and perform a comprehensive, explainable matching audit.
 
 CRITICAL INSTRUCTIONS:
-1. Ground your evaluations strictly in the provided texts. Do NOT make up qualifications.
-2. Determine an Overall Match Score (0 to 100) based on how well the candidate's skills, experience, projects, and education align with the JD requirements.
-3. Classify application competitiveness as "Very Competitive", "Competitive", "Moderate", or "Weak" and explain why.
-4. Calculate individual match breakdown scores (0 to 100) and provide details:
+1. You MUST generate a "thinking" property first. In this section, perform a rigorous step-by-step chain of thought:
+   - Identify the JD's standard, genuine technical expectations for the role (e.g. only list tools and skills that are actually relevant or specified in the JD; do not assume unrelated languages or frameworks are required).
+   - Analyze the candidate's actual extracted text to find what matches the JD and where the genuine gaps exist.
+   - Verify formatting parameters: only report layout or alignment issues if they are present in the text structure.
+   - Ground all subsequent scores and recommendations strictly on this thinking process.
+2. Ground your evaluations strictly in the provided texts. Do NOT make up qualifications.
+3. Determine an Overall Match Score (0 to 100) based on how well the candidate's skills, experience, projects, and education align with the JD requirements.
+4. Classify application competitiveness as "Very Competitive", "Competitive", "Moderate", or "Weak" and explain why.
+5. Calculate individual match breakdown scores (0 to 100) and provide details:
    - Skills Match (List detected matching skills and missing critical skills)
    - Keywords Match (Compare JD keywords against resume)
    - Experience Match (Align years of experience, titles, and duties)
    - Education Match (Align degrees, majors, and academic level)
    - Project Relevance (Align project architectures/technologies with job requirements)
    - ATS Alignment (Evaluate resume headings, structures, and layout indicators in the text)
-5. Extract important keywords from the JD (minimum 8 keywords). Identify which are present in the resume and which are missing, and compute a Keyword Coverage percentage.
-6. Identify critical missing skills and categorize their priority ("High", "Medium", "Low") based on how frequently/strongly they are mentioned in the JD.
-7. Evaluate any projects mentioned in the resume. Calculate a relevance score (0 to 100) for each, detailing key strengths, weaknesses, and alignment with the role.
-8. Simulate a Recruiter View: What helps the application ("helps") and what may raise concerns or need clarification ("concerns").
-9. Generate a prioritized Match Improvement Roadmap listing specific actions the candidate should take before applying, categorized by impact ("High", "Medium", "Low").
+6. Extract important keywords from the JD (minimum 8 keywords). Identify which are present in the resume and which are missing, and compute a Keyword Coverage percentage.
+7. Identify critical missing skills and categorize their priority ("High", "Medium", "Low") based on how frequently/strongly they are mentioned in the JD.
+8. Evaluate any projects mentioned in the resume. Calculate a relevance score (0 to 100) for each, detailing key strengths, weaknesses, and alignment with the role.
+9. Simulate a Recruiter View: What helps the application ("helps") and what may raise concerns or need clarification ("concerns").
+10. Generate a prioritized Match Improvement Roadmap listing specific actions the candidate should take before applying, categorized by impact ("High", "Medium", "Low").
 
 RESUME TEXT:
 """
@@ -189,6 +218,10 @@ TARGET ROLE:
     const schema = {
       type: 'OBJECT',
       properties: {
+        thinking: {
+          type: 'STRING',
+          description: 'A deep step-by-step reasoning chain analyzing matching parameters, genuine skills gap, and layout alignments first. Generated first.',
+        },
         overallScore: { type: 'INTEGER' },
         competitiveness: { type: 'STRING' },
         competitivenessReasoning: { type: 'STRING' },
@@ -327,6 +360,7 @@ TARGET ROLE:
         },
       },
       required: [
+        'thinking',
         'overallScore',
         'competitiveness',
         'competitivenessReasoning',

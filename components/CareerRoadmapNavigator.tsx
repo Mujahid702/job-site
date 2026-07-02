@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { getRoadmapProgress, updateRoadmapProgress } from "@/lib/db/roadmaps";
 import { getUserProfile, upsertUserProfile } from "@/lib/db/profiles";
 import { calculatePRIScore } from "@/lib/db/placement-readiness";
+import { TRACK_PRESETS, TrackPreset } from "@/lib/career-roadmap-presets";
 
 import {
   Sparkles,
@@ -20,23 +21,44 @@ import {
   Target,
   Bookmark,
   ExternalLink,
-  BookOpen
+  BookOpen,
+  MessageSquare,
+  Trophy,
+  Lock,
+  PlayCircle,
+  X,
+  ChevronDown,
+  ChevronUp,
+  Check,
+  Copy,
+  Send
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // TS Interfaces
-interface RoadmapStep {
-  skillName: string;
-  whyItMatters: string;
-  estimatedTime: string;
-  difficulty: string;
-  priority: string;
+interface StageResource {
+  title: string;
+  url: string;
+  type: string;
+}
+
+interface ActionTask {
+  taskName: string;
+  status: "Pending" | "In Progress" | "Completed";
+  verificationStatus: string;
+  xpReward: number;
 }
 
 interface RoadmapStage {
   stageName: string;
   stageIndex: number;
-  steps: RoadmapStep[];
+  estimatedDuration: string;
+  difficulty: string;
+  expectedOutcome: string;
+  skillsCovered: string[];
+  recruiterImportance: string;
+  learningResources: StageResource[];
+  actionChecklist: ActionTask[];
 }
 
 interface ResourceItem {
@@ -68,6 +90,7 @@ interface PlanPeriod {
 }
 
 interface RoadmapData {
+  thinking?: string;
   careerReadinessReport: {
     overview: string;
     resumeDiagnostics: string;
@@ -84,7 +107,7 @@ interface RoadmapData {
     missing: string[];
     critical: string[];
   };
-  stages: RoadmapStage[];
+  stages: any[]; // Normalize inline when rendering/mapping
   resources: ResourceItem[];
   projects: ProjectRecommendation[];
   companyRoadmaps: CompanyTrack[];
@@ -98,6 +121,88 @@ interface RoadmapData {
     description: string;
     unlocked: boolean;
   }[];
+}
+
+// Stage Normalization Helper to map legacy models into dynamic stage checkpoints
+function normalizeStage(stage: any): RoadmapStage {
+  if (!stage) {
+    return {
+      stageName: "Unknown Stage",
+      stageIndex: 0,
+      estimatedDuration: "10 Days",
+      difficulty: "Beginner",
+      expectedOutcome: "Foundation cleared.",
+      skillsCovered: [],
+      recruiterImportance: "High",
+      learningResources: [],
+      actionChecklist: []
+    };
+  }
+
+  // If already in new format:
+  if (stage.actionChecklist && Array.isArray(stage.actionChecklist)) {
+    return {
+      stageName: stage.stageName,
+      stageIndex: stage.stageIndex,
+      estimatedDuration: stage.estimatedDuration || "10 Days",
+      difficulty: stage.difficulty || "Intermediate",
+      expectedOutcome: stage.expectedOutcome || "Practical skills acquired.",
+      skillsCovered: stage.skillsCovered || [],
+      recruiterImportance: stage.recruiterImportance || "High",
+      learningResources: stage.learningResources || [],
+      actionChecklist: stage.actionChecklist
+    };
+  }
+
+  // Fallback map legacy steps format to structured checklist items
+  const steps = stage.steps || [];
+  const skillsCovered = steps.map((s: any) => s.skillName);
+  
+  const actionChecklist = steps.map((s: any, idx: number) => {
+    let verify = "Self-Reported";
+    const nameLower = s.skillName.toLowerCase();
+    if (nameLower.includes("resume") || nameLower.includes("ats")) verify = "Verifies via Resume OS score";
+    else if (nameLower.includes("interview") || nameLower.includes("star") || nameLower.includes("mock")) verify = "Verifies via AI Mock Interview";
+    else if (nameLower.includes("project") || nameLower.includes("portfolio")) verify = "Verifies via Project OS upload";
+    else if (nameLower.includes("sql") || nameLower.includes("coding") || nameLower.includes("dsa") || nameLower.includes("oop") || nameLower.includes("react")) verify = "Verifies via Assessment OS score";
+
+    return {
+      taskName: `Master ${s.skillName}: ${s.whyItMatters}`,
+      status: "Pending",
+      verificationStatus: verify,
+      xpReward: idx === 0 ? 150 : 200
+    };
+  });
+
+  const learningResources = [
+    { title: `${stage.stageName} Official Docs`, url: "https://roadmap.sh", type: "Documentation" },
+    { title: `${stage.stageName} Practice Portal`, url: "https://leetcode.com", type: "Practice Site" }
+  ];
+
+  return {
+    stageName: stage.stageName,
+    stageIndex: stage.stageIndex,
+    estimatedDuration: stage.steps?.[0]?.estimatedTime || "12 Days",
+    difficulty: stage.steps?.[0]?.difficulty || "Intermediate",
+    expectedOutcome: `Successfully acquire foundational expertise in ${skillsCovered.slice(0, 2).join(" and ")}.`,
+    skillsCovered,
+    recruiterImportance: stage.steps?.[0]?.priority || "High",
+    learningResources,
+    actionChecklist
+  };
+}
+
+function getStageTrackerIds(stages: any[], plan306090: any) {
+  const learning = (stages || []).flatMap(st => {
+    const norm = normalizeStage(st);
+    return norm.actionChecklist.map(task => `task-${st.stageIndex}-${task.taskName}`);
+  });
+  const tasks = [
+    ...(plan306090?.plan30Day?.dailyTasks || []).map((t: string) => `task-30-${t}`),
+    ...(plan306090?.plan60Day?.dailyTasks || []).map((t: string) => `task-60-${t}`),
+    ...(plan306090?.plan90Day?.dailyTasks || []).map((t: string) => `task-90-${t}`)
+  ];
+  return [...learning, ...tasks];
 }
 
 const SUPPORTED_ROLES = [
@@ -118,114 +223,228 @@ const SUPPORTED_ROLES = [
   "UI/UX Designer"
 ];
 
-// Fallback Default Roadmap Data (Pre-filled for "Software Engineer" to provide an immediate wow factor)
-const DEFAULT_ROADMAP_DATA: RoadmapData = {
-  careerReadinessReport: {
-    overview: "Your current profile showcases solid programming fundamentals but requires structured backend architecture mapping, containerization, and advanced system design principles to qualify for top-tier off-campus hiring drives.",
-    resumeDiagnostics: "Detected languages: JavaScript, TypeScript, React. Strong frontend skills, but missing database normalization, Docker setups, and cloud operations. Quantified achievement indicators are average (needs more metrics).",
-    interviewFeedback: "Latest mock interview trials registered an average score of 50%. Articulation pace is good, but filler usage ('like', 'um') is moderate. System design questions need polish.",
-    portfolioFeedback: "Detected projects: Real-time collaborative whiteboard. Recommended addition: Distributed caching pipeline or transactional order backend to showcase high-throughput capabilities."
-  },
-  readinessPredictions: {
-    interviewReadiness: 65,
-    placementReadiness: 55,
-    industryReadiness: 60
-  },
-  skillGap: {
-    strong: ["React", "JavaScript", "TypeScript", "HTML5", "CSS3", "Git", "REST APIs"],
-    missing: ["Node.js", "Express", "Docker", "AWS basics", "NoSQL", "Redis"],
-    critical: ["SQL Schema Design", "System Design Patterns", "Data Structures & Algorithms"]
-  },
-  stages: [
-    {
-      stageName: "Stage 1: Foundation",
-      stageIndex: 1,
-      steps: [
-        { skillName: "Object-Oriented Programming (OOP)", whyItMatters: "Forms the baseline structure for clean code audits in corporate placements.", estimatedTime: "1 Week", difficulty: "Beginner", priority: "High" },
-        { skillName: "Database Normalization & SQL Queries", whyItMatters: "Crucial for writing optimized database schemas and backends.", estimatedTime: "2 Weeks", difficulty: "Beginner", priority: "High" }
-      ]
-    },
-    {
-      stageName: "Stage 2: Core Skills",
-      stageIndex: 2,
-      steps: [
-        { skillName: "Node.js & Express REST APIs", whyItMatters: "Core tech stack for modern backend architectures and service gateways.", estimatedTime: "3 Weeks", difficulty: "Intermediate", priority: "High" },
-        { skillName: "Docker Containerization basics", whyItMatters: "Ensures local environments translate reliably to distributed cloud systems.", estimatedTime: "1 Week", difficulty: "Intermediate", priority: "Medium" }
-      ]
-    },
-    {
-      stageName: "Stage 3: Projects",
-      stageIndex: 3,
-      steps: [
-        { skillName: "High-Throughput Order Backend", whyItMatters: "Demonstrates concurrency control, database transactions, and scalability to FAANG reviewers.", estimatedTime: "2 Weeks", difficulty: "Advanced", priority: "High" },
-        { skillName: "Cloud Deployment (AWS EC2 / S3)", whyItMatters: "Shows production release capabilities and system infrastructure orchestration.", estimatedTime: "1 Week", difficulty: "Advanced", priority: "Medium" }
-      ]
-    },
-    {
-      stageName: "Stage 4: Interview Prep",
-      stageIndex: 4,
-      steps: [
-        { skillName: "Data Structures & Algorithms (Trees, Graphs)", whyItMatters: "Standard filter round for Google, Deloitte, Acccenture technical screens.", estimatedTime: "3 Weeks", difficulty: "Advanced", priority: "High" },
-        { skillName: "System Design Patterns", whyItMatters: "Sought-after skills in tier-1 off-campus drives to filter future tech leaders.", estimatedTime: "2 Weeks", difficulty: "Advanced", priority: "High" }
-      ]
-    },
-    {
-      stageName: "Stage 5: Placement Ready",
-      stageIndex: 5,
-      steps: [
-        { skillName: "Behavioral STAR Stories", whyItMatters: "Cracks corporate culture checks and HR partner rounds.", estimatedTime: "1 Week", difficulty: "Beginner", priority: "High" },
-        { skillName: "ATS-Scanned Custom Resumes", whyItMatters: "Bypasses automated screening tools to land call interviews.", estimatedTime: "1 Week", difficulty: "Intermediate", priority: "High" }
-      ]
+// Helper to get matching preset based on substring mapping
+function getActivePreset(role: string): TrackPreset {
+  if (TRACK_PRESETS[role]) {
+    return TRACK_PRESETS[role];
+  }
+  if (role.includes("Frontend")) return TRACK_PRESETS["Frontend Developer"];
+  if (role.includes("Backend")) return TRACK_PRESETS["Backend Developer"];
+  if (role.includes("Full Stack") || role.includes("Software")) return TRACK_PRESETS["Software Engineer"];
+  if (role.includes("Data Scientist") || role.includes("Machine Learning") || role.includes("AI")) {
+    if (role.includes("Data Scientist")) return TRACK_PRESETS["Data Scientist"];
+    return TRACK_PRESETS["AI Engineer"];
+  }
+  if (role.includes("Data Analyst") || role.includes("Business Analyst") || role.includes("Product Analyst")) {
+    return TRACK_PRESETS["Data Analyst"];
+  }
+  if (role.includes("Cloud") || role.includes("DevOps")) return TRACK_PRESETS["Cloud Engineer"];
+  if (role.includes("UI") || role.includes("UX") || role.includes("Designer")) return TRACK_PRESETS["UI/UX Designer"];
+  if (role.includes("Product Manager")) return TRACK_PRESETS["Product Manager"];
+  
+  return TRACK_PRESETS["Software Engineer"];
+}
+
+// Live Resume-Aware Skill Extraction
+const extractResumeSkills = (resumeText: string, allPossibleSkills: string[]): string[] => {
+  if (!resumeText) return [];
+  const normalizedText = resumeText.toLowerCase();
+  
+  return allPossibleSkills.filter(skill => {
+    const escapedSkill = skill.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+    if (skill.length <= 2) {
+      const regex = new RegExp(`\\b${escapedSkill}\\b`, 'i');
+      return regex.test(normalizedText);
     }
-  ],
-  resources: [
-    { title: "Object Oriented Programming Simplified", url: "https://youtube.com", type: "YouTube Video", difficulty: "Beginner" },
-    { title: "SQL Schema Design & Normalization docs", url: "https://wikipedia.org", type: "Documentation", difficulty: "Beginner" },
-    { title: "Full-Stack Node.js and Express roadmap", url: "https://roadmap.sh", type: "Roadmap Article", difficulty: "Intermediate" },
-    { title: "Docker & Container Orchestration Playground", url: "https://play-with-docker.com", type: "Practice Platform", difficulty: "Intermediate" },
-    { title: "Distributed Systems & System Design Course", url: "https://coursera.org", type: "Free Course", difficulty: "Advanced" }
-  ],
-  projects: [
-    { title: "Real-time Collaborative Whiteboard", desc: "Interactive workspace allowing multi-user drawing, chat, and sticky notes with sub-second WebSocket synchronization.", impactScore: 82, recruiterAttractionScore: 80, difficulty: "Intermediate", portfolioValue: "Medium" },
-    { title: "Serverless Order Processing Pipeline", desc: "AWS Lambda, Redis queues, and DynamoDB setup locked for simulated high-traffic flash sale requests.", impactScore: 95, recruiterAttractionScore: 92, difficulty: "Advanced", portfolioValue: "High" },
-    { title: "Portfolio Website & LaTeX Generator", desc: "Vibrant developer portfolio displaying projects and integrating latex compiling tools for custom resume versions.", impactScore: 70, recruiterAttractionScore: 68, difficulty: "Beginner", portfolioValue: "Low" }
-  ],
-  companyRoadmaps: [
-    { companyName: "IBM", matchPercentage: 62, needImprovementIn: ["Java Basics", "SQL DBs", "OOP concepts"] },
-    { companyName: "TCS", matchPercentage: 75, needImprovementIn: ["Aptitude Tests", "C Programming", "DBMS"] },
-    { companyName: "Deloitte", matchPercentage: 68, needImprovementIn: ["System Design", "Consultative Case Study", "SQL"] },
-    { companyName: "Accenture", matchPercentage: 70, needImprovementIn: ["Cloud Operations", "Communication Test", "Java"] },
-    { companyName: "Capgemini", matchPercentage: 60, needImprovementIn: ["Data Structures", "Pseudo-code MCQs", "OOP"] },
-    { companyName: "Cognizant", matchPercentage: 72, needImprovementIn: ["DBMS Queries", "Logical Aptitude", "Node.js"] },
-    { companyName: "Wipro", matchPercentage: 65, needImprovementIn: ["SQL Normalization", "Coding Test", "Basic HTML/CSS"] },
-    { companyName: "Infosys", matchPercentage: 78, needImprovementIn: ["Aptitude Test", "Java OOP", "Python basics"] },
-    { companyName: "HCLTech", matchPercentage: 66, needImprovementIn: ["Operating Systems", "Networking basic", "SQL"] }
-  ],
-  plan306090: {
-    plan30Day: {
-      dailyTasks: ["Solve 1 SQL querying test", "Revise 1 OOP concept (Inheritance, Polymorphism)", "Write 1 node.js backend endpoint"],
-      weeklyTasks: ["Practice 3 Easy DSA Arrays challenges", "Deploy 1 serverless function on EC2/Localhost"],
-      monthlyGoals: ["Build foundation in core SQL normalizations & REST APIs setup"]
-    },
-    plan60Day: {
-      dailyTasks: ["Study Dockerfile structures", "Practice Graph traversal nodes", "Review interview transcripts"],
-      weeklyTasks: ["Write container launch configurations", "Mock practice session with voice checker"],
-      monthlyGoals: ["Finish full-stack project integration with Docker orchestration"]
-    },
-    plan90Day: {
-      dailyTasks: ["Revise System Design microservice caching", "Solve 1 Medium Graph test", "Tailor CV against live JD lists"],
-      weeklyTasks: ["Book 1 mentorship session review", "Complete mock recruiter test simulation"],
-      monthlyGoals: ["Reach placement ready level with premium portfolio reviews"]
+    if (skill.includes('+') || skill.includes('.') || skill.includes('#')) {
+      return normalizedText.includes(skill.toLowerCase());
     }
-  },
-  achievements: [
+    const regex = new RegExp(`\\b${escapedSkill}\\b`, 'i');
+    return regex.test(normalizedText);
+  });
+};
+
+// Dynamic Company Match Calculator
+const getCompanyTracks = (role: string, strongSkills: string[], missingSkills: string[]): CompanyTrack[] => {
+  const companies = [
+    { name: "IBM", weight: 0.8 },
+    { name: "TCS", weight: 0.85 },
+    { name: "Deloitte", weight: 0.75 },
+    { name: "Accenture", weight: 0.8 },
+    { name: "Capgemini", weight: 0.75 },
+    { name: "Cognizant", weight: 0.82 },
+    { name: "Wipro", weight: 0.7 },
+    { name: "Infosys", weight: 0.84 },
+    { name: "HCLTech", weight: 0.72 }
+  ];
+
+  const getCompanySkillsForRole = (companyName: string, roleName: string): string[] => {
+    const isData = roleName.includes("Data") || roleName.includes("AI") || roleName.includes("Machine");
+    const isCloud = roleName.includes("Cloud") || roleName.includes("DevOps");
+    const isDesign = roleName.includes("UI") || roleName.includes("UX") || roleName.includes("Designer");
+    const isPM = roleName.includes("Product Manager");
+
+    if (isData) {
+      switch (companyName) {
+        case "IBM": return ["Python", "SQL", "Machine Learning", "Tableau"];
+        case "TCS": return ["Python", "SQL", "Statistics Basics", "Excel"];
+        case "Infosys": return ["Python", "SQL", "Pandas", "Machine Learning models"];
+        case "Accenture": return ["Python", "SQL", "Power BI", "Data Visualization"];
+        case "Deloitte": return ["SQL", "Tableau", "Statistics Basics", "A/B Testing"];
+        case "Capgemini": return ["SQL", "Python", "Data Cleaning"];
+        case "Cognizant": return ["SQL", "Python", "Excel (VLOOKUP, Pivot Tables)", "Power BI"];
+        case "Wipro": return ["SQL", "Excel (VLOOKUP, Pivot Tables)", "Data Visualization"];
+        case "HCLTech": return ["SQL", "Python", "Tableau"];
+        default: return ["SQL", "Python", "Statistics Basics"];
+      }
+    } else if (isCloud) {
+      switch (companyName) {
+        case "IBM": return ["AWS", "Docker", "Kubernetes", "Linux CLI"];
+        case "TCS": return ["AWS", "Linux CLI", "Bash Scripting", "Git"];
+        case "Infosys": return ["AWS", "Docker", "Linux CLI", "CI/CD Pipelines (GitHub Actions/Jenkins)"];
+        case "Accenture": return ["AWS", "Terraform (IaC)", "CI/CD Pipelines (GitHub Actions/Jenkins)"];
+        case "Deloitte": return ["AWS", "Linux CLI", "Terraform (IaC)", "Prometheus"];
+        case "Capgemini": return ["AWS", "Docker", "Kubernetes"];
+        case "Cognizant": return ["AWS", "Linux CLI", "CI/CD Pipelines (GitHub Actions/Jenkins)", "Git"];
+        case "Wipro": return ["AWS", "Linux CLI", "Docker", "Git"];
+        case "HCLTech": return ["Linux CLI", "AWS", "Networking (VPC, DNS, Load Balancers)"];
+        default: return ["AWS", "Linux CLI", "Docker"];
+      }
+    } else if (isDesign) {
+      switch (companyName) {
+        case "IBM": return ["Figma", "Design Systems", "User Research", "Heuristic Evaluation"];
+        case "TCS": return ["Figma", "Wireframing", "User Research"];
+        case "Infosys": return ["Figma", "Design Systems", "Prototyping"];
+        case "Accenture": return ["Figma", "User Research", "Wireframing"];
+        case "Deloitte": return ["Figma", "User Research", "Information Architecture"];
+        case "Capgemini": return ["Figma", "Wireframing", "Prototyping"];
+        case "Cognizant": return ["Figma", "User Research", "Design Systems"];
+        case "Wipro": return ["Figma", "Wireframing", "UI Design Principles"];
+        case "HCLTech": return ["Figma", "Prototyping", "Wireframing"];
+        default: return ["Figma", "Wireframing", "User Research"];
+      }
+    } else if (isPM) {
+      switch (companyName) {
+        case "IBM": return ["Product Strategy", "Agile Methodologies (Scrum)", "KPI Definition", "SQL Basics"];
+        case "TCS": return ["Product Strategy", "Agile Methodologies (Scrum)", "Market Research"];
+        case "Infosys": return ["Agile Methodologies (Scrum)", "Product Strategy", "Roadmapping (Jira)"];
+        case "Accenture": return ["Agile Methodologies (Scrum)", "KPI Definition", "Product Strategy"];
+        case "Deloitte": return ["Product Strategy", "KPI Definition", "A/B Testing Basics"];
+        case "Capgemini": return ["Agile Methodologies (Scrum)", "User Analytics", "Roadmapping (Jira)"];
+        case "Cognizant": return ["Agile Methodologies (Scrum)", "Roadmapping (Jira)", "KPI Definition"];
+        case "Wipro": return ["Agile Methodologies (Scrum)", "Product Strategy", "Market Research"];
+        case "HCLTech": return ["Agile Methodologies (Scrum)", "KPI Definition", "SQL Basics"];
+        default: return ["Product Strategy", "Agile Methodologies (Scrum)", "KPI Definition"];
+      }
+    } else {
+      switch (companyName) {
+        case "IBM": return ["Java", "SQL Schema Design", "OOP Principles", "Docker"];
+        case "TCS": return ["Java", "Python", "SQL Schema Design", "Git"];
+        case "Infosys": return ["Java", "OOP Principles", "Python", "SQL Schema Design"];
+        case "Accenture": return ["Java", "SQL Schema Design", "REST APIs"];
+        case "Deloitte": return ["SQL Schema Design", "OOP Principles", "Git"];
+        case "Capgemini": return ["Data Structures & Algorithms", "OOP Principles", "JavaScript"];
+        case "Cognizant": return ["SQL Schema Design", "DBMS", "Java", "JavaScript"];
+        case "Wipro": return ["SQL Schema Design", "Data Structures & Algorithms", "HTML5", "CSS3"];
+        case "HCLTech": return ["Data Structures & Algorithms", "SQL Schema Design", "Git"];
+        default: return ["Java", "SQL Schema Design", "OOP Principles"];
+      }
+    }
+  };
+
+  return companies.map(c => {
+    const targetSkills = getCompanySkillsForRole(c.name, role);
+    const matches = targetSkills.filter(ts => 
+      strongSkills.some(ss => ss.toLowerCase().includes(ts.toLowerCase()) || ts.toLowerCase().includes(ss.toLowerCase()))
+    );
+
+    const matchPercentage = targetSkills.length > 0 
+      ? Math.round((matches.length / targetSkills.length) * 40 + (c.weight * 60)) 
+      : 70;
+
+    const needImprovementIn = targetSkills.filter(ts => 
+      !strongSkills.some(ss => ss.toLowerCase().includes(ts.toLowerCase()) || ts.toLowerCase().includes(ss.toLowerCase()))
+    );
+
+    const finalImprovements = needImprovementIn.length > 0 
+      ? needImprovementIn 
+      : missingSkills.slice(0, 2);
+
+    return {
+      companyName: c.name,
+      matchPercentage: Math.min(98, Math.max(45, matchPercentage)),
+      needImprovementIn: finalImprovements.length > 0 ? finalImprovements : ["Advanced scaling", "System optimizations"]
+    };
+  });
+};
+
+// Compile dynamic initial state roadmap data based on the chosen role
+const getInitialRoadmap = (role: string, resumeText: string, stats: any, progressPercentVal: number): RoadmapData => {
+  const preset = getActivePreset(role);
+  
+  const required = preset.requiredSkills;
+  const strong = required.filter(s => {
+    if (!resumeText) return false;
+    const normalizedText = resumeText.toLowerCase();
+    const escapedSkill = s.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+    if (s.length <= 2) {
+      const regex = new RegExp(`\\b${escapedSkill}\\b`, 'i');
+      return regex.test(normalizedText);
+    }
+    if (s.includes('+') || s.includes('.') || s.includes('#')) {
+      return normalizedText.includes(s.toLowerCase());
+    }
+    const regex = new RegExp(`\\b${escapedSkill}\\b`, 'i');
+    return regex.test(normalizedText);
+  });
+  const missingAll = required.filter(s => !strong.includes(s));
+  
+  const coreFoundations = ["SQL", "Data Structures & Algorithms", "DSA", "Excel", "Figma", "HTML5", "CSS3", "Python", "Java", "JavaScript", "TypeScript", "OOP Principles", "Product Strategy", "User Research", "AWS", "Linux CLI"];
+  let critical = missingAll.filter(s => coreFoundations.some(c => s.toLowerCase().includes(c.toLowerCase()) || c.toLowerCase().includes(s.toLowerCase())));
+  let missing = missingAll.filter(s => !critical.includes(s));
+  
+  if (critical.length === 0 && missingAll.length > 0) {
+    critical = missingAll.slice(0, 2);
+    missing = missingAll.slice(2);
+  }
+
+  const strongRatio = required.length > 0 ? strong.length / required.length : 0.5;
+  const interviewReadiness = Math.min(95, Math.max(30, Math.round((stats.avgInterviewScore * 0.7) + (strongRatio * 30))));
+  const placementReadiness = Math.min(95, Math.max(35, Math.round((stats.atsScore * 0.5) + (stats.completedProjectsCount >= 2 ? 25 : 10) + (progressPercentVal * 0.2))));
+  const industryReadiness = Math.min(95, Math.max(40, Math.round(40 + (strongRatio * 55))));
+
+  const companyRoadmaps = getCompanyTracks(role, strong, missingAll);
+
+  const achievements = [
     { title: "Roadmap Starter", description: "Created first AI-customized career path roadmap.", unlocked: true },
     { title: "Skill Master", description: "Completed at least 4 core roadmap learning path check-offs.", unlocked: false },
     { title: "Project Builder", description: "Built and registered a high-impact portfolio recommended project.", unlocked: false },
     { title: "Interview Ready", description: "Achieved average mock interview rating above 70%.", unlocked: false },
     { title: "Placement Ready", description: "Reached 80%+ on overall career readiness tracker index.", unlocked: false }
-  ]
+  ];
+
+  return {
+    careerReadinessReport: preset.careerReadinessReport,
+    readinessPredictions: {
+      interviewReadiness,
+      placementReadiness,
+      industryReadiness
+    },
+    skillGap: {
+      strong,
+      missing,
+      critical
+    },
+    stages: preset.stages,
+    resources: preset.resources,
+    projects: preset.projects,
+    companyRoadmaps,
+    plan306090: preset.plan306090,
+    achievements
+  };
 };
+
+const DEFAULT_ROADMAP_DATA = getInitialRoadmap("Software Engineer", "", { avgInterviewScore: 50, atsScore: 0, completedProjectsCount: 1 }, 0);
 
 interface CareerRoadmapNavigatorProps {
   targetRole?: string;
@@ -242,6 +461,22 @@ export default function CareerRoadmapNavigator({ targetRole: parentRole, onRoleC
   const [prevRole, setPrevRole] = useState<string>(selectedRole);
 
   const [userId, setUserId] = useState<string | null>(null);
+
+  // Accordion Expander State
+  const [expandedStages, setExpandedStages] = useState<Record<number, boolean>>({ 1: true });
+
+  // Copied Clipboard Indicator
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  // AI Coach Sidebar State
+  const [isCoachOpen, setIsCoachOpen] = useState<boolean>(false);
+  const [coachStage, setCoachStage] = useState<any>(null);
+  const [coachTask, setCoachTask] = useState<any>(null);
+  const [coachMessages, setCoachMessages] = useState<any[]>([
+    { role: "assistant", content: "Hi! I am your Placement Coach. How can I help you clear this roadmap stage?" }
+  ]);
+  const [coachInput, setCoachInput] = useState<string>("");
+  const [coachLoading, setCoachLoading] = useState<boolean>(false);
 
   // Listen to Auth State
   useEffect(() => {
@@ -261,7 +496,28 @@ export default function CareerRoadmapNavigator({ targetRole: parentRole, onRoleC
   // Fetch roadmap data and checked steps from Supabase/localStorage
   useEffect(() => {
     async function loadRoadmapAndProgress() {
-      let loadedRoadmap = DEFAULT_ROADMAP_DATA;
+      // 1. First, load checked items and compute progress metrics based on the preset to determine predictions correctly
+      let loadedChecked: Record<string, boolean> = {};
+      if (userId) {
+        const progress = await getRoadmapProgress(userId);
+        progress.forEach(item => {
+          loadedChecked[item.step_name] = item.completed;
+        });
+      } else {
+        const savedProgress = localStorage.getItem("roadmap_progress_states");
+        if (savedProgress) {
+          try { loadedChecked = JSON.parse(savedProgress); } catch {}
+        }
+      }
+
+      const preset = getActivePreset(selectedRole);
+      const trackerIds = getStageTrackerIds(preset.stages, preset.plan306090);
+      const completed = trackerIds.filter(id => loadedChecked[id]).length;
+      const total = trackerIds.length || 1;
+      const tempProgressPercent = Math.round((completed / total) * 100);
+
+      // 2. Load custom AI roadmap if it was saved
+      let loadedRoadmap: RoadmapData | null = null;
       if (userId) {
         const dbProfile = await getUserProfile(userId);
         if (dbProfile && dbProfile.raw_profile_data && dbProfile.raw_profile_data[`roadmap_data_${selectedRole}`]) {
@@ -278,23 +534,12 @@ export default function CareerRoadmapNavigator({ targetRole: parentRole, onRoleC
           try { loadedRoadmap = JSON.parse(cached); } catch {}
         }
       }
-      setRoadmapData(loadedRoadmap);
 
-      if (userId) {
-        const progress = await getRoadmapProgress(userId);
-        const loadedChecked: Record<string, boolean> = {};
-        progress.forEach(item => {
-          loadedChecked[item.step_name] = item.completed;
-        });
-        setCheckedItems(loadedChecked);
-      } else {
-        const savedProgress = localStorage.getItem("roadmap_progress_states");
-        if (savedProgress) {
-          try { setCheckedItems(JSON.parse(savedProgress)); } catch {}
-        } else {
-          setCheckedItems({});
-        }
+      if (!loadedRoadmap) {
+        loadedRoadmap = getInitialRoadmap(selectedRole, workspaceStats.resumeText, workspaceStats, tempProgressPercent);
       }
+      setRoadmapData(loadedRoadmap);
+      setCheckedItems(loadedChecked);
     }
     loadRoadmapAndProgress();
   }, [userId, selectedRole]);
@@ -364,15 +609,7 @@ export default function CareerRoadmapNavigator({ targetRole: parentRole, onRoleC
   const [selectedPlanTab, setSelectedPlanTab] = useState<"30" | "60" | "90">("30");
 
   // Compute live progress percentage
-  // Total checklist items include: all learning steps across 5 stages, and the daily tasks in 30/60/90 plans
-  const learningSteps = roadmapData.stages.flatMap(st => st.steps.map(step => `step-${st.stageIndex}-${step.skillName}`));
-  const dailyTasksList = [
-    ...roadmapData.plan306090.plan30Day.dailyTasks.map(t => `task-30-${t}`),
-    ...roadmapData.plan306090.plan60Day.dailyTasks.map(t => `task-60-${t}`),
-    ...roadmapData.plan306090.plan90Day.dailyTasks.map(t => `task-90-${t}`)
-  ];
-  const allTrackerIds = [...learningSteps, ...dailyTasksList];
-  
+  const allTrackerIds = getStageTrackerIds(roadmapData.stages, roadmapData.plan306090);
   const completedCount = allTrackerIds.filter(id => checkedItems[id]).length;
   const totalItemsCount = allTrackerIds.length || 1;
   const progressPercent = Math.round((completedCount / totalItemsCount) * 100);
@@ -382,7 +619,11 @@ export default function CareerRoadmapNavigator({ targetRole: parentRole, onRoleC
     let unlocked = ach.unlocked;
     if (ach.title === "Roadmap Starter") unlocked = true;
     if (ach.title === "Skill Master") {
-      const completedSteps = learningSteps.filter(id => checkedItems[id]).length;
+      const learning = (roadmapData.stages || []).flatMap(st => {
+        const norm = normalizeStage(st);
+        return norm.actionChecklist.map(t => `task-${st.stageIndex}-${t.taskName}`);
+      });
+      const completedSteps = learning.filter(id => checkedItems[id]).length;
       unlocked = completedSteps >= 4;
     }
     if (ach.title === "Project Builder") unlocked = workspaceStats.completedProjectsCount >= 2;
@@ -399,7 +640,71 @@ export default function CareerRoadmapNavigator({ targetRole: parentRole, onRoleC
     return { ...ach, unlocked };
   });
 
+  // Identify if a task is verification-locked
+  const isAutoVerified = (id: string) => {
+    if (id.startsWith("task-30-") || id.startsWith("task-60-") || id.startsWith("task-90-")) {
+      return false; // Plan tasks are always manual
+    }
+    if (!roadmapData?.stages) return false;
+    for (const stage of roadmapData.stages) {
+      const norm = normalizeStage(stage);
+      for (const task of norm.actionChecklist) {
+        const taskId = `task-${stage.stageIndex}-${task.taskName}`;
+        if (taskId === id) {
+          const ver = task.verificationStatus.toLowerCase();
+          return ver.includes("resume") || ver.includes("ats") || ver.includes("mock") || ver.includes("interview") || ver.includes("project") || ver.includes("portfolio") || ver.includes("assessment") || ver.includes("score");
+        }
+      }
+    }
+    return false;
+  };
+
+  // Automatic Verification Sync Hook
+  useEffect(() => {
+    if (!roadmapData?.stages) return;
+    
+    let updated = false;
+    const nextChecked = { ...checkedItems };
+
+    roadmapData.stages.forEach(stage => {
+      const norm = normalizeStage(stage);
+      norm.actionChecklist.forEach(task => {
+        const taskId = `task-${stage.stageIndex}-${task.taskName}`;
+        const ver = task.verificationStatus.toLowerCase();
+        
+        let autoVerify = false;
+        if (ver.includes("resume") || ver.includes("ats")) {
+          autoVerify = workspaceStats.atsScore >= 70;
+        } else if (ver.includes("mock") || ver.includes("interview")) {
+          autoVerify = workspaceStats.avgInterviewScore >= 60;
+        } else if (ver.includes("project") || ver.includes("portfolio")) {
+          autoVerify = workspaceStats.completedProjectsCount >= 2;
+        } else if (ver.includes("assessment") || ver.includes("score")) {
+          autoVerify = workspaceStats.avgInterviewScore >= 50; // proxy check
+        }
+
+        // If auto-verified and unchecked, check it automatically!
+        if (autoVerify && !nextChecked[taskId]) {
+          nextChecked[taskId] = true;
+          updated = true;
+        }
+      });
+    });
+
+    if (updated) {
+      setCheckedItems(nextChecked);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("roadmap_progress_states", JSON.stringify(nextChecked));
+      }
+    }
+  }, [roadmapData, workspaceStats]);
+
   const toggleCheckItem = async (id: string) => {
+    if (isAutoVerified(id)) {
+      alert("This task is automatically verified by the platform based on your profile benchmarks (e.g., ATS Score, Mock Interviews, or Project Uploads). Manual completion is not permitted for verified steps.");
+      return;
+    }
+
     const isCompleted = !checkedItems[id];
     const updated = {
       ...checkedItems,
@@ -425,6 +730,80 @@ export default function CareerRoadmapNavigator({ targetRole: parentRole, onRoleC
           localStorage.setItem("completed_daily_goals", JSON.stringify(parsed));
         } catch {}
       }
+    }
+  };
+
+  // AI Coach triggering context handler
+  const triggerCoach = (stage: any, task?: any) => {
+    const norm = normalizeStage(stage);
+    setCoachStage(norm);
+    setCoachTask(task || null);
+    
+    const contextPrompt = task
+      ? `I am currently studying for the task "${task.taskName}" under Stage "${norm.stageName}" of my ${selectedRole} career path. Could you explain the concept, show its recruiter value, and outline how I can verify this skill?`
+      : `I am currently working on Stage "${norm.stageName}" ("${norm.expectedOutcome}") of my ${selectedRole} career path. Can you give me an overview of the key concepts and resources I should focus on?`;
+      
+    setCoachMessages([
+      { role: "assistant", content: `Hello! I see you are working on the **${norm.stageName}** phase for **${selectedRole}**. How can I help you clear this learning milestone today?` },
+      { role: "user", content: contextPrompt }
+    ]);
+    setIsCoachOpen(true);
+  };
+
+  // AI Coach API connector
+  const handleCoachSend = async () => {
+    const text = coachInput.trim();
+    if (!text) return;
+
+    setCoachInput("");
+    const userMsg = { role: "user", content: text };
+    const nextMessages = [...coachMessages, userMsg];
+    setCoachMessages(nextMessages);
+    setCoachLoading(true);
+
+    try {
+      const apiKey = typeof window !== "undefined" ? localStorage.getItem("gemini_api_key") || "" : "";
+      const res = await fetch("/api/placement/copilot", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-gemini-api-key": apiKey
+        },
+        body: JSON.stringify({
+          message: `Career Roadmap AI Coach: ${text}`,
+          history: nextMessages.slice(-6).map(m => ({ role: m.role, content: m.content })),
+          context: {
+            targetRole: selectedRole,
+            stageName: coachStage?.stageName,
+            expectedOutcome: coachStage?.expectedOutcome,
+            currentTask: coachTask?.taskName,
+            atsScore: workspaceStats.atsScore,
+            avgInterviewScore: workspaceStats.avgInterviewScore
+          }
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error();
+
+      setCoachMessages([
+        ...nextMessages,
+        { role: "assistant", content: data.data?.reply || "I am analyzing your profile data. Focus on implementing core index structures first." }
+      ]);
+    } catch {
+      // Offline fallback
+      setCoachMessages([
+        ...nextMessages,
+        { 
+          role: "assistant", 
+          content: `To pass the **${coachStage?.stageName || "current"}** stage for **${selectedRole}**, ensure you focus on:
+- **Core Topics**: ${coachStage?.skillsCovered?.join(", ") || "Framework architectures"}
+- **Expected Outcome**: ${coachStage?.expectedOutcome || "Complete practice coding questions"}
+- **Recruiter Focus**: This stage is evaluated as **${coachStage?.recruiterImportance || "High"}** importance. Focus on system implementation details.`
+        }
+      ]);
+    } finally {
+      setCoachLoading(false);
     }
   };
 
@@ -761,78 +1140,283 @@ export default function CareerRoadmapNavigator({ targetRole: parentRole, onRoleC
 
             {/* 2. ROADMAP VISUALIZER */}
             {activeSubTab === "roadmap" && (
-              <div className="space-y-12 animate-fade-in">
-                <div className="flex items-center justify-between bg-white p-6 rounded-3xl border border-slate-200/60 shadow-sm">
+              <div className="space-y-8 animate-fade-in text-left">
+                <div className="flex items-center justify-between bg-white p-6 rounded-3xl border border-slate-200/60 shadow-sm flex-wrap gap-4">
                   <div>
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Interactive Progress</span>
-                    <p className="text-base font-black text-slate-800 mt-1">{progressPercent}% of learning steps completed</p>
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Interactive Career Tracker</span>
+                    <p className="text-base font-black text-slate-800 mt-1">{progressPercent}% of total roadmap goals completed</p>
                   </div>
                   <div className="w-48 bg-slate-100 h-2 rounded-full overflow-hidden shrink-0 border border-slate-200">
                     <div className="bg-emerald-500 h-full rounded-full transition-all duration-500" style={{ width: `${progressPercent}%` }}></div>
                   </div>
                 </div>
 
-                <div className="relative border-l-2 border-emerald-100 ml-4 pl-8 space-y-12 py-4">
-                  {roadmapData.stages.map((stage) => (
-                    <div key={stage.stageIndex} className="relative group">
-                      {/* Timeline Stage Dot */}
-                      <div className={cn(
-                        "absolute -left-[41px] top-1.5 w-6 h-6 rounded-full border-4 border-white shadow flex items-center justify-center transition-all",
-                        stage.steps.every(s => checkedItems[`step-${stage.stageIndex}-${s.skillName}`]) ? "bg-emerald-600" : "bg-slate-300"
-                      )} />
+                <div className="space-y-6">
+                  {roadmapData.stages.map((stage) => {
+                    const norm = normalizeStage(stage);
+                    const isExpanded = expandedStages[stage.stageIndex] || false;
 
-                      <div className="bg-white p-8 rounded-3xl border border-slate-200/60 shadow-sm group-hover:border-emerald-200 transition-all space-y-6">
-                        <div className="flex items-center gap-3">
-                          <span className="px-2.5 py-1 bg-emerald-50 text-emerald-600 text-[10px] font-black uppercase tracking-widest rounded-lg border border-emerald-100">
-                            {stage.stageName}
-                          </span>
+                    // Calculate Stage completion percentage
+                    const stageTasks = norm.actionChecklist.map(t => `task-${stage.stageIndex}-${t.taskName}`);
+                    const completedTasksCount = stageTasks.filter(id => checkedItems[id]).length;
+                    const stagePercent = Math.round((completedTasksCount / Math.max(stageTasks.length, 1)) * 100);
+                    const isStageCompleted = stagePercent === 100;
+
+                    return (
+                      <div 
+                        key={stage.stageIndex} 
+                        className={cn(
+                          "bg-white rounded-3xl border transition-all overflow-hidden shadow-sm",
+                          isStageCompleted ? "border-emerald-300 bg-emerald-50/5" : "border-slate-200/70 hover:border-slate-300"
+                        )}
+                      >
+                        {/* Stage Accordion Header */}
+                        <div 
+                          onClick={() => setExpandedStages({ ...expandedStages, [stage.stageIndex]: !isExpanded })}
+                          className="p-6 md:p-8 flex items-center justify-between gap-4 cursor-pointer select-none"
+                        >
+                          <div className="space-y-1.5 flex-1 min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="px-2.5 py-0.5 bg-slate-100 text-slate-700 text-[10px] font-black uppercase tracking-widest rounded border border-slate-250">
+                                Stage {stage.stageIndex}
+                              </span>
+                              <h3 className="text-lg font-black text-slate-900 truncate tracking-tight">{norm.stageName}</h3>
+                              
+                              <span className={cn(
+                                "text-[9px] px-1.5 py-0.5 rounded font-black uppercase tracking-wider",
+                                getDifficultyColor(norm.difficulty)
+                              )}>
+                                {norm.difficulty}
+                              </span>
+                              
+                              <span className="text-[10px] font-bold text-slate-400">Duration: {norm.estimatedDuration}</span>
+                            </div>
+                            
+                            <p className="text-xs text-slate-500 font-semibold leading-relaxed line-clamp-1">{norm.expectedOutcome}</p>
+                          </div>
+
+                          <div className="flex items-center gap-6 shrink-0">
+                            {/* Circular progress loader for this stage */}
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-black text-slate-800">{stagePercent}%</span>
+                              <div className="w-16 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                                <div className="bg-indigo-650 h-full rounded-full transition-all" style={{ width: `${stagePercent}%` }} />
+                              </div>
+                            </div>
+
+                            {isExpanded ? (
+                              <ChevronUp className="w-5 h-5 text-slate-400" />
+                            ) : (
+                              <ChevronDown className="w-5 h-5 text-slate-400" />
+                            )}
+                          </div>
                         </div>
 
-                        {/* Learning Steps inside Stage */}
-                        <div className="space-y-4">
-                          {stage.steps.map((step, sIdx) => {
-                            const stepId = `step-${stage.stageIndex}-${step.skillName}`;
-                            const isCompleted = checkedItems[stepId] || false;
+                        {/* Accordion Expansion Section */}
+                        {isExpanded && (
+                          <div className="border-t border-slate-100 p-6 md:p-8 space-y-6 animate-fade-in bg-slate-50/20">
                             
-                            return (
-                              <div
-                                key={sIdx}
-                                onClick={() => toggleCheckItem(stepId)}
-                                className={cn(
-                                  "p-4 border rounded-2xl cursor-pointer flex items-start justify-between gap-4 transition-all select-none",
-                                  isCompleted
-                                    ? "bg-emerald-50/30 border-emerald-200 text-slate-800"
-                                    : "bg-slate-50 border-slate-200 hover:border-slate-300 text-slate-600"
-                                )}
-                              >
-                                <div className="space-y-1 flex-1">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <strong className="text-sm font-black text-slate-800">{step.skillName}</strong>
-                                    <span className={cn("text-[9px] px-1.5 py-0.5 rounded font-black uppercase tracking-wider", getDifficultyColor(step.difficulty))}>
-                                      {step.difficulty}
-                                    </span>
-                                    <span className={cn("text-[9px] px-1.5 py-0.5 rounded font-black uppercase tracking-wider", getPriorityColor(step.priority))}>
-                                      {step.priority}
-                                    </span>
-                                    <span className="text-[10px] text-slate-400 font-bold">Time: {step.estimatedTime}</span>
-                                  </div>
-                                  <p className="text-xs text-slate-400 font-bold leading-relaxed">{step.whyItMatters}</p>
+                            {/* Stage Info Grid */}
+                            <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+                              <div className="md:col-span-8 space-y-4">
+                                <div>
+                                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Expected Stage Outcome</span>
+                                  <p className="text-xs text-slate-655 font-semibold leading-relaxed">{norm.expectedOutcome}</p>
                                 </div>
-                                
-                                <div className="shrink-0 pt-0.5">
-                                  {isCompleted ? (
-                                    <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                                  ) : (
-                                    <div className="w-5 h-5 rounded-full border-2 border-slate-300" />
-                                  )}
+
+                                {/* Skills Covered Tags */}
+                                <div>
+                                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-2">Skills Mapped & Acquired</span>
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {norm.skillsCovered.map((skill, sIdx) => (
+                                      <span key={sIdx} className="px-2.5 py-1 bg-white border border-slate-200 text-slate-700 text-xs font-bold rounded-xl shadow-xs">
+                                        {skill}
+                                      </span>
+                                    ))}
+                                  </div>
                                 </div>
                               </div>
-                            );
-                          })}
-                        </div>
+
+                              <div className="md:col-span-4 bg-white p-5 border border-slate-150 rounded-2xl space-y-3">
+                                <div>
+                                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-0.5">Recruiter Focus Importance</span>
+                                  <span className={cn(
+                                    "inline-block text-[9px] px-2 py-0.5 rounded font-black uppercase tracking-widest border",
+                                    norm.recruiterImportance.toLowerCase() === "high" ? "bg-rose-50 text-rose-700 border-rose-100" :
+                                    norm.recruiterImportance.toLowerCase() === "medium" ? "bg-amber-50 text-amber-600 border-amber-100" :
+                                    "bg-slate-50 text-slate-600 border-slate-150"
+                                  )}>
+                                    {norm.recruiterImportance} Importance
+                                  </span>
+                                </div>
+
+                                {/* AI Coach Button */}
+                                <div>
+                                  <button
+                                    onClick={() => triggerCoach(stage)}
+                                    className="w-full px-4 py-2.5 bg-slate-900 hover:bg-indigo-650 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                                  >
+                                    <MessageSquare className="w-3.5 h-3.5 animate-pulse" />
+                                    <span>Ask AI Coach</span>
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Stage Specific Resources */}
+                            {norm.learningResources && norm.learningResources.length > 0 && (
+                              <div className="pt-4 border-t border-slate-100">
+                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-3">Topic-Specific Learning Resources</span>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                                  {norm.learningResources.map((res, rIdx) => (
+                                    <a
+                                      key={rIdx}
+                                      href={res.url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="p-3 bg-white border border-slate-200/70 hover:border-indigo-400 rounded-xl flex items-center justify-between gap-3 transition-colors group cursor-pointer"
+                                    >
+                                      <div className="min-w-0">
+                                        <strong className="text-xs font-black text-slate-800 truncate block group-hover:text-indigo-600 transition-colors">
+                                          {res.title}
+                                        </strong>
+                                        <span className="text-[9px] text-slate-400 font-bold block uppercase tracking-widest mt-0.5">{res.type}</span>
+                                      </div>
+                                      <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 shrink-0" />
+                                    </a>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Action Checklist Tasks */}
+                            <div className="pt-4 border-t border-slate-100 space-y-3">
+                              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Stage Checkpoints Action Items</span>
+                              
+                              <div className="space-y-2">
+                                {norm.actionChecklist.map((task, tIdx) => {
+                                  const taskId = `task-${stage.stageIndex}-${task.taskName}`;
+                                  const isChecked = checkedItems[taskId] || false;
+                                  const isAuto = isAutoVerified(taskId);
+
+                                  return (
+                                    <div
+                                      key={tIdx}
+                                      onClick={() => toggleCheckItem(taskId)}
+                                      className={cn(
+                                        "p-4 border rounded-2xl flex items-center justify-between gap-4 transition-all select-none cursor-pointer",
+                                        isChecked 
+                                          ? "bg-emerald-50/20 border-emerald-250 text-slate-800" 
+                                          : "bg-white border-slate-200 hover:border-slate-350 text-slate-655"
+                                      )}
+                                    >
+                                      <div className="space-y-1 flex-1 min-w-0">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                          <strong className={cn("text-xs font-black text-slate-850", isChecked && "line-through text-slate-450")}>
+                                            {task.taskName}
+                                          </strong>
+                                          
+                                          {/* Auto-verified badge */}
+                                          {isAuto ? (
+                                            <span className="text-[8px] font-black text-emerald-600 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded uppercase tracking-widest">
+                                              Verified via Profile
+                                            </span>
+                                          ) : (
+                                            <span className="text-[8px] font-black text-slate-400 bg-slate-50 border border-slate-150 px-1.5 py-0.5 rounded uppercase tracking-widest">
+                                              Self-Reported
+                                            </span>
+                                          )}
+
+                                          <span className="text-[8px] font-black text-purple-650 bg-purple-50 px-1.5 py-0.5 rounded uppercase tracking-widest">
+                                            +{task.xpReward} XP
+                                          </span>
+                                        </div>
+                                        
+                                        <p className="text-[10px] text-slate-400 font-semibold leading-relaxed">
+                                          Requirement: {task.verificationStatus}
+                                        </p>
+                                      </div>
+
+                                      <div className="shrink-0">
+                                        {isChecked ? (
+                                          <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                                        ) : (
+                                          <div className="w-5 h-5 rounded-full border-2 border-slate-300" />
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+
+                            {/* Completed Celebratory Rewards Card */}
+                            {isStageCompleted && (
+                              <div className="p-6 bg-emerald-50/40 border border-emerald-250 rounded-3xl space-y-4 animate-fade-in relative overflow-hidden">
+                                <div className="absolute right-4 top-4 opacity-10">
+                                  <Trophy className="w-24 h-24 text-emerald-600" />
+                                </div>
+
+                                <div className="space-y-1 z-10 relative">
+                                  <span className="inline-flex items-center gap-1 text-[9px] font-black text-emerald-700 bg-emerald-100 border border-emerald-250 px-2 py-0.5 rounded uppercase tracking-widest">
+                                    <Sparkles className="w-3 h-3 text-emerald-600" />
+                                    Stage Completed Successfully
+                                  </span>
+                                  <h4 className="text-base font-black text-slate-900 mt-1">🎉 Milestone Rewards Unlocked</h4>
+                                </div>
+
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-2 z-10 relative">
+                                  <div className="bg-white p-3 border border-emerald-100 rounded-xl text-center space-y-0.5">
+                                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">XP Gained</span>
+                                    <strong className="text-base font-black text-emerald-600">+500 XP</strong>
+                                  </div>
+                                  <div className="bg-white p-3 border border-emerald-100 rounded-xl text-center space-y-0.5">
+                                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">PRI Boost</span>
+                                    <strong className="text-base font-black text-indigo-600">+25 PRI</strong>
+                                  </div>
+                                  <div className="bg-white p-3 border border-emerald-100 rounded-xl text-center space-y-0.5">
+                                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Badge Unlocked</span>
+                                    <strong className="text-[10px] font-black text-purple-650 block leading-tight truncate">Stage {stage.stageIndex} Master</strong>
+                                  </div>
+                                  <div className="bg-white p-3 border border-emerald-100 rounded-xl text-center space-y-0.5">
+                                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Status</span>
+                                    <strong className="text-xs font-black text-slate-700 block">Next Stage Active</strong>
+                                  </div>
+                                </div>
+
+                                {/* Custom Suggestions tips */}
+                                <div className="bg-white p-4 border border-emerald-100 rounded-xl text-xs space-y-2 leading-relaxed z-10 relative">
+                                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block font-display">Engineering Manager Suggestions</span>
+                                  
+                                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div>
+                                      <strong className="text-indigo-650 block font-bold">Resume Action:</strong>
+                                      <span className="text-slate-500 font-semibold block mt-0.5">
+                                        Update your CV to include: "{norm.skillsCovered.slice(0, 2).join(", ")}" context.
+                                      </span>
+                                    </div>
+                                    <div>
+                                      <strong className="text-emerald-650 block font-bold">Project Goal:</strong>
+                                      <span className="text-slate-500 font-semibold block mt-0.5">
+                                        Compile a matching project under Project Advisor OS to apply these concepts.
+                                      </span>
+                                    </div>
+                                    <div>
+                                      <strong className="text-purple-650 block font-bold">Mock Interview Check:</strong>
+                                      <span className="text-slate-500 font-semibold block mt-0.5">
+                                        Go practice Level {stage.stageIndex} questions inside the Interview Station.
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -1125,6 +1709,108 @@ export default function CareerRoadmapNavigator({ targetRole: parentRole, onRoleC
               </div>
             )}
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 8. AI COACH SLIDE-OVER SIDEBAR */}
+      <AnimatePresence>
+        {isCoachOpen && coachStage && (
+          <>
+            {/* Backdrop overlay */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.5 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsCoachOpen(false)}
+              className="fixed inset-0 bg-black z-40"
+            />
+            {/* Slide-over panel */}
+            <motion.div
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="fixed right-0 top-0 bottom-0 w-full sm:w-[480px] bg-white shadow-2xl z-50 border-l border-slate-200 flex flex-col justify-between"
+            >
+              {/* Header */}
+              <div className="p-6 bg-slate-900 text-white flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <span className="inline-flex items-center gap-1.5 text-[9px] font-black text-indigo-300 uppercase tracking-widest">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    AI Career Coach
+                  </span>
+                  <h4 className="text-sm font-black truncate max-w-[280px]">
+                    {coachStage.stageName} Help
+                  </h4>
+                </div>
+                <button
+                  onClick={() => setIsCoachOpen(false)}
+                  className="p-2 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Chat Messages Logs */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50/50">
+                {coachMessages.map((msg, mIdx) => (
+                  <div
+                    key={mIdx}
+                    className={cn(
+                      "flex gap-3 text-xs leading-relaxed max-w-[85%]",
+                      msg.role === "user" ? "ml-auto flex-row-reverse" : "mr-auto"
+                    )}
+                  >
+                    <div className={cn(
+                      "w-8 h-8 rounded-full flex items-center justify-center shrink-0 shadow-inner border border-slate-100",
+                      msg.role === "user" ? "bg-indigo-600 text-white" : "bg-white text-indigo-600"
+                    )}>
+                      {msg.role === "user" ? "ME" : "AI"}
+                    </div>
+                    <div className={cn(
+                      "p-3.5 rounded-2xl border text-left",
+                      msg.role === "user" 
+                        ? "bg-indigo-650 border-indigo-700 text-white" 
+                        : "bg-white border-slate-150 text-slate-700"
+                    )}>
+                      <p className="whitespace-pre-wrap select-text">{msg.content}</p>
+                    </div>
+                  </div>
+                ))}
+                
+                {coachLoading && (
+                  <div className="flex gap-3 text-xs text-slate-400 font-bold items-center">
+                    <div className="w-6 h-6 rounded-full bg-white flex items-center justify-center animate-spin border border-slate-200">
+                      <RefreshCw className="w-3.5 h-3.5 text-indigo-500" />
+                    </div>
+                    <span>Coach is thinking...</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Bottom Input Area */}
+              <div className="p-4 bg-white border-t border-slate-150 flex gap-2">
+                <input
+                  type="text"
+                  value={coachInput}
+                  onChange={(e) => setCoachInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !coachLoading) handleCoachSend();
+                  }}
+                  placeholder="Ask a question about this learning goal..."
+                  className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-550 focus:bg-white transition-all"
+                  disabled={coachLoading}
+                />
+                <button
+                  onClick={handleCoachSend}
+                  disabled={coachLoading || !coachInput.trim()}
+                  className="p-3 bg-indigo-650 text-white rounded-xl hover:bg-indigo-755 transition-colors disabled:opacity-50 flex items-center justify-center shrink-0 cursor-pointer shadow-md"
+                >
+                  <Send className="w-4 h-4" />
+                </button>
+              </div>
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
     </div>

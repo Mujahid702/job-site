@@ -9,6 +9,7 @@ import {
   TrendingDown, Globe, Award, HelpCircle, Layers, CheckSquare, Building2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
 
 interface DashboardData {
   summary: {
@@ -102,6 +103,12 @@ interface DashboardData {
     savedTokens: number;
     hitRate: number;
     savedCostUsd: number;
+  };
+  aiPerformance?: {
+    totalRagQueries: number;
+    avgSimilarityScore: number;
+    avgLatencyMs: number;
+    hallucinationsFlagged: number;
   };
   portfolio: {
     portfoliosCreated: number;
@@ -246,6 +253,73 @@ export default function AdminAnalyticsDashboard() {
     }, 1000);
 
     return () => clearInterval(interval);
+  }, [fetchStats]);
+
+  // Subscribe to realtime postgres changes to refresh stats in real-time
+  useEffect(() => {
+    const supabase = createClient();
+    
+    const channels = [
+      supabase
+        .channel("admin-profiles-realtime")
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "profiles" },
+          (payload) => {
+            console.log("[Realtime] profiles update:", payload);
+            fetchStats(true);
+          }
+        )
+        .subscribe(),
+      supabase
+        .channel("admin-apps-realtime")
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "applications" },
+          (payload) => {
+            console.log("[Realtime] applications update:", payload);
+            fetchStats(true);
+          }
+        )
+        .subscribe(),
+      supabase
+        .channel("admin-jobs-realtime")
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "job_postings" },
+          (payload) => {
+            console.log("[Realtime] job_postings update:", payload);
+            fetchStats(true);
+          }
+        )
+        .subscribe(),
+      supabase
+        .channel("admin-audit-realtime")
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "audit_logs" },
+          (payload) => {
+            console.log("[Realtime] audit_logs update:", payload);
+            fetchStats(true);
+          }
+        )
+        .subscribe(),
+      supabase
+        .channel("admin-ai-logs-realtime")
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "ai_usage_logs" },
+          (payload) => {
+            console.log("[Realtime] ai_usage_logs update:", payload);
+            fetchStats(true);
+          }
+        )
+        .subscribe()
+    ];
+
+    return () => {
+      channels.forEach((ch) => supabase.removeChannel(ch));
+    };
   }, [fetchStats]);
 
   // Request Gemini Platform Insights
@@ -1073,6 +1147,35 @@ export default function AdminAnalyticsDashboard() {
                 <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl text-center col-span-2 md:col-span-1">
                   <span className="text-[8px] font-black text-blue-650 uppercase tracking-widest block">Saved Cost</span>
                   <p className="text-base font-black text-blue-800 mt-0.5">${data.aiCache.savedCostUsd.toFixed(4)}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {data.aiPerformance && (
+            <div className="space-y-2 pt-3 border-t border-slate-100">
+              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">RAG 2.0 AI Grounding Engine Telemetry</span>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+                <div className="p-3 bg-slate-50 border border-slate-150 rounded-xl text-center">
+                  <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Total RAG Queries</span>
+                  <p className="text-base font-black text-slate-900 mt-0.5">{data.aiPerformance.totalRagQueries}</p>
+                </div>
+                <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-xl text-center">
+                  <span className="text-[8px] font-black text-emerald-600 uppercase tracking-widest block">Avg Similarity</span>
+                  <p className="text-base font-black text-emerald-800 mt-0.5">{data.aiPerformance.avgSimilarityScore}%</p>
+                </div>
+                <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl text-center">
+                  <span className="text-[8px] font-black text-blue-650 uppercase tracking-widest block">Avg Retrieval Latency</span>
+                  <p className="text-base font-black text-blue-800 mt-0.5">{data.aiPerformance.avgLatencyMs}ms</p>
+                </div>
+                <div className={cn(
+                  "p-3 rounded-xl text-center border",
+                  data.aiPerformance.hallucinationsFlagged > 0
+                    ? "bg-red-50 border-red-100 text-red-800 font-black animate-pulse"
+                    : "bg-slate-50 border-slate-150 text-slate-800"
+                )}>
+                  <span className="text-[8px] font-black uppercase tracking-widest block">Hallucinations Flagged</span>
+                  <p className="text-base font-black mt-0.5">{data.aiPerformance.hallucinationsFlagged}</p>
                 </div>
               </div>
             </div>

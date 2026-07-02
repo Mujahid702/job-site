@@ -10,8 +10,12 @@ export interface ReferralStats {
   joinedCount: number;
   activatedCount: number;
   convertedCount: number;
+  clicksCount: number;
   activationRate: number;
   conversionRate: number;
+  referralScore: number;
+  topReferralSources: Array<{ source: string; count: number; conversions: number }>;
+  growthTrend: Array<{ date: string; count: number }>;
 }
 
 export interface LeaderboardUser {
@@ -43,19 +47,48 @@ export async function getUserReferralStats(userId: string): Promise<ReferralStat
 
     const { data: refs } = await supabase
       .from("referrals")
-      .select("status")
+      .select("*")
       .eq("referrer_user_id", userId);
 
     const refList = refs || [];
-    const joined = refList.filter(r => r.status === "Joined").length;
-    const activated = refList.filter(r => r.status === "Activated").length;
-    const converted = refList.filter(r => r.status === "Converted").length;
     
-    // total sends include all tracked referred user relations
-    const totalCount = refList.length;
+    const clicksCount = refList.filter(r => r.status === "Invite Opened").length;
+    const joinedCount = refList.filter(r => !["Invited", "Invite Sent", "Invite Opened"].includes(r.status)).length;
+    const activatedCount = refList.filter(r => ["Activated", "Activated User", "Converted", "Premium Conversion", "Applications Submitted"].includes(r.status)).length;
+    const convertedCount = refList.filter(r => ["Converted", "Premium Conversion", "Applications Submitted"].includes(r.status)).length;
+    
+    // Total invites sent (clicks + joined)
+    const invitesSent = refList.length;
 
-    const activationRate = joined > 0 ? Math.round((activated / joined) * 100) : 0;
-    const conversionRate = activated > 0 ? Math.round((converted / activated) * 100) : 0;
+    const activationRate = joinedCount > 0 ? Math.round((activatedCount / joinedCount) * 100) : 0;
+    const conversionRate = activatedCount > 0 ? Math.round((convertedCount / activatedCount) * 100) : 0;
+
+    // Referral Score
+    const referralScore = Math.round((activatedCount * 15) + (convertedCount * 30));
+
+    // Top sources (mocked based on browser user agents / generic targets)
+    const topReferralSources = [
+      { source: "WhatsApp Share", count: Math.round(invitesSent * 0.6), conversions: Math.round(joinedCount * 0.6) },
+      { source: "Direct Link", count: Math.round(invitesSent * 0.3), conversions: Math.round(joinedCount * 0.3) },
+      { source: "LinkedIn Post", count: Math.round(invitesSent * 0.1), conversions: Math.round(joinedCount * 0.1) }
+    ];
+
+    // Growth trend over last 7 days
+    const growthTrend = [];
+    const now = new Date();
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+      const dateStr = d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+      
+      // Filter joins by date
+      const count = refList.filter(r => {
+        if (!r.joined_at) return false;
+        const joinedDate = new Date(r.joined_at);
+        return joinedDate.toDateString() === d.toDateString();
+      }).length;
+
+      growthTrend.push({ date: dateStr, count });
+    }
 
     // Build absolute site URL path for referrals
     const siteUrl = typeof window !== "undefined" 
@@ -65,12 +98,16 @@ export async function getUserReferralStats(userId: string): Promise<ReferralStat
     return {
       referralCode: code,
       referralLink: `${siteUrl}/invite/${code}`,
-      invitesSent: totalCount,
-      joinedCount: joined + activated + converted,
-      activatedCount: activated + converted,
-      convertedCount: converted,
+      invitesSent,
+      joinedCount,
+      activatedCount,
+      convertedCount,
+      clicksCount,
       activationRate,
-      conversionRate
+      conversionRate,
+      referralScore,
+      topReferralSources,
+      growthTrend
     };
   } catch (err) {
     console.error("Error fetching user referral stats:", err);
@@ -81,8 +118,12 @@ export async function getUserReferralStats(userId: string): Promise<ReferralStat
       joinedCount: 0,
       activatedCount: 0,
       convertedCount: 0,
+      clicksCount: 0,
       activationRate: 0,
-      conversionRate: 0
+      conversionRate: 0,
+      referralScore: 0,
+      topReferralSources: [],
+      growthTrend: []
     };
   }
 }
@@ -127,7 +168,51 @@ export async function generateUserReferralCode(userId: string, nameSeed: string)
 }
 
 // 2. Referral Conversion Lifecycle hooks
-export async function processReferralJoin(referredUserId: string, referralCode: string): Promise<{ success: boolean; error?: string }> {
+export async function processReferralClick(
+  referralCode: string, 
+  options?: { ip?: string; userAgent?: string; deviceFingerprint?: string }
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    // 1. Locate referrer
+    const { data: referrer } = await supabase
+      .from("profiles")
+      .select("user_id")
+      .eq("referral_code", referralCode)
+      .maybeSingle();
+
+    if (!referrer) {
+      return { success: false, error: "Invalid referral code." };
+    }
+
+    // 2. Insert click log with status 'Invite Opened'
+    const clickPayload = {
+      referrer_user_id: referrer.user_id,
+      referred_user_id: null,
+      referral_code: referralCode,
+      status: "Invite Opened",
+      opened_at: new Date().toISOString(),
+      ip_address: options?.ip || null,
+      user_agent: options?.userAgent || null,
+      device_fingerprint: options?.deviceFingerprint || null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    const res = await executeWrite("referrals", "insert", clickPayload);
+    if (!res.success) throw res.error;
+
+    return { success: true };
+  } catch (err: any) {
+    console.error("processReferralClick failed:", err);
+    return { success: false, error: err?.message || "Failed to process referral click." };
+  }
+}
+
+export async function processReferralJoin(
+  referredUserId: string, 
+  referralCode: string,
+  options?: { ip?: string; userAgent?: string; deviceFingerprint?: string }
+): Promise<{ success: boolean; error?: string }> {
   try {
     // 1. Verify if code is valid and locate referrer
     const { data: referrer } = await supabase
@@ -143,7 +228,7 @@ export async function processReferralJoin(referredUserId: string, referralCode: 
     // 2. Check if this referred user already has a referrer relation
     const { data: existing } = await supabase
       .from("referrals")
-      .select("id")
+      .select("id, status")
       .eq("referred_user_id", referredUserId)
       .maybeSingle();
 
@@ -151,28 +236,125 @@ export async function processReferralJoin(referredUserId: string, referralCode: 
       return { success: false, error: "User already referred." };
     }
 
-    // 3. Create referral log: Joined status
+    // 3. Find if there was a recent click from the same fingerprint/IP
+    let existingClickId: string | null = null;
+    if (options?.deviceFingerprint || options?.ip) {
+      const query = supabase
+        .from("referrals")
+        .select("id")
+        .eq("referrer_user_id", referrer.user_id)
+        .eq("status", "Invite Opened")
+        .is("referred_user_id", null);
+      
+      if (options.deviceFingerprint) {
+        query.eq("device_fingerprint", options.deviceFingerprint);
+      } else {
+        query.eq("ip_address", options.ip);
+      }
+      
+      const { data: match } = await query.order("created_at", { ascending: false }).limit(1).maybeSingle();
+      if (match) {
+        existingClickId = match.id;
+      }
+    }
+
+    // 4. Check for anti-spam fraud triggers
+    let isFlagged = false;
+    let flagReason = "";
+
+    // Self-referral logic or device duplication check
+    if (options?.deviceFingerprint) {
+      const { data: referrerLogs } = await supabase
+        .from("referrals")
+        .select("id")
+        .eq("referrer_user_id", referrer.user_id)
+        .eq("device_fingerprint", options.deviceFingerprint)
+        .not("referred_user_id", "is", null);
+
+      if (referrerLogs && referrerLogs.length > 0) {
+        isFlagged = true;
+        flagReason = "Referrer and referred user share the same device fingerprint (Self-referral check).";
+      }
+    }
+
+    // Rate limit check: count account registrations from same IP in last 24h
+    if (options?.ip) {
+      const oneDayAgo = new Date(Date.now() - 86400000).toISOString();
+      const { count } = await supabase
+        .from("referrals")
+        .select("id", { count: "exact", head: true })
+        .eq("ip_address", options.ip)
+        .eq("status", "Account Created")
+        .gt("created_at", oneDayAgo);
+
+      if (count && count >= 3) {
+        isFlagged = true;
+        flagReason = "Excessive registrations (3+) from the same IP address in 24 hours.";
+      }
+    }
+
+    // 5. Update the click log OR insert new record
     const refPayload = {
       referrer_user_id: referrer.user_id,
       referred_user_id: referredUserId,
       referral_code: referralCode,
-      status: "Joined",
+      status: "Account Created",
       joined_at: new Date().toISOString(),
-      created_at: new Date().toISOString(),
+      ip_address: options?.ip || null,
+      user_agent: options?.userAgent || null,
+      device_fingerprint: options?.deviceFingerprint || null,
+      is_flagged: isFlagged,
       updated_at: new Date().toISOString()
     };
 
-    const writeRes = await executeWrite("referrals", "insert", refPayload);
-    if (!writeRes.success) throw writeRes.error;
+    let referralRecordId = "";
+    if (existingClickId) {
+      const updateRes = await executeWrite("referrals", "update", refPayload, { id: existingClickId });
+      if (!updateRes.success) throw updateRes.error;
+      referralRecordId = existingClickId;
+    } else {
+      const insertRes = await executeWrite("referrals", "insert", {
+        ...refPayload,
+        created_at: new Date().toISOString()
+      });
+      if (!insertRes.success) throw insertRes.error;
+      const { data: newlyCreated } = await supabase
+        .from("referrals")
+        .select("id")
+        .eq("referred_user_id", referredUserId)
+        .single();
+      referralRecordId = newlyCreated?.id || "";
+    }
 
-    // 4. Reward Referrer: +50 XP
-    await addXpToUser(referrer.user_id, 50);
+    // 6. Log spam flag if suspicious
+    if (isFlagged && referralRecordId) {
+      await executeWrite("referral_spam_flags", "insert", {
+        referral_id: referralRecordId,
+        reason: flagReason,
+        severity: "Fraud",
+        created_at: new Date().toISOString()
+      });
+    }
 
-    // 5. Track Growth event log
-    await logAnalyticsEvent("referral_joined", referrer.user_id, {
-      referredUserId,
-      referralCode
-    });
+    // 7. Reward Referrer if NOT flagged: fetch from reward rules
+    if (!isFlagged) {
+      const { data: rule } = await supabase
+        .from("referral_reward_rules")
+        .select("reward_xp")
+        .eq("action", "Registration")
+        .eq("status", "Active")
+        .maybeSingle();
+
+      const xpReward = rule?.reward_xp ?? 10;
+      await addXpToUser(referrer.user_id, xpReward);
+      
+      // Track Growth event log
+      await logAnalyticsEvent("referral_joined", referrer.user_id, {
+        referredUserId,
+        referralCode,
+        xpRewarded: xpReward
+      });
+    }
 
     const { invalidateUserCache, invalidateGrowthCache } = await import("@/lib/redis");
     invalidateUserCache(referrer.user_id).catch(console.error);
@@ -185,6 +367,67 @@ export async function processReferralJoin(referredUserId: string, referralCode: 
   }
 }
 
+export async function processReferralOnboardingComplete(referredUserId: string, supabaseClient?: any): Promise<{ success: boolean; error?: string }> {
+  const db = supabaseClient || supabase;
+  try {
+    const { data: referral } = await db
+      .from("referrals")
+      .select("*")
+      .eq("referred_user_id", referredUserId)
+      .maybeSingle();
+
+    if (!referral) {
+      return { success: false, error: "No referral record found." };
+    }
+
+    if (referral.status === "Invite Opened" || referral.status === "Invite Sent" || referral.status === "Invited") {
+      return { success: false, error: "Referral not registered." };
+    }
+
+    // Update status to Onboarding Completed
+    const updateRes = await executeWrite(
+      "referrals",
+      "update",
+      {
+        status: "Onboarding Completed",
+        onboarding_completed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      },
+      { id: referral.id },
+      supabaseClient
+    );
+
+    if (!updateRes.success) throw updateRes.error;
+
+    // Reward referrer if not flagged
+    if (!referral.is_flagged) {
+      const { data: rule } = await db
+        .from("referral_reward_rules")
+        .select("reward_xp")
+        .eq("action", "Onboarding Completed")
+        .eq("status", "Active")
+        .maybeSingle();
+
+      const xpReward = rule?.reward_xp ?? 20;
+      await addXpToUser(referral.referrer_user_id, xpReward, supabaseClient);
+
+      await logAnalyticsEvent("referral_onboarded", referral.referrer_user_id, {
+        referredUserId,
+        xpRewarded: xpReward
+      });
+    }
+
+    const { invalidateUserCache, invalidateGrowthCache } = await import("@/lib/redis");
+    invalidateUserCache(referral.referrer_user_id).catch(console.error);
+    invalidateGrowthCache(referral.referrer_user_id).catch(console.error);
+
+    return { success: true };
+  } catch (err: any) {
+    console.error("processReferralOnboardingComplete failed:", err);
+    return { success: false, error: err?.message || "Failed to process onboarding referral completion." };
+  }
+}
+
 export async function processReferralActivation(referredUserId: string, supabaseClient?: any): Promise<{ success: boolean; error?: string }> {
   const db = supabaseClient || supabase;
   try {
@@ -194,16 +437,21 @@ export async function processReferralActivation(referredUserId: string, supabase
       .eq("referred_user_id", referredUserId)
       .maybeSingle();
 
-    if (!referral || referral.status !== "Joined") {
+    if (!referral) {
       return { success: false, error: "No pending referral found to activate." };
     }
 
-    // Update status to Activated, set activated_at
+    // Allow activating from Account Created or Onboarding Completed status
+    if (referral.status !== "Account Created" && referral.status !== "Onboarding Completed" && referral.status !== "Joined") {
+      return { success: false, error: "Referral not in state that can be activated." };
+    }
+
+    // Update status to Activated User, set activated_at
     const updateRes = await executeWrite(
       "referrals",
       "update",
       {
-        status: "Activated",
+        status: "Activated User",
         activated_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       },
@@ -213,38 +461,48 @@ export async function processReferralActivation(referredUserId: string, supabase
 
     if (!updateRes.success) throw updateRes.error;
 
-    // Reward Referrer: +150 XP and +5 PRI Mission score points
-    await addXpToUser(referral.referrer_user_id, 150, supabaseClient);
-    
-    // Add referral bonus to placement_readiness mission_bonus_score
-    const { data: priRec } = await db
-      .from("placement_readiness")
-      .select("mission_bonus_score")
-      .eq("user_id", referral.referrer_user_id)
-      .maybeSingle();
+    if (!referral.is_flagged) {
+      // Get reward rule XP
+      const { data: rule } = await db
+        .from("referral_reward_rules")
+        .select("reward_xp")
+        .eq("action", "First ATS Scan")
+        .eq("status", "Active")
+        .maybeSingle();
 
-    const currentBonus = priRec?.mission_bonus_score || 0;
-    await executeWrite(
-      "placement_readiness",
-      "update",
-      { mission_bonus_score: currentBonus + 5 },
-      { user_id: referral.referrer_user_id },
-      supabaseClient
-    );
+      const xpReward = rule?.reward_xp ?? 150;
+      await addXpToUser(referral.referrer_user_id, xpReward, supabaseClient);
+      
+      // Add referral bonus to placement_readiness mission_bonus_score
+      const { data: priRec } = await db
+        .from("placement_readiness")
+        .select("mission_bonus_score")
+        .eq("user_id", referral.referrer_user_id)
+        .maybeSingle();
 
-    // Recalculate PRI for referrer to apply the points
-    await calculatePRIScore(referral.referrer_user_id, undefined, supabaseClient);
+      const currentBonus = priRec?.mission_bonus_score || 0;
+      await executeWrite(
+        "placement_readiness",
+        "update",
+        { mission_bonus_score: currentBonus + 5 },
+        { user_id: referral.referrer_user_id },
+        supabaseClient
+      );
+
+      // Recalculate PRI for referrer to apply the points
+      await calculatePRIScore(referral.referrer_user_id, undefined, supabaseClient);
+
+      await logAnalyticsEvent("referral_activated", referral.referrer_user_id, {
+        referredUserId,
+        pointsAdded: 5,
+        xpAdded: xpReward
+      });
+    }
 
     // Invalidate caches
     const { invalidateUserCache, invalidateGrowthCache } = await import("@/lib/redis");
     invalidateUserCache(referral.referrer_user_id).catch(console.error);
     invalidateGrowthCache(referral.referrer_user_id).catch(console.error);
-
-    await logAnalyticsEvent("referral_activated", referral.referrer_user_id, {
-      referredUserId,
-      pointsAdded: 5,
-      xpAdded: 150
-    });
 
     return { success: true };
   } catch (err: any) {
@@ -262,16 +520,16 @@ export async function processReferralConversion(referredUserId: string, supabase
       .eq("referred_user_id", referredUserId)
       .maybeSingle();
 
-    if (!referral || referral.status !== "Activated") {
+    if (!referral || (referral.status !== "Activated User" && referral.status !== "Activated")) {
       return { success: false, error: "Referral not active or already converted." };
     }
 
-    // Update status to Converted
+    // Update status to Premium Conversion
     const updateRes = await executeWrite(
       "referrals",
       "update",
       {
-        status: "Converted",
+        status: "Premium Conversion",
         updated_at: new Date().toISOString()
       },
       { id: referral.id },
@@ -280,18 +538,28 @@ export async function processReferralConversion(referredUserId: string, supabase
 
     if (!updateRes.success) throw updateRes.error;
 
-    // Reward Referrer: +100 XP
-    await addXpToUser(referral.referrer_user_id, 100, supabaseClient);
+    if (!referral.is_flagged) {
+      // Get reward rule XP
+      const { data: rule } = await db
+        .from("referral_reward_rules")
+        .select("reward_xp")
+        .eq("action", "Premium Upgrade")
+        .eq("status", "Active")
+        .maybeSingle();
+
+      const xpReward = rule?.reward_xp ?? 100;
+      await addXpToUser(referral.referrer_user_id, xpReward, supabaseClient);
+
+      await logAnalyticsEvent("referral_converted", referral.referrer_user_id, {
+        referredUserId,
+        xpAdded: xpReward
+      });
+    }
 
     // Invalidate Cache
     const { invalidateUserCache, invalidateGrowthCache } = await import("@/lib/redis");
     invalidateUserCache(referral.referrer_user_id).catch(console.error);
     invalidateGrowthCache(referral.referrer_user_id).catch(console.error);
-
-    await logAnalyticsEvent("referral_converted", referral.referrer_user_id, {
-      referredUserId,
-      xpAdded: 100
-    });
 
     return { success: true };
   } catch (err: any) {
@@ -740,5 +1008,361 @@ export async function sendCampaign(campaignId: string): Promise<{ success: boole
   } catch (err) {
     console.error(`Error sending campaign ${campaignId}:`, err);
     return { success: false, error: err };
+  }
+}
+
+// Helper: Calculate profile completion score dynamically
+function calculateProfileCompletion(profile: any): number {
+  if (!profile) return 0;
+  const fields = [
+    'full_name', 'email', 'phone', 'college', 'branch', 
+    'graduation_year', 'github_url', 'linkedin_url', 'target_role', 'bio'
+  ];
+  let filled = 0;
+  fields.forEach(field => {
+    if (profile[field] && String(profile[field]).trim().length > 0) {
+      filled++;
+    }
+  });
+  if (Array.isArray(profile.skills) && profile.skills.length > 0) {
+    filled++;
+  } else if (profile.skills && typeof profile.skills === 'string' && profile.skills.trim().length > 0) {
+    filled++;
+  }
+  return Math.round((filled / (fields.length + 1)) * 100);
+}
+
+// 7. Community Group Helpers
+export async function getCommunityGroups(userId: string) {
+  try {
+    const { data: groups, error: gError } = await supabase
+      .from("community_groups")
+      .select("*")
+      .order("display_order", { ascending: true });
+
+    if (gError) throw gError;
+
+    // Fetch joined status
+    const { data: joined } = await supabase
+      .from("community_group_members")
+      .select("group_id")
+      .eq("user_id", userId);
+    const joinedIds = new Set((joined || []).map(j => j.group_id));
+
+    // Fetch saved status
+    const { data: saved } = await supabase
+      .from("community_group_saves")
+      .select("group_id")
+      .eq("user_id", userId);
+    const savedIds = new Set((saved || []).map(s => s.group_id));
+
+    // Fetch profile and resume scan context for locks
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    const { data: scans } = await supabase
+      .from("resume_scans")
+      .select("ats_score")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    const latestScan = scans && scans.length > 0 ? scans[0] : null;
+    const currentAts = latestScan?.ats_score || 0;
+    const isResumeUploaded = !!latestScan;
+    const currentCompletion = profile?.profile_completion || calculateProfileCompletion(profile);
+    const isOnboardingCompleted = profile?.onboarding_completed || false;
+
+    // Map lock statuses
+    const mapped = (groups || []).map(group => {
+      let isLocked = false;
+      const requirements = [];
+
+      if (group.unlock_onboarding_completed && !isOnboardingCompleted) {
+        isLocked = true;
+        requirements.push("Onboarding Completed");
+      }
+      if (group.unlock_resume_uploaded && !isResumeUploaded) {
+        isLocked = true;
+        requirements.push("Resume Uploaded");
+      }
+      if (group.unlock_min_profile_completion > 0 && currentCompletion < group.unlock_min_profile_completion) {
+        isLocked = true;
+        requirements.push(`Profile completion > ${group.unlock_min_profile_completion}%`);
+      }
+      if (group.unlock_min_ats_score > 0 && currentAts < group.unlock_min_ats_score) {
+        isLocked = true;
+        requirements.push(`ATS Resume Score > ${group.unlock_min_ats_score}`);
+      }
+
+      return {
+        ...group,
+        isJoined: joinedIds.has(group.id),
+        isSaved: savedIds.has(group.id),
+        isLocked,
+        lockDetails: {
+          requirements,
+          currentAts,
+          minAts: group.unlock_min_ats_score,
+          currentCompletion,
+          minCompletion: group.unlock_min_profile_completion,
+          resumeUploaded: isResumeUploaded,
+          onboardingCompleted: isOnboardingCompleted
+        }
+      };
+    });
+
+    return { success: true, groups: mapped };
+  } catch (err: any) {
+    console.error("getCommunityGroups failed:", err);
+    return { success: false, message: err.message || "Failed to fetch groups." };
+  }
+}
+
+export async function joinCommunityGroup(userId: string, groupId: string) {
+  try {
+    // 1. Fetch group to check if locked
+    const { data: group } = await supabase
+      .from("community_groups")
+      .select("*")
+      .eq("id", groupId)
+      .single();
+
+    if (!group) throw new Error("Group not found.");
+
+    // Check lock requirements
+    const groupsRes = await getCommunityGroups(userId);
+    if (groupsRes.success) {
+      const g = groupsRes.groups?.find(x => x.id === groupId);
+      if (g && g.isLocked) {
+        return { success: false, error: "This group is locked. Meet the requirements to unlock access." };
+      }
+    }
+
+    // 2. Add to membership
+    const payload = {
+      group_id: groupId,
+      user_id: userId,
+      created_at: new Date().toISOString()
+    };
+
+    const res = await executeWrite("community_group_members", "insert", payload);
+    if (!res.success) {
+      if (res.error?.code === "23505") { // Unique constraint
+        return { success: true, message: "Already a member." };
+      }
+      throw res.error;
+    }
+
+    // 3. Increment member count
+    const nextCount = (group.member_count || 0) + 1;
+    await executeWrite("community_groups", "update", { member_count: nextCount }, { id: groupId });
+
+    // Reward XP for Joining community (5 XP)
+    await addXpToUser(userId, 5);
+
+    return { success: true, nextCount };
+  } catch (err: any) {
+    console.error("joinCommunityGroup failed:", err);
+    return { success: false, error: err.message || "Failed to join group." };
+  }
+}
+
+export async function leaveCommunityGroup(userId: string, groupId: string) {
+  try {
+    const { data: group } = await supabase
+      .from("community_groups")
+      .select("member_count")
+      .eq("id", groupId)
+      .single();
+
+    if (!group) throw new Error("Group not found.");
+
+    const res = await executeWrite(
+      "community_group_members",
+      "delete",
+      null,
+      { user_id: userId, group_id: groupId }
+    );
+    if (!res.success) throw res.error;
+
+    // Decrement member count
+    const nextCount = Math.max(0, (group.member_count || 0) - 1);
+    await executeWrite("community_groups", "update", { member_count: nextCount }, { id: groupId });
+
+    return { success: true, nextCount };
+  } catch (err: any) {
+    console.error("leaveCommunityGroup failed:", err);
+    return { success: false, error: err.message || "Failed to leave group." };
+  }
+}
+
+export async function saveCommunityGroup(userId: string, groupId: string, status: boolean) {
+  try {
+    if (status) {
+      const res = await executeWrite("community_group_saves", "insert", {
+        group_id: groupId,
+        user_id: userId,
+        created_at: new Date().toISOString()
+      });
+      if (!res.success && res.error?.code !== "23505") throw res.error;
+    } else {
+      const res = await executeWrite(
+        "community_group_saves",
+        "delete",
+        null,
+        { user_id: userId, group_id: groupId }
+      );
+      if (!res.success) throw res.error;
+    }
+    return { success: true };
+  } catch (err: any) {
+    console.error("saveCommunityGroup failed:", err);
+    return { success: false, error: err.message || "Failed to save group." };
+  }
+}
+
+// 8. Community Event Helpers
+export async function getCommunityEvents(userId: string) {
+  try {
+    const { data: events, error } = await supabase
+      .from("community_events")
+      .select("*")
+      .order("event_date", { ascending: true });
+
+    if (error) throw error;
+
+    // Fetch user registrations
+    const { data: regs } = await supabase
+      .from("community_event_registrations")
+      .select("event_id, status")
+      .eq("user_id", userId);
+    
+    const regMap = new Map((regs || []).map(r => [r.event_id, r.status]));
+
+    const mapped = (events || []).map(event => ({
+      ...event,
+      isRegistered: regMap.get(event.id) === "Registered",
+      isBookmarked: regMap.get(event.id) === "Bookmarked"
+    }));
+
+    return { success: true, events: mapped };
+  } catch (err: any) {
+    console.error("getCommunityEvents failed:", err);
+    return { success: false, error: err.message || "Failed to fetch events." };
+  }
+}
+
+export async function registerForEvent(userId: string, eventId: string, status: "Registered" | "Bookmarked" | "Unregistered") {
+  try {
+    if (status === "Unregistered") {
+      const res = await executeWrite(
+        "community_event_registrations",
+        "delete",
+        null,
+        { user_id: userId, event_id: eventId }
+      );
+      if (!res.success) throw res.error;
+    } else {
+      const res = await executeWrite(
+        "community_event_registrations",
+        "upsert",
+        {
+          event_id: eventId,
+          user_id: userId,
+          status,
+          created_at: new Date().toISOString()
+        },
+        { user_id: userId, event_id: eventId }
+      );
+      if (!res.success) throw res.error;
+
+      // Small XP bump for registering (5 XP)
+      if (status === "Registered") {
+        await addXpToUser(userId, 5);
+      }
+    }
+    return { success: true };
+  } catch (err: any) {
+    console.error("registerForEvent failed:", err);
+    return { success: false, error: err.message || "Failed to update registration status." };
+  }
+}
+
+// 9. Ambassador Program Helpers
+export async function applyAmbassador(userId: string) {
+  try {
+    const payload = {
+      user_id: userId,
+      status: "Pending",
+      referred_count: 0,
+      community_impact_score: 0,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    const res = await executeWrite("placement_ambassadors", "insert", payload);
+    if (!res.success) {
+      if (res.error?.code === "23505") {
+        return { success: false, error: "Application already exists." };
+      }
+      throw res.error;
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    console.error("applyAmbassador failed:", err);
+    return { success: false, error: err.message || "Failed to submit ambassador request." };
+  }
+}
+
+export async function getAmbassadorStatus(userId: string) {
+  try {
+    const { data, error } = await supabase
+      .from("placement_ambassadors")
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (error) throw error;
+    return { success: true, ambassador: data };
+  } catch (err: any) {
+    console.error("getAmbassadorStatus failed:", err);
+    return { success: false, error: err.message };
+  }
+}
+
+export async function getAmbassadorList() {
+  try {
+    const { data, error } = await supabase
+      .from("placement_ambassadors")
+      .select("*, profiles(full_name, college, email)")
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+    return { success: true, list: data || [] };
+  } catch (err: any) {
+    console.error("getAmbassadorList failed:", err);
+    return { success: false, error: err.message };
+  }
+}
+
+export async function updateAmbassadorStatus(id: string, status: "Approved" | "Rejected") {
+  try {
+    const res = await executeWrite(
+      "placement_ambassadors",
+      "update",
+      { status, updated_at: new Date().toISOString() },
+      { id }
+    );
+    if (!res.success) throw res.error;
+
+    return { success: true };
+  } catch (err: any) {
+    console.error("updateAmbassadorStatus failed:", err);
+    return { success: false, error: err.message };
   }
 }

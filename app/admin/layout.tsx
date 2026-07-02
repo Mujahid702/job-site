@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LayoutDashboard, PlusCircle, Briefcase, LogOut, ChevronRight, Sparkles, Shield, TrendingUp, BookOpen, DollarSign } from "lucide-react";
+import { LayoutDashboard, PlusCircle, Briefcase, LogOut, ChevronRight, Sparkles, Shield, TrendingUp, BookOpen, DollarSign, Globe, Building2, Mail, Users, UserCheck, Award, ClipboardList, Settings } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { isAdmin } from "@/lib/auth";
@@ -31,7 +31,7 @@ export default async function AdminLayout({
           <span className="font-black text-slate-900 tracking-tight">Admin Portal</span>
         </div>
 
-        <nav className="flex-grow p-6 space-y-2">
+        <nav className="flex-grow p-6 space-y-2 overflow-y-auto scrollbar-thin">
           <Link 
             href="/admin" 
             className="flex items-center gap-3 px-4 py-3 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all font-bold"
@@ -57,6 +57,14 @@ export default async function AdminLayout({
           </Link>
 
           <Link 
+            href="/admin/gmail-diagnostics" 
+            className="flex items-center gap-3 px-4 py-3 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all font-bold"
+          >
+            <Mail className="w-5 h-5 text-indigo-500" />
+            Gmail Ingestion AI
+          </Link>
+
+          <Link 
             href="/admin/automation" 
             className="flex items-center gap-3 px-4 py-3 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all font-bold"
           >
@@ -70,6 +78,30 @@ export default async function AdminLayout({
           >
             <BookOpen className="w-5 h-5 text-violet-500" />
             Knowledge Base (RAG)
+          </Link>
+
+          <Link 
+            href="/admin/portfolio" 
+            className="flex items-center gap-3 px-4 py-3 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all font-bold"
+          >
+            <Globe className="w-5 h-5 text-teal-500" />
+            Portfolio Studio
+          </Link>
+
+          <Link 
+            href="/admin/company-prep" 
+            className="flex items-center gap-3 px-4 py-3 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all font-bold"
+          >
+            <Building2 className="w-5 h-5 text-sky-500" />
+            Company Prep Engine
+          </Link>
+
+          <Link 
+            href="/admin/assessments" 
+            className="flex items-center gap-3 px-4 py-3 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all font-bold"
+          >
+            <ClipboardList className="w-5 h-5 text-indigo-500" />
+            Assessment Manager
           </Link>
 
           <Link 
@@ -88,11 +120,43 @@ export default async function AdminLayout({
           </Link>
 
           <Link 
+            href="/dashboard/admin/community" 
+            className="flex items-center gap-3 px-4 py-3 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all font-bold"
+          >
+            <Users className="w-5 h-5 text-indigo-500" />
+            Community Manager
+          </Link>
+
+          <Link 
+            href="/admin/mentors" 
+            className="flex items-center gap-3 px-4 py-3 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all font-bold"
+          >
+            <Award className="w-5 h-5 text-pink-500" />
+            Mentor Manager
+          </Link>
+
+          <Link 
+            href="/dashboard/admin/trust" 
+            className="flex items-center gap-3 px-4 py-3 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all font-bold"
+          >
+            <UserCheck className="w-5 h-5 text-teal-500" />
+            Trust Verifications
+          </Link>
+
+          <Link 
             href="/admin/moderation" 
             className="flex items-center gap-3 px-4 py-3 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all font-bold"
           >
             <Shield className="w-5 h-5 text-rose-500" />
             Moderation Panel
+          </Link>
+
+          <Link 
+            href="/admin/telemetry" 
+            className="flex items-center gap-3 px-4 py-3 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all font-bold"
+          >
+            <Settings className="w-5 h-5 text-indigo-500" />
+            Telemetry Tower
           </Link>
         </nav>
 

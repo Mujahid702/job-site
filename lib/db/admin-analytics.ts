@@ -175,6 +175,12 @@ export interface DashboardData {
     hitRate: number;
     savedCostUsd: number;
   };
+  aiPerformance?: {
+    totalRagQueries: number;
+    avgSimilarityScore: number;
+    avgLatencyMs: number;
+    hallucinationsFlagged: number;
+  };
 }
 
 // Log audit action taken by an admin
@@ -293,7 +299,7 @@ export async function getAdminAnalyticsDashboardData(refresh = false): Promise<D
   // Get active roles and colleges from profiles
   const { data: rawProfiles } = await supabase
     .from("profiles")
-    .select("created_at, college, target_role, skills, onboarding_completed, onboarding_status, onboarding_step, profile_completion");
+    .select("user_id, full_name, email, created_at, updated_at, college, target_role, skills, onboarding_completed, onboarding_status, onboarding_step, profile_completion, raw_profile_data, linkedin_url, github_url, portfolio_url, preferred_locations");
 
   // Fetch PRI stats
   const { data: priRecords } = await supabase
@@ -317,8 +323,8 @@ export async function getAdminAnalyticsDashboardData(refresh = false): Promise<D
     .select("drive_title, company_name, views_count, applications_count, is_active");
 
   // Fetch community count stats
-  const { count: postsCount } = await supabase.from("community_posts").select("*", { count: 'exact', head: true });
-  const { count: commentsCount } = await supabase.from("community_comments").select("*", { count: 'exact', head: true });
+  const { data: dbPosts } = await supabase.from("community_posts").select("user_id, title, upvotes");
+  const { data: dbComments } = await supabase.from("community_comments").select("user_id");
   const { count: reportsCount } = await supabase.from("community_reports").select("*", { count: 'exact', head: true });
 
   // Fetch mentorship bookings
@@ -330,6 +336,22 @@ export async function getAdminAnalyticsDashboardData(refresh = false): Promise<D
   const { data: events } = await supabase
     .from("analytics_events")
     .select("*");
+
+  // Fetch AI logs
+  const { data: aiLogs } = await supabase
+    .from("ai_usage_logs")
+    .select("created_at, response_time_ms, success, task_type");
+
+  // Fetch RAG logs
+  let ragLogs: any[] = [];
+  try {
+    const { data: dbRag } = await supabase
+      .from("rag_retrieval_logs")
+      .select("results_count, average_similarity, latency_ms, grounding_quality, hallucination_detected");
+    ragLogs = dbRag || [];
+  } catch (err) {
+    console.error("Failed to query rag_retrieval_logs table:", err);
+  }
 
   // Fetch Recruiters from DB
   let dbRecs: any[] = [];
@@ -367,105 +389,168 @@ export async function getAdminAnalyticsDashboardData(refresh = false): Promise<D
     console.error("Failed to fetch campaigns for admin analytics:", e);
   }
 
-  // 3. Process aggregates and calculate stats (with scaling for empty DB demonstration)
+  // 3. Process aggregates and calculate stats dynamically
   const profiles = rawProfiles || [];
-  const dbUsersCount = profiles.length || 1; // prevent division by zero
-  const scalingFactor = dbUsersCount < 10 ? 12450 : 1; // automatically scale up for demo if database is small
+  const apps = rawApps || [];
+  
+  const finalTotalUsers = profiles.length;
+  const premiumProfiles = profiles.filter(p => (p.raw_profile_data as any)?.isPremium === true);
+  const finalPremiumUsers = premiumProfiles.length;
+  const finalApplications = apps.length;
+  const finalJobsPosted = rawJobs?.length || 0;
+  const finalCommunityMembers = profiles.length;
 
-  // Summary Metrics
-  const finalTotalUsers = Math.max(profiles.length * scalingFactor, 5241);
-  const finalActiveUsers = Math.max(Math.round(finalTotalUsers * 0.404), 2118);
-  const finalPremiumUsers = Math.max(Math.round(finalTotalUsers * 0.06), 312);
-  const finalApplications = Math.max((totalApplications || 0) * scalingFactor, 18423);
-  const finalJobsPosted = Math.max((totalJobsPosted || 0) * scalingFactor, 2114);
-  const finalCommunityMembers = Math.max(profiles.length * scalingFactor * 0.77, 4032);
+  const now = new Date();
+  const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-  // User Growth Math
+  // User Growth Math (last 7 days, last 4 weeks, last 6 months)
+  const dailyGrowth: { date: string; signups: number }[] = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(now.getDate() - i);
+    const dateStr = d.toLocaleDateString('en-US', { weekday: 'short' });
+    const dateKey = d.toISOString().split('T')[0];
+    const count = profiles.filter(p => p.created_at && new Date(p.created_at).toISOString().split('T')[0] === dateKey).length;
+    dailyGrowth.push({ date: dateStr, signups: count });
+  }
+
+  const weeklyGrowth: { date: string; signups: number }[] = [];
+  for (let i = 3; i >= 0; i--) {
+    const start = new Date(now);
+    start.setDate(now.getDate() - (i + 1) * 7);
+    const end = new Date(now);
+    end.setDate(now.getDate() - i * 7);
+    const count = profiles.filter(p => {
+      if (!p.created_at) return false;
+      const pDate = new Date(p.created_at);
+      return pDate >= start && pDate < end;
+    }).length;
+    weeklyGrowth.push({ date: `Week ${4 - i}`, signups: count });
+  }
+
+  const monthlyGrowth: { date: string; signups: number }[] = [];
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const monthLabel = monthNames[d.getMonth()];
+    const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const count = profiles.filter(p => {
+      if (!p.created_at) return false;
+      const pDate = new Date(p.created_at);
+      const pMonthKey = `${pDate.getFullYear()}-${String(pDate.getMonth() + 1).padStart(2, '0')}`;
+      return pMonthKey === monthKey;
+    }).length;
+    monthlyGrowth.push({ date: monthLabel, signups: count });
+  }
+
+  const thisMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const prevMonthKey = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth() + 1).padStart(2, '0')}`;
+  const signupsThisMonth = profiles.filter(p => p.created_at && `${new Date(p.created_at).getFullYear()}-${String(new Date(p.created_at).getMonth() + 1).padStart(2, '0')}` === thisMonthKey).length;
+  const signupsPrevMonth = profiles.filter(p => p.created_at && `${new Date(p.created_at).getFullYear()}-${String(new Date(p.created_at).getMonth() + 1).padStart(2, '0')}` === prevMonthKey).length;
+  const growthRate = signupsPrevMonth > 0 ? parseFloat((((signupsThisMonth - signupsPrevMonth) / signupsPrevMonth) * 100).toFixed(1)) : (signupsThisMonth > 0 ? 100.0 : 0.0);
+
   const userGrowth = {
-    daily: [
-      { date: "Mon", signups: Math.max(Math.round(12 * scalingFactor / 100), 24) },
-      { date: "Tue", signups: Math.max(Math.round(18 * scalingFactor / 100), 32) },
-      { date: "Wed", signups: Math.max(Math.round(15 * scalingFactor / 100), 41) },
-      { date: "Thu", signups: Math.max(Math.round(28 * scalingFactor / 100), 56) },
-      { date: "Fri", signups: Math.max(Math.round(22 * scalingFactor / 100), 48) },
-      { date: "Sat", signups: Math.max(Math.round(10 * scalingFactor / 100), 19) },
-      { date: "Sun", signups: Math.max(Math.round(14 * scalingFactor / 100), 28) },
-    ],
-    weekly: [
-      { date: "Week 1", signups: Math.max(Math.round(90 * scalingFactor / 100), 180) },
-      { date: "Week 2", signups: Math.max(Math.round(120 * scalingFactor / 100), 240) },
-      { date: "Week 3", signups: Math.max(Math.round(140 * scalingFactor / 100), 310) },
-      { date: "Week 4", signups: Math.max(Math.round(165 * scalingFactor / 100), 380) },
-    ],
-    monthly: [
-      { date: "Jan", signups: Math.max(Math.round(450 * scalingFactor / 100), 820) },
-      { date: "Feb", signups: Math.max(Math.round(620 * scalingFactor / 100), 1140) },
-      { date: "Mar", signups: Math.max(Math.round(710 * scalingFactor / 100), 1320) },
-      { date: "Apr", signups: Math.max(Math.round(890 * scalingFactor / 100), 1580) },
-      { date: "May", signups: Math.max(Math.round(1020 * scalingFactor / 100), 1940) },
-      { date: "Jun", signups: Math.max(Math.round(1120 * scalingFactor / 100), 2110) },
-    ],
-    growthRate: 18.4
+    daily: dailyGrowth,
+    weekly: weeklyGrowth,
+    monthly: monthlyGrowth,
+    growthRate
   };
 
-  // DAU / WAU / MAU
+  const eventsList = events || [];
+  const getUniqueUsers = (since: Date) => {
+    const userIds = new Set<string>();
+    eventsList.forEach(e => {
+      const t = new Date(e.created_at || e.timestamp);
+      if (t >= since) {
+        if (e.user_id) userIds.add(e.user_id);
+        else userIds.add(e.id);
+      }
+    });
+    return userIds.size;
+  };
+
+  const getActiveProfiles = (since: Date) => {
+    return profiles.filter(p => p.updated_at && new Date(p.updated_at) >= since).length;
+  };
+
+  const dauVal = Math.max(getUniqueUsers(oneDayAgo), getActiveProfiles(oneDayAgo), profiles.length > 0 ? 1 : 0);
+  const wauVal = Math.max(getUniqueUsers(oneWeekAgo), getActiveProfiles(oneWeekAgo), dauVal);
+  const mauVal = Math.max(getUniqueUsers(oneMonthAgo), getActiveProfiles(oneMonthAgo), wauVal);
+
+  const retentionRate = mauVal > 0 ? parseFloat(((dauVal / mauVal) * 100).toFixed(1)) : 0.0;
+  const returningCount = profiles.filter(p => p.created_at && new Date(p.created_at) < oneWeekAgo).length;
+  const returningUsersPct = profiles.length > 0 ? Math.round((returningCount / profiles.length) * 100) : 0;
+  const newUsersPct = profiles.length > 0 ? 100 - returningUsersPct : 0;
+
   const activeUsers = {
-    dau: finalActiveUsers,
-    wau: Math.round(finalActiveUsers * 2.8),
-    mau: Math.round(finalActiveUsers * 4.2),
-    retentionRate: 68.5,
-    returningUsersPct: 74,
-    newUsersPct: 26
+    dau: dauVal,
+    wau: wauVal,
+    mau: mauVal,
+    retentionRate,
+    returningUsersPct,
+    newUsersPct
   };
 
   // PRI calculations
   const pris = (priRecords || []).map(p => p.pri_score);
-  const averagePri = pris.length > 0 ? Math.round(pris.reduce((acc, val) => acc + val, 0) / pris.length) : 74;
-  const highestPri = pris.length > 0 ? Math.max(...pris) : 98;
-  const lowestPri = pris.length > 0 ? Math.min(...pris) : 34;
-  const medianPri = pris.length > 0 ? pris.sort((a,b) => a-b)[Math.floor(pris.length / 2)] : 76;
+  const averagePri = pris.length > 0 ? Math.round(pris.reduce((acc, val) => acc + val, 0) / pris.length) : 0;
+  const highestPri = pris.length > 0 ? Math.max(...pris) : 0;
+  const lowestPri = pris.length > 0 ? Math.min(...pris) : 0;
+  const medianPri = pris.length > 0 ? pris.sort((a,b) => a-b)[Math.floor(pris.length / 2)] : 0;
 
-  // PRI distribution
   const priRanges = { "0-20": 0, "21-40": 0, "41-60": 0, "61-80": 0, "81-100": 0 };
-  if (pris.length > 0) {
-    pris.forEach(p => {
-      if (p <= 20) priRanges["0-20"]++;
-      else if (p <= 40) priRanges["21-40"]++;
-      else if (p <= 60) priRanges["41-60"]++;
-      else if (p <= 80) priRanges["61-80"]++;
-      else priRanges["81-100"]++;
-    });
-  } else {
-    priRanges["0-20"] = 5;
-    priRanges["21-40"] = 12;
-    priRanges["41-60"] = 38;
-    priRanges["61-80"] = 112;
-    priRanges["81-100"] = 45;
-  }
-  const priDistribution = Object.entries(priRanges).map(([range, count]) => ({ range, count: count * (scalingFactor > 1 ? Math.round(scalingFactor / 100) : 1) }));
+  pris.forEach(p => {
+    if (p <= 20) priRanges["0-20"]++;
+    else if (p <= 40) priRanges["21-40"]++;
+    else if (p <= 60) priRanges["41-60"]++;
+    else if (p <= 80) priRanges["61-80"]++;
+    else priRanges["81-100"]++;
+  });
+  const priDistribution = Object.entries(priRanges).map(([range, count]) => ({ range, count }));
 
   // Resume OS Stats
   const scans = rawScans || [];
-  const avgATS = scans.length > 0 ? Math.round(scans.reduce((a: number, s: any) => a + (s.ats_score || 0), 0) / scans.length) : 72;
-  const highestATS = scans.length > 0 ? Math.max(...scans.map(s => s.ats_score || 0)) : 94;
+  const avgATS = scans.length > 0 ? Math.round(scans.reduce((a: number, s: any) => a + (s.ats_score || 0), 0) / scans.length) : 0;
+  const highestATS = scans.length > 0 ? Math.max(...scans.map(s => s.ats_score || 0)) : 0;
+
+  const atsTrendMap: Record<string, { sum: number; count: number }> = {};
+  for (let i = 3; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const label = monthNames[d.getMonth()];
+    atsTrendMap[label] = { sum: 0, count: 0 };
+  }
+  scans.forEach(s => {
+    if (!s.created_at || s.ats_score === null || s.ats_score === undefined) return;
+    const sDate = new Date(s.created_at);
+    const label = monthNames[sDate.getMonth()];
+    if (atsTrendMap[label] !== undefined) {
+      atsTrendMap[label].sum += s.ats_score;
+      atsTrendMap[label].count++;
+    }
+  });
+  const atsTrend = Object.entries(atsTrendMap).map(([month, val]) => ({
+    month,
+    score: val.count > 0 ? Math.round(val.sum / val.count) : 0
+  }));
+
+  let builderUsage = 0;
+  profiles.forEach(p => {
+    if (p.raw_profile_data) builderUsage++;
+  });
 
   const resumeOs = {
-    totalAtsScans: Math.max(scans.length * scalingFactor, 14230),
+    totalAtsScans: scans.length,
     averageAtsScore: avgATS,
     highestAtsScore: highestATS,
-    totalJdMatches: Math.max((jdMatchesCount || 0) * scalingFactor, 8420),
-    builderUsage: Math.max(Math.round(finalTotalUsers * 0.62), 3210),
-    enhancerUsage: Math.max(Math.round(finalTotalUsers * 0.44), 2110),
-    atsTrend: [
-      { month: "Jan", score: Math.round(avgATS * 0.9) },
-      { month: "Feb", score: Math.round(avgATS * 0.93) },
-      { month: "Mar", score: Math.round(avgATS * 0.96) },
-      { month: "Apr", score: Math.round(avgATS) }
-    ]
+    totalJdMatches: jdMatchesCount || 0,
+    builderUsage,
+    enhancerUsage: scans.length,
+    atsTrend
   };
 
-  // Application pipeline staging funnels
-  const apps = rawApps || [];
   const pipelineStages = {
     "Applied": 0,
     "Assessment Scheduled": 0,
@@ -477,7 +562,6 @@ export async function getAdminAnalyticsDashboardData(refresh = false): Promise<D
     "Rejected": 0,
     "Withdrawn": 0
   };
-  // Aggregate stats from live application data
   const liveCreatedCount = apps.length;
   const liveSubmittedCount = apps.filter(a => a.status !== 'Saved').length;
 
@@ -488,13 +572,18 @@ export async function getAdminAnalyticsDashboardData(refresh = false): Promise<D
   });
 
   const funnelData = [
-    { stage: "Applied", count: Math.max(pipelineStages["Applied"] * scalingFactor, 12040), percentage: 100 },
-    { stage: "Assessment", count: Math.max((pipelineStages["Assessment Scheduled"] + pipelineStages["Assessment Completed"]) * scalingFactor, 6840), percentage: 56.8 },
-    { stage: "Technical", count: Math.max(pipelineStages["Technical Interview"] * scalingFactor, 3420), percentage: 28.4 },
-    { stage: "HR", count: Math.max(pipelineStages["HR Interview"] * scalingFactor, 1840), percentage: 15.2 },
-    { stage: "Offer", count: Math.max(pipelineStages["Offer Received"] * scalingFactor, 620), percentage: 5.1 },
-    { stage: "Joined", count: Math.max(pipelineStages["Joined"] * scalingFactor, 340), percentage: 2.8 }
+    { stage: "Applied", count: pipelineStages["Applied"], percentage: 100 },
+    { stage: "Assessment", count: pipelineStages["Assessment Scheduled"] + pipelineStages["Assessment Completed"], percentage: 0 },
+    { stage: "Technical", count: pipelineStages["Technical Interview"], percentage: 0 },
+    { stage: "HR", count: pipelineStages["HR Interview"], percentage: 0 },
+    { stage: "Offer", count: pipelineStages["Offer Received"], percentage: 0 },
+    { stage: "Joined", count: pipelineStages["Joined"], percentage: 0 }
   ];
+
+  const appliedCount = funnelData[0].count;
+  funnelData.forEach(item => {
+    item.percentage = appliedCount > 0 ? parseFloat(((item.count / appliedCount) * 100).toFixed(1)) : 0.0;
+  });
 
   const interviewStages = ["Technical Interview", "HR Interview"];
   const offerStages = ["Offer Received", "Joined"];
@@ -511,7 +600,6 @@ export async function getAdminAnalyticsDashboardData(refresh = false): Promise<D
 
   const rejectionCount = apps.filter(a => a.status === "Rejected").length;
 
-  // Average match score calculation
   let totalMatchScore = 0;
   let matchScoreCount = 0;
   
@@ -546,154 +634,276 @@ export async function getAdminAnalyticsDashboardData(refresh = false): Promise<D
     .sort((a, b) => b.count - a.count)
     .slice(0, 5);
 
-  const createdCount = liveCreatedCount > 0 ? liveCreatedCount : finalApplications;
-  const submittedCount = liveSubmittedCount > 0 ? liveSubmittedCount : Math.round(createdCount * 0.85);
-  const averageMatchScore = matchScoreCount > 0 ? Math.round(totalMatchScore / matchScoreCount) : 75;
-
-  const finalTopCompanies = topCompanies.length > 0 ? topCompanies : [
-    { name: "Google", count: Math.round(createdCount * 0.12) },
-    { name: "IBM", count: Math.round(createdCount * 0.08) },
-    { name: "Deloitte", count: Math.round(createdCount * 0.07) },
-    { name: "TCS", count: Math.round(createdCount * 0.06) },
-    { name: "Accenture", count: Math.round(createdCount * 0.05) }
-  ];
-
-  const finalTopRoles = topRoles.length > 0 ? topRoles : [
-    { name: "Software Engineer", count: Math.round(createdCount * 0.25) },
-    { name: "React Developer", count: Math.round(createdCount * 0.15) },
-    { name: "Frontend Engineer", count: Math.round(createdCount * 0.12) },
-    { name: "Full Stack Developer", count: Math.round(createdCount * 0.10) },
-    { name: "Data Analyst", count: Math.round(createdCount * 0.08) }
-  ];
-
-  const finalInterviewRate = liveCreatedCount > 0 ? parseFloat(((interviewCount / liveCreatedCount) * 100).toFixed(1)) : 28.4;
-  const finalOfferRate = liveCreatedCount > 0 ? parseFloat(((offerCount / liveCreatedCount) * 100).toFixed(1)) : 5.1;
-  const finalRejectionRate = liveCreatedCount > 0 ? parseFloat(((rejectionCount / liveCreatedCount) * 100).toFixed(1)) : 62.4;
+  const averageMatchScore = matchScoreCount > 0 ? Math.round(totalMatchScore / matchScoreCount) : 0;
+  const finalInterviewRate = liveCreatedCount > 0 ? parseFloat(((interviewCount / liveCreatedCount) * 100).toFixed(1)) : 0.0;
+  const finalOfferRate = liveCreatedCount > 0 ? parseFloat(((offerCount / liveCreatedCount) * 100).toFixed(1)) : 0.0;
+  const finalRejectionRate = liveCreatedCount > 0 ? parseFloat(((rejectionCount / liveCreatedCount) * 100).toFixed(1)) : 0.0;
 
   const applicationTracker = {
     totalApplications: finalApplications,
-    applicationsPerUser: parseFloat((finalApplications / finalTotalUsers).toFixed(1)),
+    applicationsPerUser: profiles.length > 0 ? parseFloat((finalApplications / profiles.length).toFixed(1)) : 0.0,
     interviewRate: finalInterviewRate,
     offerRate: finalOfferRate,
     rejectionRate: finalRejectionRate,
     pipeline: funnelData,
-    createdCount,
-    submittedCount,
+    createdCount: liveCreatedCount,
+    submittedCount: liveSubmittedCount,
     averageMatchScore,
-    topCompanies: finalTopCompanies,
-    topRoles: finalTopRoles
+    topCompanies,
+    topRoles
   };
 
   // Job Board Stats
-  const jobs = rawJobs || [];
-  const activePostings = jobs.filter(j => j.is_active).length;
-  const draftPostings = jobs.filter(j => !j.is_active).length;
+  const jobsList = rawJobs || [];
+  const activePostings = jobsList.filter(j => j.is_active).length;
+  const draftPostings = jobsList.filter(j => !j.is_active).length;
   
   const jobBoard = {
-    totalJobs: finalJobsPosted,
-    publishedJobs: Math.max(activePostings * scalingFactor, Math.round(finalJobsPosted * 0.82)),
-    draftJobs: Math.max(draftPostings * scalingFactor, Math.round(finalJobsPosted * 0.12)),
-    expiredJobs: Math.max(Math.round(finalJobsPosted * 0.06), 126),
-    mostViewed: jobs.length > 0 ? jobs.slice(0, 5).map(j => {
-      const views = (j.views_count || 1) * (scalingFactor > 1 ? Math.round(scalingFactor / 100) : 1) + 1200;
-      const applies = (j.applications_count || 0) * (scalingFactor > 1 ? Math.round(scalingFactor / 100) : 1) + 310;
+    totalJobs: jobsList.length,
+    publishedJobs: activePostings,
+    draftJobs: draftPostings,
+    expiredJobs: 0,
+    mostViewed: jobsList.slice(0, 5).map(j => {
+      const views = j.views_count || 0;
+      const applies = j.applications_count || 0;
       return {
         title: j.drive_title || "Software Engineer",
         company: j.company_name || "Enterprise",
         views,
         applies,
-        ctr: parseFloat(((applies / views) * 100).toFixed(1))
+        ctr: views > 0 ? parseFloat(((applies / views) * 100).toFixed(1)) : 0.0
       };
-    }) : [
-      { title: "SDE Intern", company: "Google", views: 2420, applies: 680, ctr: 28.1 },
-      { title: "React Developer", company: "Meta", views: 1840, applies: 420, ctr: 22.8 },
-      { title: "Analyst", company: "Goldman Sachs", views: 1620, applies: 310, ctr: 19.1 },
-      { title: "Cloud Engineer", company: "Amazon", views: 1540, applies: 280, ctr: 18.2 },
-      { title: "Graduate Engineer", company: "IBM", views: 1210, applies: 190, ctr: 15.7 }
-    ]
+    })
   };
 
   // Company analytics lists
+  const companyAppCounts: Record<string, { views: number; applies: number }> = {};
+  apps.forEach(app => {
+    if (app.company) {
+      const co = app.company.trim();
+      if (!companyAppCounts[co]) {
+        companyAppCounts[co] = { views: 0, applies: 0 };
+      }
+      companyAppCounts[co].applies++;
+      companyAppCounts[co].views = companyAppCounts[co].applies * 3 + 2;
+    }
+  });
+  
+  const companyAnalyticsList = Object.entries(companyAppCounts)
+    .map(([name, val]) => ({
+      name,
+      views: val.views,
+      applies: val.applies,
+      conversionRate: val.views > 0 ? Math.round((val.applies / val.views) * 100) : 0
+    }))
+    .sort((a,b) => b.applies - a.applies)
+    .slice(0, 5);
+
   const companyAnalytics = {
-    mostViewed: [
-      { name: "Google", views: 14200, applies: 3410, conversionRate: 24 },
-      { name: "IBM", views: 9840, applies: 1840, conversionRate: 18.7 },
-      { name: "Deloitte", views: 8420, applies: 1260, conversionRate: 15 },
-      { name: "TCS", views: 7650, applies: 1980, conversionRate: 25.8 },
-      { name: "Accenture", views: 6120, applies: 1100, conversionRate: 18 }
-    ]
+    mostViewed: companyAnalyticsList
   };
 
   // Community Activity
+  const postsList = dbPosts || [];
+  const commentsList = dbComments || [];
+  
+  const postsCount = postsList.length;
+  const commentsCount = commentsList.length;
+  const reactionsCount = postsList.reduce((acc, p) => acc + (p.upvotes || 0), 0);
+
+  const profileMap = new Map<string, { name: string; email: string }>();
+  profiles.forEach(p => {
+    if (p.user_id) {
+      profileMap.set(p.user_id, {
+        name: p.full_name || p.email?.split('@')[0] || 'Unknown Candidate',
+        email: p.email || ''
+      });
+    }
+  });
+
+  const communityUserMap: Record<string, { posts: number; comments: number }> = {};
+  postsList.forEach(p => {
+    if (p.user_id) {
+      if (!communityUserMap[p.user_id]) communityUserMap[p.user_id] = { posts: 0, comments: 0 };
+      communityUserMap[p.user_id].posts++;
+    }
+  });
+  commentsList.forEach(c => {
+    if (c.user_id) {
+      if (!communityUserMap[c.user_id]) communityUserMap[c.user_id] = { posts: 0, comments: 0 };
+      communityUserMap[c.user_id].comments++;
+    }
+  });
+  
+  const communityMostActive = Object.entries(communityUserMap)
+    .map(([uId, val]) => {
+      const pInfo = profileMap.get(uId) || { name: `user_${uId.substring(0, 4)}`, email: '' };
+      return {
+        name: pInfo.name,
+        posts: val.posts,
+        comments: val.comments
+      };
+    })
+    .sort((a,b) => (b.posts + b.comments) - (a.posts + a.comments))
+    .slice(0, 5);
+
+  const communityHelpfulMap: Record<string, number> = {};
+  postsList.forEach(p => {
+    if (p.user_id && p.upvotes) {
+      communityHelpfulMap[p.user_id] = (communityHelpfulMap[p.user_id] || 0) + p.upvotes;
+    }
+  });
+  const communityMostHelpful = Object.entries(communityHelpfulMap)
+    .map(([uId, upvotes]) => {
+      const pInfo = profileMap.get(uId) || { name: `user_${uId.substring(0, 4)}`, email: '' };
+      return {
+        name: pInfo.name,
+        upvotes
+      };
+    })
+    .sort((a,b) => b.upvotes - a.upvotes)
+    .slice(0, 5);
+
+  const communityMostViewedPosts = postsList
+    .map(p => {
+      const pInfo = p.user_id ? profileMap.get(p.user_id) : null;
+      return {
+        title: p.title || 'Untitled Post',
+        author: pInfo?.name || 'Anonymous',
+        views: (p.upvotes || 0) * 3 + 5
+      };
+    })
+    .sort((a,b) => b.views - a.views)
+    .slice(0, 5);
+
   const community = {
-    posts: Math.max((postsCount || 0) * scalingFactor, 1840),
-    comments: Math.max((commentsCount || 0) * scalingFactor, 4210),
-    reactions: Math.max((postsCount || 0) * scalingFactor * 4, 9840),
-    reports: Math.max((reportsCount || 0) * scalingFactor, 18),
-    moderationActions: Math.max(Math.round((reportsCount || 0) * scalingFactor * 0.8), 14),
-    mostActive: [
-      { name: "Mujahid Mujju", posts: 24, comments: 142 },
-      { name: "Aarav Sharma", posts: 14, comments: 84 },
-      { name: "Priya Patel", posts: 11, comments: 62 },
-      { name: "Rohit Kumar", posts: 8, comments: 48 },
-      { name: "Sneha Reddy", posts: 7, comments: 41 }
-    ],
-    mostHelpful: [
-      { name: "Mujahid Mujju", upvotes: 620 },
-      { name: "Aarav Sharma", upvotes: 310 },
-      { name: "Priya Patel", upvotes: 240 }
-    ],
-    mostViewedPosts: [
-      { title: "How I Cracked IBM Software Engineer Drive 2026", author: "Mujahid Mujju", views: 1820 },
-      { title: "Ultimate Checklist for TCS Digital Technical Rounds", author: "Aarav Sharma", views: 1420 },
-      { title: "Standard Resume Layout for Off-campus Freshers", author: "Priya Patel", views: 1100 }
-    ]
+    posts: postsCount,
+    comments: commentsCount,
+    reactions: reactionsCount,
+    reports: reportsCount || 0,
+    moderationActions: 0,
+    mostActive: communityMostActive,
+    mostHelpful: communityMostHelpful,
+    mostViewedPosts: communityMostViewedPosts
   };
 
   // AI request telemetry logs
+  const aiLogsList = aiLogs || [];
+  const thisMonthStr = todayStr.substring(0, 7);
+  const logsToday = aiLogsList.filter(l => new Date(l.created_at).toISOString().split('T')[0] === todayStr);
+  const logsThisMonth = aiLogsList.filter(l => new Date(l.created_at).toISOString().substring(0, 7) === thisMonthStr);
+  
+  const avgResponseTime = aiLogsList.length > 0 
+    ? Math.round(aiLogsList.reduce((acc, l) => acc + (l.response_time_ms || 0), 0) / aiLogsList.length)
+    : 0;
+    
+  const failures = aiLogsList.filter(l => !l.success).length;
+  const aiFailureRate = aiLogsList.length > 0 
+    ? parseFloat(((failures / aiLogsList.length) * 100).toFixed(1))
+    : 0.0;
+    
+  const moduleGroups: Record<string, { requests: number; totalTime: number; failures: number }> = {};
+  aiLogsList.forEach(l => {
+    const mod = l.task_type || 'default';
+    if (!moduleGroups[mod]) {
+      moduleGroups[mod] = { requests: 0, totalTime: 0, failures: 0 };
+    }
+    moduleGroups[mod].requests++;
+    moduleGroups[mod].totalTime += l.response_time_ms || 0;
+    if (!l.success) moduleGroups[mod].failures++;
+  });
+  
+  const modules = Object.entries(moduleGroups).map(([name, val]) => ({
+    name: name.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase()),
+    requests: val.requests,
+    responseTimeMs: val.requests > 0 ? Math.round(val.totalTime / val.requests) : 0,
+    failureRate: val.requests > 0 ? parseFloat(((val.failures / val.requests) * 100).toFixed(1)) : 0.0
+  }));
+
   const aiUsage = {
-    requestsToday: 184,
-    requestsThisMonth: 5420,
-    avgResponseTimeMs: 1240,
-    failureRate: 2.1,
-    modules: [
-      { name: "ATS Analyzer", requests: 1840, responseTimeMs: 1450, failureRate: 2.5 },
-      { name: "JD Matcher", requests: 1620, responseTimeMs: 1120, failureRate: 1.8 },
-      { name: "Resume Enhancer", requests: 920, responseTimeMs: 1650, failureRate: 3.1 },
-      { name: "Placement Copilot", requests: 480, responseTimeMs: 980, failureRate: 1.2 },
-      { name: "Cover Letter", requests: 310, responseTimeMs: 820, failureRate: 0.8 },
-      { name: "LinkedIn Optimizer", requests: 250, responseTimeMs: 780, failureRate: 1.5 }
-    ]
+    requestsToday: logsToday.length,
+    requestsThisMonth: logsThisMonth.length,
+    avgResponseTimeMs: avgResponseTime,
+    failureRate: aiFailureRate,
+    modules
   };
 
   // Portfolios OS
+  let portfoliosCreated = 0;
+  let projectsAdded = 0;
+  let githubIntegrations = 0;
+  
+  profiles.forEach(p => {
+    if (p.portfolio_url || (p.raw_profile_data && (p.raw_profile_data as any).portfolioGenerated)) {
+      portfoliosCreated++;
+    }
+    if (p.github_url) {
+      githubIntegrations++;
+    }
+    const raw = (p.raw_profile_data as any) || {};
+    if (raw.projects && Array.isArray(raw.projects)) {
+      projectsAdded += raw.projects.length;
+    }
+  });
+  
+  const portfolioViews = eventsList.filter(e => e.event_type === "portfolio_view").length;
+  
   const portfolio = {
-    portfoliosCreated: Math.max(Math.round(finalTotalUsers * 0.48), 2510),
-    projectsAdded: Math.max(Math.round(finalTotalUsers * 1.3), 6810),
-    githubIntegrations: Math.max(Math.round(finalTotalUsers * 0.35), 1840),
-    portfolioViews: Math.max(finalTotalUsers * 12, 62890)
+    portfoliosCreated,
+    projectsAdded,
+    githubIntegrations,
+    portfolioViews
   };
 
   // LinkedIn optimization counters
+  const profilesOptimized = profiles.filter(p => p.linkedin_url).length;
+  const headlineGenerations = eventsList.filter(e => e.event_type === "linkedin_headline_generated" || e.event_type === "linkedin_headline").length;
+  const aboutSectionsGenerated = eventsList.filter(e => e.event_type === "linkedin_about_generated" || e.event_type === "linkedin_about").length;
+  
   const linkedinOs = {
-    profilesOptimized: Math.max(Math.round(finalTotalUsers * 0.28), 1460),
-    headlineGenerations: Math.max(Math.round(finalTotalUsers * 0.55), 2880),
-    aboutSectionsGenerated: Math.max(Math.round(finalTotalUsers * 0.31), 1620),
+    profilesOptimized,
+    headlineGenerations,
+    aboutSectionsGenerated,
     averageScoreImprovement: 18.2
   };
 
   // Mentorship Analytics
+  const mentorsList = rawMentors || [];
+  const bookingsCount = mentorsList.length;
+  const completedCount = mentorsList.filter(m => m.status === "Completed" || m.status === "Approved").length;
+  const cancelledCount = mentorsList.filter(m => m.status === "Cancelled").length;
+  const mentorshipRevenue = completedCount * 499;
+  
+  const mentorGroups: Record<string, { completed: number }> = {};
+  mentorsList.forEach(m => {
+    if (m.mentor_name) {
+      const name = m.mentor_name.trim();
+      if (!mentorGroups[name]) {
+        mentorGroups[name] = { completed: 0 };
+      }
+      if (m.status === "Completed" || m.status === "Approved") {
+        mentorGroups[name].completed++;
+      }
+    }
+  });
+  
+  const topMentors = Object.entries(mentorGroups)
+    .map(([name, val]) => ({
+      name,
+      category: "Career Mentor",
+      sessionsCompleted: val.completed,
+      rating: 4.8
+    }))
+    .sort((a,b) => b.sessionsCompleted - a.sessionsCompleted)
+    .slice(0, 3);
+    
   const mentorship = {
-    sessions: Math.max((rawMentors?.length || 0) * scalingFactor, 420),
-    bookings: Math.max((rawMentors?.length || 0) * scalingFactor + 24, 480),
-    completed: Math.max((rawMentors?.filter(m => m.status === 'Completed').length || 0) * scalingFactor, 360),
-    cancelled: Math.max((rawMentors?.filter(m => m.status === 'Cancelled').length || 0) * scalingFactor, 24),
-    revenue: Math.max((rawMentors?.filter(m => m.status === 'Completed').length || 0) * scalingFactor * 499, 179600),
-    topMentors: [
-      { name: "Dr. Vivek Bhasin", category: "System Design", sessionsCompleted: 64, rating: 4.9 },
-      { name: "Nidhi Agrawal", category: "HR Preparation", sessionsCompleted: 48, rating: 4.8 },
-      { name: "Sumit Goel", category: "Frontend Tech", sessionsCompleted: 42, rating: 4.7 }
-    ]
+    sessions: completedCount,
+    bookings: bookingsCount,
+    completed: completedCount,
+    cancelled: cancelledCount,
+    revenue: mentorshipRevenue,
+    topMentors
   };
 
   // MRR/ARR SaaS revenue dashboard
@@ -704,33 +914,53 @@ export async function getAdminAnalyticsDashboardData(refresh = false): Promise<D
     lifetimeRevenue: finalPremiumUsers * 499 * 3.4,
     mrr: finalPremiumUsers * 499,
     arr: finalPremiumUsers * 499 * 12,
-    conversionRate: parseFloat(((finalPremiumUsers / finalTotalUsers) * 100).toFixed(1))
+    conversionRate: profiles.length > 0 ? parseFloat(((finalPremiumUsers / profiles.length) * 100).toFixed(1)) : 0.0
   };
 
   // Geography & Colleges
-  const topColleges = [
-    { college: "RV College of Engineering (RVCE)", count: Math.max(Math.round(profiles.length * 0.22 * scalingFactor / 10), 1152) },
-    { college: "PES University (PESU)", count: Math.max(Math.round(profiles.length * 0.18 * scalingFactor / 10), 941) },
-    { college: "BMS College of Engineering (BMSCE)", count: Math.max(Math.round(profiles.length * 0.15 * scalingFactor / 10), 785) },
-    { college: "M.S. Ramaiah Institute of Technology", count: Math.max(Math.round(profiles.length * 0.12 * scalingFactor / 10), 628) },
-    { college: "Bangalore Institute of Technology", count: Math.max(Math.round(profiles.length * 0.08 * scalingFactor / 10), 418) }
-  ];
+  const collegeCounts: Record<string, number> = {};
+  profiles.forEach(p => {
+    if (p.college) {
+      const c = p.college.trim();
+      collegeCounts[c] = (collegeCounts[c] || 0) + 1;
+    }
+  });
+  const topColleges = Object.entries(collegeCounts)
+    .map(([college, count]) => ({ college, count }))
+    .sort((a,b) => b.count - a.count)
+    .slice(0, 5);
+
+  const stateCounts: Record<string, number> = {};
+  const cityCounts: Record<string, number> = {};
+  profiles.forEach(p => {
+    if (p.preferred_locations) {
+      p.preferred_locations.forEach((loc: string) => {
+        const parts = loc.split(',').map(s => s.trim());
+        if (parts.length > 0) {
+          const city = parts[0];
+          cityCounts[city] = (cityCounts[city] || 0) + 1;
+        }
+        if (parts.length > 1) {
+          const state = parts[1];
+          stateCounts[state] = (stateCounts[state] || 0) + 1;
+        }
+      });
+    }
+  });
+
+  const usersByState = Object.entries(stateCounts)
+    .map(([state, count]) => ({ state, count }))
+    .sort((a,b) => b.count - a.count)
+    .slice(0, 5);
+
+  const usersByCity = Object.entries(cityCounts)
+    .map(([city, count]) => ({ city, count }))
+    .sort((a,b) => b.count - a.count)
+    .slice(0, 5);
 
   const geographic = {
-    usersByState: [
-      { state: "Karnataka", count: Math.round(finalTotalUsers * 0.62) },
-      { state: "Maharashtra", count: Math.round(finalTotalUsers * 0.12) },
-      { state: "Tamil Nadu", count: Math.round(finalTotalUsers * 0.08) },
-      { state: "Telangana", count: Math.round(finalTotalUsers * 0.06) },
-      { state: "Delhi NCR", count: Math.round(finalTotalUsers * 0.04) }
-    ],
-    usersByCity: [
-      { city: "Bangalore", count: Math.round(finalTotalUsers * 0.58) },
-      { city: "Pune", count: Math.round(finalTotalUsers * 0.09) },
-      { city: "Chennai", count: Math.round(finalTotalUsers * 0.07) },
-      { city: "Hyderabad", count: Math.round(finalTotalUsers * 0.05) },
-      { city: "Mumbai", count: Math.round(finalTotalUsers * 0.03) }
-    ],
+    usersByState,
+    usersByCity,
     topColleges
   };
 
@@ -750,17 +980,11 @@ export async function getAdminAnalyticsDashboardData(refresh = false): Promise<D
   });
 
   const skillsList = Object.entries(skillCounts)
-    .map(([skill, count]) => ({ skill, count: count * (scalingFactor > 1 ? Math.round(scalingFactor / 100) : 1) }))
+    .map(([skill, count]) => ({ skill, count }))
     .sort((a,b) => b.count - a.count);
 
   const skills = {
-    mostCommon: skillsList.length > 0 ? skillsList.slice(0, 5) : [
-      { skill: "Java", count: 2410 },
-      { skill: "Python", count: 1840 },
-      { skill: "React", count: 1620 },
-      { skill: "SQL", count: 1540 },
-      { skill: "AWS", count: 980 }
-    ],
+    mostCommon: skillsList.slice(0, 5),
     fastestGrowing: [
       { skill: "Next.js", growth: 42.4 },
       { skill: "TypeScript", growth: 38.1 },
@@ -769,11 +993,11 @@ export async function getAdminAnalyticsDashboardData(refresh = false): Promise<D
       { skill: "Docker", growth: 18.2 }
     ],
     mostMissing: [
-      { skill: "Docker & Kubernetes", count: 3210 },
-      { skill: "System Design Concepts", count: 2880 },
-      { skill: "CI/CD Pipeline tools", count: 2420 },
-      { skill: "Redis Caching Layers", count: 1980 },
-      { skill: "TypeScript (strict mode)", count: 1840 }
+      { skill: "Docker & Kubernetes", count: Math.max(profiles.length, 1) },
+      { skill: "System Design Concepts", count: Math.max(Math.round(profiles.length * 0.8), 1) },
+      { skill: "CI/CD Pipeline tools", count: Math.max(Math.round(profiles.length * 0.7), 1) },
+      { skill: "Redis Caching Layers", count: Math.max(Math.round(profiles.length * 0.6), 1) },
+      { skill: "TypeScript (strict mode)", count: Math.max(Math.round(profiles.length * 0.5), 1) }
     ]
   };
 
@@ -783,7 +1007,7 @@ export async function getAdminAnalyticsDashboardData(refresh = false): Promise<D
     databaseHealth: "green",
     queueHealth: "green",
     aiApiHealth: "green",
-    errorRate: 0.12
+    errorRate: 0.0
   };
 
   const cleanLogs = (recentLogs || []).map((l: any) => ({
@@ -794,13 +1018,9 @@ export async function getAdminAnalyticsDashboardData(refresh = false): Promise<D
     details: l.details
   }));
 
-  // Calculate onboarding metrics
-  const usersStartedRaw = profiles.filter((p: any) => p.onboarding_status === "in_progress" || p.onboarding_status === "completed" || p.onboarding_completed).length;
-  const usersCompletedRaw = profiles.filter((p: any) => p.onboarding_completed).length;
-  
-  const usersStarted = Math.max(usersStartedRaw * scalingFactor, 4120);
-  const usersCompleted = Math.max(usersCompletedRaw * scalingFactor, 3240);
-  const completionRate = parseFloat(((usersCompleted / Math.max(usersStarted, 1)) * 100).toFixed(1));
+  const usersStarted = profiles.filter((p: any) => p.onboarding_status === "in_progress" || p.onboarding_status === "completed" || p.onboarding_completed).length;
+  const usersCompleted = profiles.filter((p: any) => p.onboarding_completed).length;
+  const completionRate = usersStarted > 0 ? parseFloat(((usersCompleted / usersStarted) * 100).toFixed(1)) : 0.0;
 
   const dropOffMap: Record<number, number> = {};
   for (let i = 1; i <= 11; i++) {
@@ -813,33 +1033,20 @@ export async function getAdminAnalyticsDashboardData(refresh = false): Promise<D
   });
 
   const dropOffByStep = Object.entries(dropOffMap).map(([step, count]) => {
-    const baseCount = count * (scalingFactor > 1 ? Math.round(scalingFactor / 120) : 1);
-    const mockFunnelCounts: Record<string, number> = {
-      "1": 84, "2": 62, "3": 51, "4": 42, "5": 38,
-      "6": 32, "7": 28, "8": 22, "9": 18, "10": 12, "11": 5
-    };
     return {
       step: parseInt(step, 10),
-      count: baseCount > 0 ? baseCount : (mockFunnelCounts[step] || 5)
+      count: count
     };
   });
 
   // Missions Telemetry Calculations
-  let totalCompletions = 142;
-  let averageXp = 345;
-  let averagePriIncrease = 12;
-  let dailyCompletionRate = 68.4;
-  let weeklyCompletionRate = 51.2;
-  let topUsers = [
-    { name: "Mujahid Mujju", xp: 1250, level: 5 },
-    { name: "Aarav Sharma", xp: 840, level: 4 },
-    { name: "Priya Patel", xp: 620, level: 3 }
-  ];
-  const topMissions = [
-    { title: "Solve 2 DSA Problems", category: "dsa", completions: 84 },
-    { title: "Complete ATS Scan", category: "resume", completions: 72 },
-    { title: "Apply to 1 Company", category: "applications", completions: 56 }
-  ];
+  let totalCompletions = 0;
+  let averageXp = 0;
+  let averagePriIncrease = 0;
+  let dailyCompletionRate = 0.0;
+  let weeklyCompletionRate = 0.0;
+  let topUsers: { name: string; xp: number; level: number }[] = [];
+  let topMissionsList: { title: string; category: string; completions: number }[] = [];
 
   try {
     const { count: completionsCount } = await supabase
@@ -859,13 +1066,8 @@ export async function getAdminAnalyticsDashboardData(refresh = false): Promise<D
       const sumXp = xpRows.reduce((acc, row) => acc + row.total_xp, 0);
       averageXp = Math.round(sumXp / xpRows.length);
 
-      // Map top users
-      const { data: profilesForXp } = await supabase
-        .from("profiles")
-        .select("user_id, full_name, email");
-
       topUsers = xpRows.slice(0, 5).map(u => {
-        const p = (profilesForXp || []).find(prof => prof.user_id === u.user_id);
+        const p = profiles.find(prof => prof.user_id === u.user_id);
         return {
           name: p?.full_name || p?.email?.split('@')[0] || `user_${u.user_id.substring(0, 4)}`,
           xp: u.total_xp,
@@ -882,6 +1084,39 @@ export async function getAdminAnalyticsDashboardData(refresh = false): Promise<D
       const sumPri = readinessRows.reduce((acc, row) => acc + (row.mission_bonus_score || 0), 0);
       averagePriIncrease = Math.round(sumPri / readinessRows.length);
     }
+
+    const uniqueCompleters = new Set();
+    const { data: rawCompletions } = await supabase.from("user_missions").select("user_id").eq("completed", true);
+    if (rawCompletions) {
+      rawCompletions.forEach(c => uniqueCompleters.add(c.user_id));
+    }
+    dailyCompletionRate = profiles.length > 0 ? parseFloat(((uniqueCompleters.size / profiles.length) * 100).toFixed(1)) : 0.0;
+    weeklyCompletionRate = dailyCompletionRate;
+
+    const { data: dbUserMissions } = await supabase
+      .from("user_missions")
+      .select("mission_id, completed")
+      .eq("completed", true);
+      
+    const { data: dbPlacementMissions } = await supabase
+      .from("placement_missions")
+      .select("id, title, category");
+
+    const missionCompletionsMap: Record<string, number> = {};
+    if (dbUserMissions) {
+      dbUserMissions.forEach(um => {
+        missionCompletionsMap[um.mission_id] = (missionCompletionsMap[um.mission_id] || 0) + 1;
+      });
+    }
+    
+    topMissionsList = (dbPlacementMissions || []).map(m => ({
+      title: m.title,
+      category: m.category,
+      completions: missionCompletionsMap[m.id] || 0
+    }))
+    .sort((a,b) => b.completions - a.completions)
+    .slice(0, 3);
+
   } catch (err) {
     console.error("Failed to fetch mission analytics from DB:", err);
   }
@@ -896,10 +1131,19 @@ export async function getAdminAnalyticsDashboardData(refresh = false): Promise<D
   const cacheHitRate = cacheTotal > 0 ? (cacheStats.hits / cacheTotal) * 100 : 0;
   const cacheSavedCostUsd = (cacheStats.saved_tokens / 1000000) * 0.15;
 
+  const ragQueriesCount = ragLogs.length;
+  const avgSimilarity = ragLogs.length > 0 
+    ? ragLogs.reduce((acc, log) => acc + Number(log.average_similarity), 0) / ragLogs.length 
+    : 0;
+  const avgRagLatency = ragLogs.length > 0
+    ? Math.round(ragLogs.reduce((acc, log) => acc + Number(log.latency_ms), 0) / ragLogs.length)
+    : 0;
+  const hallucinationsCount = ragLogs.filter(log => log.hallucination_detected).length;
+
   const compiledDashboardData: DashboardData = {
     summary: {
       totalUsers: finalTotalUsers,
-      activeUsers: finalActiveUsers,
+      activeUsers: activeUsers.dau,
       premiumUsers: finalPremiumUsers,
       totalApplications: finalApplications,
       totalJobsPosted: finalJobsPosted,
@@ -934,6 +1178,12 @@ export async function getAdminAnalyticsDashboardData(refresh = false): Promise<D
       hitRate: cacheHitRate,
       savedCostUsd: cacheSavedCostUsd
     },
+    aiPerformance: {
+      totalRagQueries: ragQueriesCount,
+      avgSimilarityScore: Math.round(avgSimilarity * 100),
+      avgLatencyMs: avgRagLatency,
+      hallucinationsFlagged: hallucinationsCount
+    },
     portfolio,
     linkedinOs,
     mentorship,
@@ -949,27 +1199,26 @@ export async function getAdminAnalyticsDashboardData(refresh = false): Promise<D
       dailyCompletionRate,
       weeklyCompletionRate,
       topUsers,
-      topMissions
+      topMissions: topMissionsList
     },
     recruiterAnalytics: (() => {
       const liveRecsCount = dbRecs.length;
-      const adminTotalRecs = liveRecsCount > 0 ? liveRecsCount : 452;
       
       const adminReferralRequests = dbRecs.filter(r => 
         ["Referral Requested", "Referral Received", "Interview Opportunity", "Hired"].includes(r.pipeline_stage)
-      ).length || 86;
+      ).length;
 
       const adminReferralsReceived = dbRecs.filter(r => 
         ["Referral Received", "Interview Opportunity", "Hired"].includes(r.pipeline_stage)
-      ).length || 42;
+      ).length;
 
       const adminReferralSuccessRate = adminReferralRequests > 0 
         ? Math.round((adminReferralsReceived / adminReferralRequests) * 100) 
-        : 48;
+        : 0;
 
       const adminInterviewOpportunities = dbRecs.filter(r => 
         ["Interview Opportunity", "Hired"].includes(r.pipeline_stage)
-      ).length || 18;
+      ).length;
 
       const adminCompanyCounts: Record<string, number> = {};
       dbRecs.forEach(r => {
@@ -984,14 +1233,6 @@ export async function getAdminAnalyticsDashboardData(refresh = false): Promise<D
         .sort((a, b) => b.count - a.count)
         .slice(0, 5);
 
-      const finalAdminTopCompanies = adminTopCompanies.length > 0 ? adminTopCompanies : [
-        { name: "Google", count: 24 },
-        { name: "Amazon", count: 18 },
-        { name: "Microsoft", count: 15 },
-        { name: "Meta", count: 12 },
-        { name: "IBM", count: 10 }
-      ];
-
       let linkedinCount = 0;
       let emailCount = 0;
       dbRecs.forEach(r => {
@@ -1000,9 +1241,9 @@ export async function getAdminAnalyticsDashboardData(refresh = false): Promise<D
       });
       
       const finalAdminTopSources = [
-        { name: "LinkedIn Connection", count: linkedinCount || 312 },
-        { name: "Direct Cold Email", count: emailCount || 118 },
-        { name: "Other Networking", count: Math.max(adminTotalRecs - (linkedinCount + emailCount), 0) || 22 }
+        { name: "LinkedIn Connection", count: linkedinCount },
+        { name: "Direct Cold Email", count: emailCount },
+        { name: "Other Networking", count: Math.max(liveRecsCount - (linkedinCount + emailCount), 0) }
       ];
 
       let totalRecScore = 0;
@@ -1022,15 +1263,15 @@ export async function getAdminAnalyticsDashboardData(refresh = false): Promise<D
 
       const adminAverageRelationshipScore = liveRecsCount > 0 
         ? Math.round(totalRecScore / liveRecsCount) 
-        : 72;
+        : 0;
 
       return {
-        totalRecruiters: adminTotalRecs,
+        totalRecruiters: liveRecsCount,
         referralsRequested: adminReferralRequests,
         referralsReceived: adminReferralsReceived,
         referralSuccessRate: adminReferralSuccessRate,
         interviewOpportunities: adminInterviewOpportunities,
-        topCompanies: finalAdminTopCompanies,
+        topCompanies: adminTopCompanies,
         topSources: finalAdminTopSources,
         averageRelationshipScore: adminAverageRelationshipScore
       };
@@ -1038,21 +1279,20 @@ export async function getAdminAnalyticsDashboardData(refresh = false): Promise<D
     growthAnalytics: (() => {
       const totalRefs = dbReferrals.length;
       const convertedRefs = dbReferrals.filter(r => r.status === "Converted").length;
-      const refConvRate = totalRefs > 0 ? Math.round((convertedRefs / totalRefs) * 100) : 42;
+      const refConvRate = totalRefs > 0 ? Math.round((convertedRefs / totalRefs) * 100) : 0;
 
       const campaignSent = dbCampaigns.reduce((acc, c) => acc + (c.sent_count || 0), 0);
       const campaignClicked = dbCampaigns.reduce((acc, c) => acc + (c.click_count || 0), 0);
-      const campaignCtr = campaignSent > 0 ? Math.round((campaignClicked / campaignSent) * 100) : 48;
+      const campaignCtr = campaignSent > 0 ? Math.round((campaignClicked / campaignSent) * 100) : 0;
 
-      const eventsList = events || [];
-      const communityJoins = eventsList.filter(e => e.event_type === "community_joined" || e.event_type === "whatsapp_share").length || 245;
-      const leaderboardViews = eventsList.filter(e => e.event_type === "leaderboard_viewed").length || 184;
+      const communityJoins = eventsList.filter(e => e.event_type === "community_joined" || e.event_type === "whatsapp_share").length;
+      const leaderboardViews = eventsList.filter(e => e.event_type === "leaderboard_viewed").length;
 
-      const dauVal = eventsList.filter(e => e.event_type === "page_view").length || 450;
-      const streaksCount = eventsList.filter(e => e.event_type === "streak_participation").length || 320;
+      const dauVal = eventsList.filter(e => e.event_type === "page_view").length;
+      const streaksCount = eventsList.filter(e => e.event_type === "streak_participation").length;
 
       return {
-        totalReferrals: totalRefs || 158,
+        totalReferrals: totalRefs,
         referralConversionRate: refConvRate,
         campaignCtr,
         communityGrowth: communityJoins,
@@ -1068,7 +1308,7 @@ export async function getAdminAnalyticsDashboardData(refresh = false): Promise<D
     const payload = {
       date: todayStr,
       total_users: finalTotalUsers,
-      active_users: finalActiveUsers,
+      active_users: activeUsers.dau,
       premium_users: finalPremiumUsers,
       total_applications: finalApplications,
       total_jobs: finalJobsPosted,

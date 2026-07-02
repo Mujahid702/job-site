@@ -1,4 +1,4 @@
-import { AIRequestOptions, AIResponse } from './types';
+import { AIRequestOptions, AIResponse, AIProvider } from './types';
 import { getProvider } from './providers';
 import { logUsage, estimateTokens } from './costTracker';
 import { getCache, setCache, incrementCacheStats } from '../redis';
@@ -17,11 +17,11 @@ const CACHEABLE_TASKS: Record<string, string> = {
  */
 export async function generateResponse(options: AIRequestOptions): Promise<AIResponse> {
   const startTime = Date.now();
-  const provider = options.provider || 'gemini';
+  const provider: AIProvider = options.provider || 'gemini';
   const taskType = options.taskType || 'default';
   
   // Resolve model name for logging if not specified
-  const model = options.model || (provider === 'gemini' ? 'gemini-3.5-flash' : 'default');
+  const model = options.model || (provider === 'gemini' ? 'gemini-1.5-flash' : 'default');
 
   const cachePrefix = CACHEABLE_TASKS[taskType];
   let cacheKey = '';
@@ -79,12 +79,43 @@ export async function generateResponse(options: AIRequestOptions): Promise<AIRes
 
   try {
     const adapter = getProvider(provider);
-    const result = await adapter.generate({
+    let result = await adapter.generate({
       ...options,
       provider,
       model,
       taskType,
     });
+
+    // Failover/redundancy fallback chain if the primary model fails (e.g. due to Gemini spikes/demands)
+    if (!result.success) {
+      console.warn(`[AI Router] Primary provider "${provider}" failed with error: ${result.error || 'Unknown error'}. Initiating failover fallback chain...`);
+      
+      const fallbackProviders = (['groq', 'openrouter', 'gemini'] as AIProvider[]).filter(p => p !== provider);
+      for (const fallbackProvider of fallbackProviders) {
+        console.warn(`[AI Router] Attempting failover to fallback provider: "${fallbackProvider}"...`);
+        try {
+          const fbAdapter = getProvider(fallbackProvider);
+          // Strip primary provider's API key when falling back to a different provider
+          // so the fallback adapter defaults to its own environment variable key.
+          const { apiKey: primaryApiKey, ...fbOptions } = options;
+          const fbResult = await fbAdapter.generate({
+            ...fbOptions,
+            provider: fallbackProvider,
+            model: undefined, // Let the fallback adapter select its default models
+          });
+
+          if (fbResult.success) {
+            console.warn(`[AI Router] Failover succeeded using fallback provider: "${fallbackProvider}"!`);
+            result = fbResult;
+            break;
+          } else {
+            console.warn(`[AI Router] Fallback provider "${fallbackProvider}" also failed: ${fbResult.error}`);
+          }
+        } catch (fbErr: any) {
+          console.error(`[AI Router] Fallback provider "${fallbackProvider}" threw error:`, fbErr);
+        }
+      }
+    }
 
     const responseTimeMs = Date.now() - startTime;
 

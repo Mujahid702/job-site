@@ -2,7 +2,7 @@ import { AIRequestOptions, AIResponse, AIProviderAdapter } from './types';
 import { estimateTokens } from './costTracker';
 
 export class GeminiProviderAdapter implements AIProviderAdapter {
-  private fallbackModels = ['gemini-3.5-flash', 'gemini-2.5-flash'];
+  private fallbackModels = ['gemini-1.5-flash', 'gemini-2.0-flash'];
 
   async generate(options: AIRequestOptions): Promise<AIResponse> {
     const apiKey = options.apiKey || process.env.GEMINI_API_KEY;
@@ -16,11 +16,16 @@ export class GeminiProviderAdapter implements AIProviderAdapter {
       };
     }
 
+    // Map any legacy/fictitious model names to actual API models
+    let requestedModel = options.model;
+    if (requestedModel === 'gemini-3.5-flash') requestedModel = 'gemini-1.5-flash';
+    if (requestedModel === 'gemini-3.5-pro') requestedModel = 'gemini-1.5-pro';
+
     // Determine target models list (prioritize requested model)
-    const modelsToTry = options.model ? [options.model, ...this.fallbackModels.filter(m => m !== options.model)] : this.fallbackModels;
+    const modelsToTry = requestedModel ? [requestedModel, ...this.fallbackModels.filter(m => m !== requestedModel)] : this.fallbackModels;
 
     let lastErrorMsg = 'Unknown error';
-    let lastModel = modelsToTry[0] || 'gemini-3.5-flash';
+    let lastModel = modelsToTry[0] || 'gemini-1.5-flash';
 
     for (const model of modelsToTry) {
       lastModel = model;

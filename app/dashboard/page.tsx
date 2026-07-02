@@ -2,6 +2,7 @@
 
 import { useSavedJobs } from "@/lib/context/SavedJobsContext";
 import ResumeOS from "@/components/ResumeOS";
+import AssessmentOS from "@/components/AssessmentOS";
 import PortfolioOS from "@/components/PortfolioOS";
 import LinkedInOS from "@/components/LinkedInOS";
 import CoverLetterOS from "@/components/CoverLetterOS";
@@ -37,7 +38,8 @@ import {
   Users,
   Trophy,
   BookOpen,
-  Send
+  Send,
+  Plus
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -85,50 +87,15 @@ export default function DashboardPage() {
   const [user, setUser] = useState<User | null>(null);
   const supabase = createClient();
 
-  // Parse URL tab parameter helper for lazy initializers
-  const getInitialActiveTab = () => {
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      const tabParam = params.get("tab");
-      if (tabParam) {
-        if (["resume", "enhancer", "jd-match", "builder"].includes(tabParam)) {
-          return "resume-os";
-        }
-        if (tabParam === "projects") {
-          return "projects-os";
-        }
-        if (tabParam === "mentorship") {
-          return "mentorship-os";
-        }
-        return tabParam;
-      }
-    }
-    return "dashboard";
-  };
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
-  const getInitialResumeSubTab = () => {
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      const tabParam = params.get("tab");
-      if (tabParam) {
-        if (tabParam === "resume") return "ats";
-        if (tabParam === "enhancer") return "enhancer";
-        if (tabParam === "jd-match") return "jd-match";
-        if (tabParam === "builder") return "builder";
-      }
-    }
-    return "overview";
-  };
-
-  const [activeTab, setActiveTab] = useState<string>(getInitialActiveTab);
+  const [activeTab, setActiveTab] = useState<string>("dashboard");
 
   // Premium Membership State (Simulated)
-  const [isPremium, setIsPremium] = useState<boolean>(() => {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem("member_is_premium") === "true";
-    }
-    return false;
-  });
+  const [isPremium, setIsPremium] = useState<boolean>(false);
   const [showCheckoutModal, setShowCheckoutModal] = useState<boolean>(false);
 
   // Profile Customization & Skill states
@@ -136,22 +103,48 @@ export default function DashboardPage() {
   const [techStack, setTechStack] = useState<string>("React, Node.js, TypeScript");
   
   // Streak counter (Simulated & Persisted)
-  const [streakCount, setStreakCount] = useState<number>(() => {
-    if (typeof window !== "undefined") {
-      return parseInt(localStorage.getItem("member_learning_streak") || "3");
-    }
-    return 3;
-  });
-  const [streakClaimed, setStreakClaimed] = useState<boolean>(() => {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem("member_claimed_today") === "true";
-    }
-    return false;
-  });
+  const [streakCount, setStreakCount] = useState<number>(3);
+  const [streakClaimed, setStreakClaimed] = useState<boolean>(false);
 
   // Resume Analyzer States
   const [atsScore, setAtsScore] = useState<number | null>(null);
-  const [resumeSubTab, setResumeSubTab] = useState<string>(getInitialResumeSubTab);
+  const [resumeSubTab, setResumeSubTab] = useState<string>("overview");
+
+  // Command Center statistics states
+  const [profileName, setProfileName] = useState<string>("Mujahid");
+  const [totalXp, setTotalXp] = useState<number>(885);
+  const [currentLevel, setCurrentLevel] = useState<number>(4);
+  const [completedMissions, setCompletedMissions] = useState<number>(6);
+  const [totalBadges, setTotalBadges] = useState<number>(4);
+
+  // Load client-only preferences on mount to prevent SSR hydration mismatches
+  useEffect(() => {
+    // 1. Resolve active tab from URL query params
+    const params = new URLSearchParams(window.location.search);
+    const tabParam = params.get("tab");
+    if (tabParam) {
+      if (["resume", "enhancer", "jd-match", "builder"].includes(tabParam)) {
+        setActiveTab("resume-os");
+        if (tabParam === "resume") setResumeSubTab("ats");
+        if (tabParam === "enhancer") setResumeSubTab("enhancer");
+        if (tabParam === "jd-match") setResumeSubTab("jd-match");
+        if (tabParam === "builder") setResumeSubTab("builder");
+      } else if (tabParam === "projects") {
+        setActiveTab("projects-os");
+      } else if (tabParam === "mentorship") {
+        setActiveTab("mentorship-os");
+      } else {
+        setActiveTab(tabParam);
+      }
+    }
+
+    // 2. Premium status
+    setIsPremium(localStorage.getItem("member_is_premium") === "true");
+
+    // 3. Streak info
+    setStreakCount(parseInt(localStorage.getItem("member_learning_streak") || "3"));
+    setStreakClaimed(localStorage.getItem("member_claimed_today") === "true");
+  }, []);
 
   // Checklists (Interactive items)
   const [completedGoals, setCompletedGoals] = useState<Record<string, boolean>>({
@@ -225,11 +218,43 @@ export default function DashboardPage() {
           .select("*")
           .eq("user_id", user.id)
           .maybeSingle();
-        if (!profile || !profile.onboarding_completed || (profile.profile_completion !== undefined && profile.profile_completion < 50)) {
+        if (!profile || !profile.onboarding_completed) {
           router.push("/onboarding");
         } else {
+          if (profile.full_name) setProfileName(profile.full_name);
           if (profile.target_role) setTargetRole(profile.target_role);
           if (profile.skills) setTechStack(profile.skills.join(", "));
+          
+          // Fetch gamified stats
+          try {
+            const { data: xpData } = await supabase
+              .from("user_xp")
+              .select("total_xp, current_level, streak_days")
+              .eq("user_id", user.id)
+              .maybeSingle();
+            if (xpData) {
+              setTotalXp(xpData.total_xp || 885);
+              setCurrentLevel(xpData.current_level || 4);
+              if (xpData.streak_days) setStreakCount(xpData.streak_days);
+            }
+
+            // Get completed missions count
+            const { count: mCount } = await supabase
+              .from("user_missions")
+              .select("id", { count: "exact", head: true })
+              .eq("user_id", user.id)
+              .eq("completed", true);
+            if (mCount !== null) {
+              setCompletedMissions(mCount);
+            }
+
+            // Get badges count
+            if (profile.badges) {
+              setTotalBadges(profile.badges.length);
+            }
+          } catch (e) {
+            console.error("Error fetching stats: ", e);
+          }
           
           // Load onboarding action tasks
           const raw = profile.raw_profile_data || {};
@@ -396,13 +421,34 @@ export default function DashboardPage() {
 
 
 
-  // Toggle premium membership
-  const togglePremiumPlan = () => {
-    const newState = !isPremium;
-    setIsPremium(newState);
+  const updatePremiumStatus = async (status: boolean) => {
+    setIsPremium(status);
     if (typeof window !== "undefined") {
-      localStorage.setItem("member_is_premium", newState.toString());
+      localStorage.setItem("member_is_premium", status.toString());
     }
+    if (user) {
+      try {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("raw_profile_data")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        
+        const rawData = profile?.raw_profile_data || {};
+        const updatedPayload = {
+          ...(typeof rawData === "object" ? rawData : {}),
+          isPremium: status
+        };
+        await upsertUserProfile(user.id, updatedPayload);
+      } catch (err) {
+        console.error("Failed to sync premium status to database:", err);
+      }
+    }
+  };
+
+  // Toggle premium membership
+  const togglePremiumPlan = async () => {
+    await updatePremiumStatus(!isPremium);
     setShowCheckoutModal(false);
   };
 
@@ -419,28 +465,38 @@ export default function DashboardPage() {
   const menuItems = [
     { id: "dashboard", label: "My Dashboard", icon: <LayoutDashboard className="w-5 h-5" /> },
     { id: "placement-readiness", label: "Readiness Index (PRI)", icon: <Award className="w-5 h-5 text-emerald-600" /> },
-    { id: "placement-missions", label: "Missions Dashboard", icon: <Trophy className="w-5 h-5 text-amber-500" /> },
-    { id: "placement-copilot", label: "AI Placement Copilot", icon: <Bot className="w-5 h-5 text-indigo-500" /> },
-    { id: "recommended", label: "Job Recommendations", icon: <Sparkles className="w-5 h-5 text-indigo-500 animate-pulse" /> },
-    { id: "actions", label: "Action Center", icon: <CalendarIcon className="w-5 h-5 text-rose-500" /> },
     { id: "resume-os", label: "Resume OS", icon: <FileCheck className="w-5 h-5 text-indigo-500" /> },
+    { id: "assessment-os", label: "Assessment OS", icon: <BookOpen className="w-5 h-5 text-indigo-500" /> },
+    { id: "projects-os", label: "Project Advisor OS", icon: <Sparkles className="w-5 h-5 text-amber-500" /> },
+    { id: "recommended", label: "Job Recommendations", icon: <Sparkles className="w-5 h-5 text-indigo-500 animate-pulse" /> },
+    { id: "roadmap", label: "Career Roadmaps", icon: <Compass className="w-5 h-5 text-emerald-500" /> },
+    { id: "company", label: "Company Preparation", icon: <Briefcase className="w-5 h-5 text-purple-500" /> },
+    { id: "placement-tracker", label: "Placement Tracker OS", icon: <Layers className="w-5 h-5 text-teal-500" /> },
+    { id: "recruiters", label: "Recruiter CRM", icon: <Users className="w-5 h-5 text-indigo-500" /> },
+    { id: "placement-missions", label: "Missions Dashboard", icon: <Trophy className="w-5 h-5 text-amber-500" /> },
+    { id: "actions", label: "Action Center", icon: <CalendarIcon className="w-5 h-5 text-rose-500" /> },
     { id: "portfolio-os", label: "Portfolio OS", icon: <Globe className="w-5 h-5 text-indigo-500" /> },
     { id: "linkedin-os", label: "LinkedIn OS", icon: <TrendingUp className="w-5 h-5 text-blue-500" /> },
     { id: "cover-letter-os", label: "Cover Letter OS", icon: <FileText className="w-5 h-5 text-indigo-500" /> },
-    { id: "recruiters", label: "Recruiter CRM", icon: <Users className="w-5 h-5 text-indigo-500" /> },
-    { id: "placement-tracker", label: "Placement Tracker OS", icon: <Layers className="w-5 h-5 text-teal-500" /> },
-    { id: "roadmap", label: "Career Roadmaps", icon: <Compass className="w-5 h-5 text-emerald-500" /> },
-    { id: "projects-os", label: "Project Advisor OS", icon: <Sparkles className="w-5 h-5 text-amber-500" /> },
-    { id: "company", label: "Company Preparation", icon: <Briefcase className="w-5 h-5 text-purple-500" /> },
+    { id: "placement-copilot", label: "AI Placement Copilot", icon: <Bot className="w-5 h-5 text-indigo-500" /> },
     { id: "interview-prep", label: "AI Interview Prep", icon: <MessageSquare className="w-5 h-5 text-indigo-500" /> },
     { id: "mentorship-os", label: "Mentorship OS", icon: <CalendarIcon className="w-5 h-5 text-pink-500" /> },
     { id: "community-hub", label: "Community Hub OS", icon: <Users className="w-5 h-5 text-indigo-500" /> },
-    { id: "leaderboard", label: "Leaderboard", icon: <Trophy className="w-5 h-5 text-amber-500" /> },
-    { id: "digest", label: "Daily Digest", icon: <BookOpen className="w-5 h-5 text-indigo-500" /> },
     { id: "membership", label: "Premium Plans", icon: <Award className="w-5 h-5 text-rose-500" /> },
     { id: "whatsapp-admin", label: "WhatsApp Campaigns", icon: <Send className="w-5 h-5 text-slate-500" />, adminOnly: true },
     { id: "admin", label: "Admin Console", icon: <ShieldCheck className="w-5 h-5 text-slate-500" />, adminOnly: true }
   ];
+
+  if (!mounted) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center font-sans">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+          <p className="text-slate-405 font-black text-[10px] uppercase tracking-widest animate-pulse">Loading Placement OS...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col lg:flex-row pb-20 font-sans">
@@ -514,7 +570,6 @@ export default function DashboardPage() {
       {/* Main Dashboard Space */}
       <main className="flex-grow p-6 lg:p-12 max-w-7xl mx-auto overflow-hidden">
         <AnimatePresence mode="wait">
-          
           {/* TAB 1: WORKSPACE DASHBOARD */}
           {activeTab === "dashboard" && (
             <motion.div
@@ -522,193 +577,419 @@ export default function DashboardPage() {
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -15 }}
-              className="space-y-12"
+              className="space-y-8"
             >
-              {/* Profile Header card */}
-              <div className="bg-white p-8 md:p-12 rounded-[2.5rem] border border-slate-200/60 shadow-xl shadow-slate-100/50 flex flex-col md:flex-row md:items-center justify-between gap-10">
-                <div className="space-y-4">
-                  <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-[10px] font-black uppercase tracking-widest">
-                    <Sparkles className="w-3.5 h-3.5 fill-indigo-100" />
-                    Career Workspace
-                  </div>
-                  <h1 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tighter leading-tight font-display">
-                    Welcome Back, <span className="text-accent">{user?.user_metadata?.full_name || user?.email?.split('@')[0] || "Graduate"}!</span>
-                  </h1>
-                  <p className="text-slate-500 font-medium max-w-xl text-base leading-relaxed">
-                    Target Role: <strong className="text-slate-800">{targetRole}</strong> • Tech Stack: <strong className="text-slate-800">{techStack}</strong>
-                  </p>
-                </div>
-
-                {/* Streak Panel */}
-                <div className="flex items-center gap-4 p-6 bg-amber-50/50 rounded-3xl border border-amber-100 relative overflow-hidden shrink-0">
-                  <div className="text-4xl">🔥</div>
+              {/* SECTION 1: HERO SECTION (Career Command Center HUD - Dark Slate Theme) */}
+              <div className="bg-slate-900 p-8 md:p-10 rounded-[2.5rem] text-white space-y-6 shadow-xl relative overflow-hidden border border-slate-800">
+                {/* Soft top-right blur circle and left glow */}
+                <div className="absolute top-0 right-0 w-80 h-80 bg-indigo-500/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none"></div>
+                <div className="absolute top-1/2 left-10 w-72 h-72 bg-purple-505/5 rounded-full blur-3xl pointer-events-none"></div>
+                
+                <div className="flex justify-between items-start flex-wrap gap-4 relative z-10">
                   <div>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Learning Streak</p>
-                    <p className="text-lg font-black text-slate-900">{streakCount} Days Active</p>
+                    <div className="flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full bg-indigo-500 animate-ping"></span>
+                      <h2 className="text-[10px] font-black uppercase tracking-widest text-indigo-400 font-mono">CAREER OS // COMMAND DECK</h2>
+                    </div>
+                    <h1 className="text-3xl md:text-5xl font-black tracking-tight mt-2 bg-gradient-to-r from-white via-slate-100 to-slate-200 bg-clip-text text-transparent font-display">
+                      Welcome Back, {user?.user_metadata?.full_name || user?.email?.split('@')[0]}
+                    </h1>
+                  </div>
+                  <div className="flex gap-2">
                     <button
                       onClick={handleClaimStreak}
                       disabled={streakClaimed}
                       className={cn(
-                        "mt-1.5 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all",
-                        streakClaimed 
-                          ? "bg-slate-200 text-slate-400 cursor-not-allowed"
-                          : "bg-amber-500 text-white hover:bg-amber-600 shadow-md shadow-amber-200"
+                        "px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all duration-300 font-mono",
+                        streakClaimed
+                          ? "bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed"
+                          : "bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 hover:from-amber-600 hover:to-yellow-600 shadow-md shadow-amber-250 cursor-pointer hover:scale-105 active:scale-95"
                       )}
                     >
                       {streakClaimed ? "Streak Claimed ✓" : "Claim Streak"}
                     </button>
                   </div>
                 </div>
-              </div>
 
-              {/* Stats Widgets */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                     {/* Visual circular progress index */}
-                 <Link 
-                   href="/dashboard/placement-readiness" 
-                   className="bg-white p-8 rounded-[2.5rem] border border-slate-200/60 shadow-sm flex items-center justify-between gap-6 hover:shadow-md hover:border-emerald-300 transition-all cursor-pointer w-full"
-                 >
-                   <div className="space-y-2 text-left">
-                     <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Placement Readiness Index</p>
-                     <p className="text-xs text-slate-400 font-bold max-w-[150px]">Mark roadmap items and goals as complete to increase score.</p>
-                   </div>
-                   <div className="relative w-24 h-24 shrink-0 flex items-center justify-center">
-                     <svg className="w-full h-full transform -rotate-90">
-                       <circle cx="48" cy="48" r="38" className="text-slate-100" strokeWidth="8" stroke="currentColor" fill="transparent" />
-                       <circle cx="48" cy="48" r="38" className="text-emerald-600" strokeWidth="8" stroke="currentColor" fill="transparent"
-                         strokeDasharray={2 * Math.PI * 38}
-                         strokeDashoffset={2 * Math.PI * 38 * (1 - liveReadinessScore / 100)} 
-                         strokeLinecap="round"
-                       />
-                     </svg>
-                     <span className="absolute text-xl font-black text-slate-900">{liveReadinessScore}%</span>
-                   </div>
-                 </Link>
-
-                <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200/60 shadow-sm flex items-center justify-between">
-                  <div className="space-y-1">
-                    <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Saved Opportunities</p>
-                    <p className="text-4xl font-black text-slate-900 font-display">{savedJobs.length} Jobs</p>
-                    <Link href="/saved" className="inline-flex items-center gap-1 text-[10px] font-black text-accent uppercase tracking-widest mt-2 hover:underline">
-                      View Saved <ChevronRight className="w-3.5 h-3.5" />
-                    </Link>
+                {/* Level Up progress indicators */}
+                <div className="relative z-10 bg-white/5 border border-white/10 p-5 rounded-3xl space-y-3 backdrop-blur-md">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="font-mono text-slate-400 font-bold tracking-wider">LEVEL PROGRESSION</span>
+                    <span className="font-mono text-indigo-400 font-black">Lvl {currentLevel} &rarr; Lvl {currentLevel + 1}</span>
                   </div>
-                  <div className="w-14 h-14 bg-red-50 text-red-500 rounded-2xl flex items-center justify-center shrink-0">
-                    <Heart className="w-6 h-6" />
+                  <div className="w-full bg-slate-950 h-3.5 rounded-full overflow-hidden border border-white/10 p-[2px]">
+                    <div 
+                      className="h-full rounded-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 shadow-[0_0_8px_rgba(139,92,246,0.5)] transition-all duration-1000"
+                      style={{ width: `${Math.min((totalXp % 1000) / 10, 100)}%` }}
+                    ></div>
+                  </div>
+                  <div className="flex justify-between items-center text-[10px] text-slate-400 font-semibold font-mono">
+                    <span>{totalXp % 1000} / 1000 XP</span>
+                    <span className="text-indigo-400">{1000 - (totalXp % 1000)} XP to Next Level</span>
                   </div>
                 </div>
 
-                {/* Gamified Placement level */}
-                <div className="bg-slate-900 p-8 rounded-[2.5rem] text-white flex items-center justify-between">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-6 pt-6 border-t border-white/10 relative z-10 font-mono">
                   <div className="space-y-1">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mentorship Status</p>
-                    <p className="text-xl font-black text-slate-100">
-                      {bookings.length > 0 ? `${bookings.length} Session Booked` : "No sessions booked"}
-                    </p>
-                    <button 
-                      onClick={() => handleTabTransition("mentorship")} 
-                      className="mt-2 text-[10px] font-black text-blue-400 uppercase tracking-widest hover:underline flex items-center gap-1 text-left"
-                    >
-                      Book 1-on-1 Mentorship <ChevronRight className="w-3.5 h-3.5" />
-                    </button>
+                    <span className="text-[9px] font-black uppercase text-slate-450 tracking-wider">Target Role</span>
+                    <strong className="text-sm font-black text-slate-200 block truncate">{targetRole}</strong>
                   </div>
-                  <div className="w-14 h-14 bg-white/10 text-amber-400 rounded-2xl flex items-center justify-center shrink-0">
-                    <Award className="w-6 h-6" />
+                  <div className="space-y-1">
+                    <span className="text-[9px] font-black uppercase text-slate-455 tracking-wider">Placement Rank</span>
+                    <strong className="text-sm font-black text-slate-200 block">
+                      {liveReadinessScore < 25 ? "Beginner" : liveReadinessScore < 45 ? "Apprentice" : liveReadinessScore < 60 ? "Architect" : liveReadinessScore < 75 ? "Expert" : "Ready"}
+                    </strong>
                   </div>
+                  <div className="space-y-1">
+                    <span className="text-[9px] font-black uppercase text-slate-455 tracking-wider">Readiness Index</span>
+                    <strong className="text-sm font-black text-emerald-400 block">{liveReadinessScore}% PRI</strong>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-[9px] font-black uppercase text-slate-455 tracking-wider">Total XP</span>
+                    <strong className="text-sm font-black text-slate-200 block">{totalXp} XP</strong>
+                  </div>
+                  <div className="space-y-1 col-span-2 md:col-span-1">
+                    <span className="text-[9px] font-black uppercase text-slate-455 tracking-wider">Streak Count</span>
+                    <strong className="text-sm font-black text-amber-500 block">🔥 {streakCount} Days</strong>
+                  </div>
+                </div>
+
+                {/* Dynamic motivational quote banner */}
+                <div className="p-4 bg-white/5 border border-white/10 rounded-2xl text-xs font-bold text-slate-350 relative z-10 flex items-center gap-3 backdrop-blur-md">
+                  <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span className="leading-relaxed">
+                    {(() => {
+                      const motivationalMessages = [
+                        `You are scoring higher than 82% of other candidates targeting ${targetRole} positions.`,
+                        "Complete the daily DSA drill to boost your readiness metrics and unlock badge milestones.",
+                        "Maintain your streak consistency rate to multiply mission rewards and level bonuses."
+                      ];
+                      return motivationalMessages[liveReadinessScore % motivationalMessages.length];
+                    })()}
+                  </span>
                 </div>
               </div>
 
-              {/* Checklist & Profile Customizer Section */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+              {/* Main Command Center Grid */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
                 
-                {/* Profile Customizer */}
-                <div className="lg:col-span-4 bg-white p-8 rounded-[2.5rem] border border-slate-200/60 shadow-sm space-y-6">
-                  <h3 className="text-xl font-black text-slate-900 font-display">Target Path Settings</h3>
+                {/* LEFT COLUMN: Actions & Journey */}
+                <div className="lg:col-span-8 space-y-8">
                   
-                  <div className="space-y-4">
-                    <div>
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Target Career Role</label>
-                      <select 
-                        value={targetRole}
-                        onChange={(e) => handleUpdateTargetSettings(e.target.value, techStack)}
-                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      >
-                        {TARGET_ROLES.map(role => (
-                          <option key={role} value={role}>{role}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Core Tech Stack</label>
-                      <input 
-                        type="text" 
-                        value={techStack} 
-                        onChange={(e) => handleUpdateTargetSettings(targetRole, e.target.value)}
-                        placeholder="React, Node.js, Python"
-                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="p-4 bg-blue-50/50 rounded-2xl border border-blue-100/50 space-y-2">
-                     <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Streaks & Badges</p>
-                     <div className="flex flex-wrap gap-2 pt-1">
-                        <span className="px-2.5 py-1 bg-white border border-blue-100 text-blue-600 text-[10px] font-black uppercase tracking-widest rounded-lg">🔥 Placer Streak</span>
-                        <span className="px-2.5 py-1 bg-white border border-blue-100 text-blue-600 text-[10px] font-black uppercase tracking-widest rounded-lg">🏅 ATS Architect</span>
-                        <span className="px-2.5 py-1 bg-white border border-blue-100 text-blue-600 text-[10px] font-black uppercase tracking-widest rounded-lg">⚡ Ready-to-Hire</span>
-                     </div>
-                  </div>
-                </div>
-
-                {/* Daily Goals */}
-                <div className="lg:col-span-8 bg-white p-8 rounded-[2.5rem] border border-slate-200/60 shadow-sm space-y-6">
-                  <h3 className="text-xl font-black text-slate-900 font-display">Daily Career Goals</h3>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {(onboardingTasks.length > 0 
-                      ? onboardingTasks.map((t, idx) => ({ id: `goal-${idx}`, text: t }))
-                      : [
-                          { id: "goal-1", text: "Create / scan ATS-friendly Resume" },
-                          { id: "goal-2", text: "Practice 1 DSA problem round" },
-                          { id: "goal-3", text: "Complete 1 Section in Roadmap" },
-                          { id: "goal-4", text: "Review Deloitte/IBM prep questions" }
-                        ]
-                    ).map(goal => (
-                      <div 
-                        key={goal.id} 
-                        onClick={() => toggleGoal(goal.id)}
-                        className={cn(
-                          "p-4 border rounded-2xl cursor-pointer flex items-center justify-between transition-all select-none",
-                          completedGoals[goal.id] 
-                            ? "bg-indigo-50/50 border-indigo-200 text-indigo-900 font-bold"
-                            : "bg-slate-50 border-slate-200 hover:border-slate-300 text-slate-600"
-                        )}
-                      >
-                        <span className="text-sm font-semibold">{goal.text}</span>
-                        {completedGoals[goal.id] ? (
-                          <CheckCircle2 className="w-5 h-5 text-indigo-600 shrink-0" />
-                        ) : (
-                          <div className="w-5 h-5 rounded-full border-2 border-slate-300 shrink-0" />
-                        )}
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="bg-indigo-900 p-6 rounded-[2rem] text-white flex flex-col md:flex-row md:items-center justify-between gap-6 mt-4">
+                  {/* SECTION 2: TODAY'S FOCUS (Curated Interactive Cards) */}
+                  <div className="bg-white p-6 md:p-8 rounded-[2.5rem] border border-slate-200 shadow-sm space-y-6">
                     <div className="space-y-1">
-                      <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest">AI Placement Mentor</p>
-                      <h4 className="text-lg font-black font-display">Need specialized assistance with your resume?</h4>
+                      <h3 className="text-lg font-black text-slate-900 font-display">🎯 Today's Placement Focus</h3>
+                      <p className="text-slate-405 text-xs font-bold font-semibold">Perform high-priority sprints to gain points and build momentum.</p>
                     </div>
-                    <button 
-                      onClick={() => handleTabTransition("resume")}
-                      className="px-6 py-3 bg-white text-indigo-900 text-xs font-black uppercase tracking-widest rounded-xl hover:bg-slate-50 transition-all shrink-0 cursor-pointer shadow-lg"
-                    >
-                      Run ATS Analyzer
-                    </button>
+
+                    <div className="grid grid-cols-1 gap-4">
+                      {/* Item 1: ATS */}
+                      <div className="group p-5 bg-gradient-to-br from-slate-50 to-slate-100/50 hover:from-white hover:to-white rounded-3xl border border-slate-200/60 hover:border-indigo-350 hover:shadow-md transition-all duration-300 flex items-center justify-between flex-wrap gap-4">
+                        <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-650 flex items-center justify-center text-lg font-black">
+                            📝
+                          </div>
+                          <div>
+                            <strong className="text-xs font-black text-slate-800 block group-hover:text-indigo-650 transition-colors">Improve ATS Score</strong>
+                            <span className="text-[10px] text-indigo-500 font-bold block mt-0.5 font-mono">Potential PRI Gain: +5 PRI</span>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleTabTransition("resume-os")}
+                          className="px-4 py-2.5 bg-slate-900 hover:bg-indigo-650 text-white text-[9px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer shadow-sm hover:scale-105 active:scale-95 font-mono"
+                        >
+                          Run ATS Scan
+                        </button>
+                      </div>
+
+                      {/* Item 2: DSA */}
+                      <div className="group p-5 bg-gradient-to-br from-slate-50 to-slate-100/50 hover:from-white hover:to-white rounded-3xl border border-slate-200/60 hover:border-amber-350 hover:shadow-md transition-all duration-300 flex items-center justify-between flex-wrap gap-4">
+                        <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center text-lg font-black">
+                            💻
+                          </div>
+                          <div>
+                            <strong className="text-xs font-black text-slate-800 block group-hover:text-amber-600 transition-colors">Complete 1 DSA Challenge</strong>
+                            <span className="text-[10px] text-amber-600 font-bold block mt-0.5 font-mono">Potential XP Gain: +15 XP</span>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleTabTransition("assessment-os")}
+                          className="px-4 py-2.5 bg-slate-900 hover:bg-amber-650 text-white text-[9px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer shadow-sm hover:scale-105 active:scale-95 font-mono"
+                        >
+                          Practice
+                        </button>
+                      </div>
+
+                      {/* Item 3: Jobs */}
+                      <div className="group p-5 bg-gradient-to-br from-slate-50 to-slate-100/50 hover:from-white hover:to-white rounded-3xl border border-slate-200/60 hover:border-emerald-350 hover:shadow-md transition-all duration-300 flex items-center justify-between flex-wrap gap-4">
+                        <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-lg font-black">
+                            💼
+                          </div>
+                          <div>
+                            <strong className="text-xs font-black text-slate-800 block group-hover:text-emerald-600 transition-colors">Apply to 2 Relevant Jobs</strong>
+                            <span className="text-[10px] text-emerald-600 font-bold block mt-0.5 font-mono">Potential XP Gain: +20 XP</span>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleTabTransition("recommended")}
+                          className="px-4 py-2.5 bg-slate-900 hover:bg-emerald-650 text-white text-[9px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer shadow-sm hover:scale-105 active:scale-95 font-mono"
+                        >
+                          Apply Now
+                        </button>
+                      </div>
+                    </div>
                   </div>
+
+                  {/* SECTION 4: CAREER JOURNEY (Connected Timeline Map) */}
+                  <div className="bg-white p-6 md:p-8 rounded-[2.5rem] border border-slate-200 shadow-sm space-y-6">
+                    <div className="space-y-1">
+                      <h3 className="text-lg font-black text-slate-900 font-display">🗺️ Career Journey Timeline</h3>
+                      <p className="text-slate-400 text-xs font-bold font-semibold">Your dynamic pipeline status. Highlight active stage and map connectors.</p>
+                    </div>
+
+                    <div className="relative mt-4">
+                      {/* Connected timeline progress pipe line background */}
+                      <div className="absolute top-1/2 left-0 right-0 h-1 bg-slate-100 -translate-y-1/2 z-0 hidden md:block" />
+
+                      <div className="grid grid-cols-1 md:grid-cols-8 gap-6 md:gap-4 relative z-10">
+                        {(() => {
+                          const journeyStages = [
+                            { name: "Beginner", score: 0 },
+                            { name: "Resume Ready", score: 15 },
+                            { name: "Portfolio Ready", score: 30 },
+                            { name: "Project Ready", score: 45 },
+                            { name: "Interview Ready", score: 60 },
+                            { name: "Recruiter Ready", score: 75 },
+                            { name: "Offer Ready", score: 90 },
+                            { name: "Placed", score: 100 }
+                          ];
+                          const activeStageIndex = Math.min(Math.floor(liveReadinessScore / 13), journeyStages.length - 1);
+
+                          return journeyStages.map((stage, i) => {
+                            const isCompleted = i < activeStageIndex;
+                            const isActive = i === activeStageIndex;
+                            return (
+                              <div
+                                key={stage.name}
+                                className="flex md:flex-col items-center gap-4 md:gap-0 text-left md:text-center group"
+                              >
+                                <div
+                                  className={cn(
+                                    "w-9 h-9 rounded-full flex items-center justify-center border-2 transition-all duration-500 md:mb-3 hover:scale-110",
+                                    isActive
+                                      ? "bg-indigo-650 border-indigo-700 text-white shadow-lg shadow-indigo-600/30 ring-4 ring-indigo-50 animate-pulse"
+                                      : isCompleted
+                                      ? "bg-emerald-500 border-emerald-600 text-white"
+                                      : "bg-white border-slate-200 text-slate-350"
+                                  )}
+                                >
+                                  {isCompleted ? (
+                                    <span className="text-xs font-black">✓</span>
+                                  ) : (
+                                    <span className="text-[10px] font-mono font-black">{i + 1}</span>
+                                  )}
+                                </div>
+                                <div className="flex flex-col md:items-center">
+                                  <span className={cn(
+                                    "text-[9px] font-black uppercase tracking-wide",
+                                    isActive
+                                      ? "text-indigo-655 font-black"
+                                      : isCompleted
+                                      ? "text-emerald-600 font-black"
+                                      : "text-slate-400 font-bold"
+                                  )}>
+                                    {stage.name}
+                                  </span>
+                                  <span className="text-[8px] font-mono text-slate-450 uppercase tracking-widest mt-0.5">
+                                    {stage.score}% PRI
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          });
+                        })()}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* SECTION 7: QUICK ACTION BAR (Floating Dock) */}
+                  <div className="bg-white p-6 md:p-8 rounded-[2.5rem] border border-slate-200 shadow-sm space-y-4">
+                    <strong className="text-xs font-black text-slate-455 uppercase tracking-widest block font-mono">WORKSPACE COMMAND SHORTCUTS</strong>
+                    <div className="flex flex-wrap gap-2.5">
+                      {[
+                        { label: "Run ATS Scan", action: "resume-os", icon: <FileCheck className="w-3.5 h-3.5" /> },
+                        { label: "Open CRM Pipeline", action: "placement-tracker", icon: <Layers className="w-3.5 h-3.5" /> },
+                        { label: "Launch Mock Interview", action: "interview-prep", icon: <MessageSquare className="w-3.5 h-3.5" /> },
+                        { label: "Open Project Advisor", action: "projects-os", icon: <Sparkles className="w-3.5 h-3.5" /> },
+                        { label: "Interactive Roadmap", action: "roadmap", icon: <Compass className="w-3.5 h-3.5" /> },
+                        { label: "Community Hub", action: "community", icon: <Users className="w-3.5 h-3.5" /> },
+                        { label: "Book 1-on-1 Mentor", action: "mentorship-os", icon: <CalendarIcon className="w-3.5 h-3.5" /> }
+                      ].map(btn => (
+                        <button
+                          key={btn.label}
+                          onClick={() => handleTabTransition(btn.action)}
+                          className="flex items-center gap-2 px-4.5 py-2.5 bg-slate-900 hover:bg-indigo-650 text-white text-[10px] font-black uppercase tracking-wider rounded-xl transition-all duration-200 cursor-pointer shadow-sm hover:-translate-y-0.5 active:translate-y-0"
+                        >
+                          {btn.icon}
+                          <span>{btn.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                 </div>
+
+                {/* RIGHT COLUMN: Snapshots & Achievements Vault */}
+                <div className="lg:col-span-4 space-y-8">
+                  
+                  {/* SECTION 3: PROGRESS SNAPSHOT (Graphical Double Track SVG Meters) */}
+                  <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm space-y-6">
+                    <h3 className="text-xs font-black text-slate-455 uppercase tracking-widest leading-none font-mono">Progress Snapshot</h3>
+                    
+                    <div className="space-y-4">
+                      {[
+                        { label: "Resume Readiness", score: 80, color: "from-indigo-500 to-indigo-600" },
+                        { label: "Project Readiness", score: 60, color: "from-blue-500 to-blue-600" },
+                        { label: "Interview Readiness", score: 40, color: "from-amber-500 to-amber-600" },
+                        { label: "Application Readiness", score: 20, color: "from-rose-500 to-rose-600" },
+                        { label: "Networking Readiness", score: 30, color: "from-emerald-500 to-emerald-600" }
+                      ].map(bar => (
+                        <div key={bar.label} className="space-y-1.5">
+                          <div className="flex justify-between text-[10px] font-black text-slate-700">
+                            <span>{bar.label}</span>
+                            <span className="font-mono text-slate-455">{bar.score}%</span>
+                          </div>
+                          {/* Premium rounded gradient track */}
+                          <div className="relative w-full h-3 bg-slate-100 rounded-full overflow-hidden p-[2px] border border-slate-200/50">
+                            <div 
+                              className={cn("h-full rounded-full bg-gradient-to-r transition-all duration-1000", bar.color)} 
+                              style={{ width: `${bar.score}%` }} 
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* SECTION 5: STREAKS & ACHIEVEMENTS (Glassmorphic Vault) */}
+                  <div className="bg-white/90 backdrop-blur-md p-6 rounded-[2rem] border border-slate-200 shadow-sm space-y-6">
+                    <h3 className="text-xs font-black text-slate-455 uppercase tracking-widest leading-none font-mono">Career Achievement Vault</h3>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="bg-slate-50/70 border border-slate-100 p-3 rounded-2xl hover:border-indigo-150 transition-all hover:-translate-y-0.5 group">
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider block font-mono">Streak</span>
+                        <strong className="text-sm font-black text-slate-800 group-hover:text-indigo-650 transition-colors">🔥 {streakCount} Days</strong>
+                      </div>
+                      <div className="bg-slate-50/70 border border-slate-100 p-3 rounded-2xl hover:border-indigo-150 transition-all hover:-translate-y-0.5 group">
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider block font-mono">Missions</span>
+                        <strong className="text-sm font-black text-slate-800 group-hover:text-indigo-650 transition-colors">🏆 {completedMissions} Done</strong>
+                      </div>
+                      <div className="bg-slate-50/70 border border-slate-100 p-3 rounded-2xl hover:border-indigo-150 transition-all hover:-translate-y-0.5 group">
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider block font-mono">Badges</span>
+                        <strong className="text-sm font-black text-slate-800 group-hover:text-indigo-650 transition-colors">🎖 {totalBadges} Earned</strong>
+                      </div>
+                      <div className="bg-slate-50/70 border border-slate-100 p-3 rounded-2xl hover:border-indigo-150 transition-all hover:-translate-y-0.5 group">
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider block font-mono">XP Multiplier</span>
+                        <strong className="text-sm font-black text-slate-800 group-hover:text-indigo-650 transition-colors">⚡ {(1.0 + (streakCount * 0.1)).toFixed(1)}x</strong>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3 pt-4 border-t border-slate-100">
+                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block font-mono">Recent Milestone Badges</span>
+                      <ul className="space-y-2 text-xs font-semibold text-slate-655">
+                        <li className="flex items-center gap-2 group hover:translate-x-0.5 transition-all">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                          <span className="group-hover:text-slate-900">ATS Optimizer Verified</span>
+                        </li>
+                        <li className="flex items-center gap-2 group hover:translate-x-0.5 transition-all">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                          <span className="group-hover:text-slate-900">Portfolio Live URL Generated</span>
+                        </li>
+                        <li className="flex items-center gap-2 group hover:translate-x-0.5 transition-all">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                          <span className="group-hover:text-slate-900">First Interview Prep Session Scheduled</span>
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
+
+                  {/* SECTION 6: PLACEMENT MOMENTUM (LEDs & Sparklines) */}
+                  <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm space-y-6">
+                    <h3 className="text-xs font-black text-slate-455 uppercase tracking-widest leading-none font-mono">Placement Momentum</h3>
+                    
+                    <div className="space-y-4">
+                      <div>
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-2 font-mono">7-DAY ACTIVITY MATRIX</span>
+                        <div className="flex justify-between items-center gap-1.5">
+                          {[
+                            { day: "M", active: true },
+                            { day: "T", active: true },
+                            { day: "W", active: true },
+                            { day: "T", active: false },
+                            { day: "F", active: true },
+                            { day: "S", active: true },
+                            { day: "S", active: true }
+                          ].map((act, i) => (
+                            <div key={i} className="flex flex-col items-center gap-1 flex-1">
+                              <span className="text-[9px] font-bold text-slate-400 font-mono">{act.day}</span>
+                              <div className={cn(
+                                "w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border transition-all duration-300",
+                                act.active
+                                  ? "bg-emerald-50 border-emerald-200 text-emerald-600 shadow-[0_0_8px_rgba(16,185,129,0.2)]"
+                                  : "bg-red-50/50 border-red-150 text-red-400"
+                              )}>
+                                {act.active ? "✓" : "✗"}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* SVG consistency Sparkline trend chart */}
+                      <div className="pt-3 border-t border-slate-100 space-y-2">
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block font-mono">CONSISTENCY PATTERN</span>
+                        <div className="h-10 w-full bg-slate-50/60 rounded-xl p-1 border border-slate-100 flex items-center justify-center">
+                          <svg className="w-full h-full text-indigo-500" viewBox="0 0 100 20" preserveAspectRatio="none">
+                            <path
+                              d="M0,15 Q15,5 30,12 T60,4 T90,14 L100,10"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              className="stroke-indigo-500"
+                            />
+                            <path
+                              d="M0,15 Q15,5 30,12 T60,4 T90,14 L100,10"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="5"
+                              strokeLinecap="round"
+                              className="stroke-indigo-400/20 blur-[1px]"
+                            />
+                          </svg>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4 pt-3 border-t border-slate-100 font-mono text-center">
+                        <div>
+                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">Weekly</span>
+                          <strong className="text-xs font-black text-slate-800">85% Consistency</strong>
+                        </div>
+                        <div>
+                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">Monthly</span>
+                          <strong className="text-xs font-black text-slate-800">72% Consistency</strong>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+
               </div>
+
             </motion.div>
           )}
 
@@ -721,6 +1002,18 @@ export default function DashboardPage() {
               exit={{ opacity: 0, y: -15 }}
             >
               <ResumeOS onScoreUpdate={setAtsScore} subTab={resumeSubTab} onSubTabChange={setResumeSubTab} />
+            </motion.div>
+          )}
+
+          {/* TAB: ASSESSMENT OS */}
+          {activeTab === "assessment-os" && (
+            <motion.div
+              key="assessment-os"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+            >
+              <AssessmentOS />
             </motion.div>
           )}
 
@@ -1047,8 +1340,7 @@ export default function DashboardPage() {
                   <button
                     disabled={!isPremium} 
                     onClick={() => {
-                      setIsPremium(false);
-                      localStorage.setItem("member_is_premium", "false");
+                      updatePremiumStatus(false);
                     }}
                     className={cn(
                       "w-full mt-10 py-4 font-black text-xs uppercase tracking-widest rounded-2xl transition-all cursor-pointer border text-center",
@@ -1097,8 +1389,7 @@ export default function DashboardPage() {
                   <button
                     onClick={() => {
                       if (isPremium) {
-                        setIsPremium(false);
-                        localStorage.setItem("member_is_premium", "false");
+                        updatePremiumStatus(false);
                       } else {
                         setShowCheckoutModal(true);
                       }

@@ -30,6 +30,9 @@ export interface PlacementReadiness {
   placement_level: string;
   last_updated?: string;
   created_at?: string;
+  projects_score?: number;
+  company_prep_score?: number;
+  assessment_score?: number;
 }
 
 export function classifyPlacementLevel(score: number): string {
@@ -46,18 +49,18 @@ export async function calculatePRIScore(userId: string, forceLocalMockData?: any
   const isBrowser = typeof window !== "undefined";
   
   // 1. Initialize Sub-Scores with Baseline/Fallbacks
-  let resumeScore = 12;      // Baseline
-  let applicationScore = 4; // Baseline
-  let applicationHealthScore = 0; // Comprehensive 0-100 Health Score
-  let skillsScore = 8;      // Baseline
-  let portfolioScore = 3;   // Baseline
-  let linkedinScore = 4;    // Baseline
-  let interviewScore = 6;   // Baseline
-  let communityScore = 2;   // Baseline
-  let consistencyScore = 3; // Baseline
-  let missionBonus = 0;
+  let resumeScore = 0;
+  let portfolioScore = 0;
+  let projectsScore = 0;
+  let skillsScore = 0;
+  let applicationScore = 0;
+  let interviewScore = 0;
+  let companyPrepScore = 0;
+  let consistencyScore = 0;
+  let communityScore = 0;
+  let assessmentScore = 0;
 
-  // Keep track of parameters to display alerts/insights
+  // Baseline values to ensure nice starting experience
   let atsVal = 70;
   let applicationsCount = 0;
   let mockInterviewsCount = 0;
@@ -69,162 +72,75 @@ export async function calculatePRIScore(userId: string, forceLocalMockData?: any
     if (userId && userId !== "guest-user") {
       // --- FETCH DATA FROM SUPABASE ---
       
-      // Load existing readiness record for mission bonus
-      const { data: readinessRecord } = await db
-        .from("placement_readiness")
-        .select("mission_bonus_score")
-        .eq("user_id", userId)
-        .maybeSingle();
-      missionBonus = readinessRecord?.mission_bonus_score || 0;
-
-      // Dynamic Verified Referrals Bonus (+10 points per verified recruiter referral received)
-      const { data: userRecs } = await db
-        .from("recruiters")
-        .select("id")
-        .eq("user_id", userId)
-        .eq("pipeline_stage", "Referral Received");
-
-      if (userRecs && userRecs.length > 0) {
-        const recIds = userRecs.map((r: any) => r.id);
-        const { data: verRecs } = await db
-          .from("recruiter_verifications")
-          .select("recruiter_id")
-          .in("recruiter_id", recIds)
-          .eq("verification_status", "Verified");
-          
-        if (verRecs && verRecs.length > 0) {
-          missionBonus += verRecs.length * 10;
-        }
-      }
-
-      // A. Resume Metrics
+      // A. Resume Score (max 20)
       const { data: scans } = await db
         .from("resume_scans")
         .select("ats_score")
         .eq("user_id", userId)
         .order("created_at", { ascending: false });
         
-      const { data: jdMatches } = await db
-        .from("jd_matches")
-        .select("match_score")
-        .eq("user_id", userId);
+      if (scans && scans.length > 0) {
+        atsVal = scans[0].ats_score || 70;
+        resumeScore = Math.round((atsVal / 100) * 20);
+      } else {
+        resumeScore = 12; // Baseline fallback
+      }
 
+      // B. Portfolio Score (max 10)
       const { data: profile } = await db
         .from("profiles")
         .select("*")
         .eq("user_id", userId)
         .maybeSingle();
 
-      if (scans && scans.length > 0) {
-        atsVal = scans[0].ats_score || 70;
-        const atsPoints = Math.round((atsVal / 100) * 12); // max 12
-        const versionPoints = Math.min(scans.length * 1, 2); // max 2
-        resumeScore = atsPoints + versionPoints;
-      }
-      if (jdMatches && jdMatches.length > 0) {
-        resumeScore += 3; // +3 for matching target descriptions
-      }
       if (profile) {
-        // profile completeness check
-        let fieldsFilled = 0;
-        if (profile.full_name) fieldsFilled++;
-        if (profile.degree) fieldsFilled++;
-        if (profile.college) fieldsFilled++;
-        if (profile.target_role) fieldsFilled++;
-        if (profile.skills && profile.skills.length > 0) fieldsFilled++;
-        resumeScore += Math.min(fieldsFilled * 0.8, 3);
-      }
-      resumeScore = Math.min(Math.round(resumeScore), 20);
-
-      // B. Application Metrics
-      const { data: apps } = await db
-        .from("applications")
-        .select("status")
-        .eq("user_id", userId);
-
-      const { data: xpRecord } = await db
-        .from("user_xp")
-        .select("streak_days")
-        .eq("user_id", userId)
-        .maybeSingle();
-      const streakDays = xpRecord?.streak_days || 0;
-
-      if (apps) {
-        const activeApps = apps.filter((a: any) => a.status !== "Saved");
-        const activeAppsCount = activeApps.length;
-        applicationsCount = activeAppsCount;
-        
-        let submittedScore = 0;
-        if (activeAppsCount >= 10) submittedScore = 30;
-        else if (activeAppsCount >= 5) submittedScore = 20;
-        else if (activeAppsCount >= 1) submittedScore = 10;
-
-        const interviewApps = activeApps.filter((a: any) =>
-          ["Technical Interview", "HR Interview", "Offer Received", "Joined"].includes(a.status)
-        ).length;
-        const interviewScoreVal = activeAppsCount > 0 ? Math.round((interviewApps / activeAppsCount) * 25) : 0;
-
-        const offerApps = activeApps.filter((a: any) =>
-          ["Offer Received", "Joined"].includes(a.status)
-        ).length;
-        const offerScoreVal = activeAppsCount > 0 ? Math.round((offerApps / activeAppsCount) * 20) : 0;
-
-        const respondedApps = activeApps.filter((a: any) =>
-          !["Applied", "Saved"].includes(a.status)
-        ).length;
-        const responseScoreVal = activeAppsCount > 0 ? Math.round((respondedApps / activeAppsCount) * 15) : 0;
-
-        const consistencyScoreVal = Math.min(streakDays * 2, 10);
-
-        applicationHealthScore = submittedScore + interviewScoreVal + offerScoreVal + responseScoreVal + consistencyScoreVal;
-        applicationHealthScore = Math.min(Math.max(applicationHealthScore, 0), 100);
-
-        // Scaled contribution to overall PRI (max 15)
-        applicationScore = Math.round((applicationHealthScore / 100) * 15);
+        if (profile.portfolio_url) portfolioScore += 5;
+        if (profile.github_url) portfolioScore += 5;
+      } else {
+        portfolioScore = 3; // Baseline fallback
       }
 
-      // C. Skills Metrics
+      // C. Projects Score (max 15)
+      if (profile && profile.raw_profile_data?.projects) {
+        projectsCount = profile.raw_profile_data.projects.length;
+        projectsScore = Math.min(projectsCount * 5, 15);
+      } else {
+        projectsScore = 5; // Baseline fallback
+      }
+
+      // D. Skills Score (max 15)
       const { data: roadmaps } = await db
         .from("roadmap_progress")
         .select("completed")
         .eq("user_id", userId)
         .eq("completed", true);
 
-      if (roadmaps) {
-        const completedRoadmapSteps = roadmaps.length;
-        const roadmapPoints = Math.min(completedRoadmapSteps * 2, 10); // max 10
-        const profileSkillsCount = profile?.skills?.length || 0;
-        const skillPoints = Math.min(profileSkillsCount * 1.2, 6); // max 6
-        skillsScore = Math.round(roadmapPoints + skillPoints + 4); // baseline validation 4
-        skillsScore = Math.min(skillsScore, 20);
+      const completedRoadmapSteps = roadmaps?.length || 0;
+      const profileSkillsCount = profile?.skills?.length || 0;
+      skillsScore = Math.min(completedRoadmapSteps * 3 + Math.round(profileSkillsCount * 1.5), 15);
+      if (skillsScore === 0) {
+        skillsScore = 8; // Baseline fallback
       }
 
-      // D. Portfolio Metrics
-      if (profile) {
-        let portP = 0;
-        if (profile.github_url) portP += 3;
-        if (profile.portfolio_url) portP += 3;
-        
-        const rawData = profile.raw_profile_data || {};
-        const projects = rawData.projects || [];
-        projectsCount = projects.length;
-        portP += Math.min(projectsCount * 2, 4); // max 4
-        portfolioScore = Math.min(portP, 10);
+      // E. Applications Score (max 15)
+      const { data: apps } = await db
+        .from("applications")
+        .select("status")
+        .eq("user_id", userId);
+
+      if (apps) {
+        const activeApps = apps.filter((a: any) => a.status !== "Saved");
+        applicationsCount = activeApps.length;
+        if (applicationsCount >= 20) applicationScore = 15;
+        else if (applicationsCount >= 10) applicationScore = 12;
+        else if (applicationsCount >= 5) applicationScore = 10;
+        else if (applicationsCount >= 1) applicationScore = 5;
+        else applicationScore = 0;
+      } else {
+        applicationScore = 4; // Baseline fallback
       }
 
-      // E. LinkedIn Metrics
-      if (profile) {
-        let linkP = 0;
-        if (profile.linkedin_url) linkP += 4;
-        
-        const rawData = profile.raw_profile_data || {};
-        if (rawData.summary || rawData.about) linkP += 4;
-        if (rawData.experience && rawData.experience.length > 0) linkP += 2;
-        linkedinScore = Math.min(linkP, 10);
-      }
-
-      // F. Interview Metrics
-      // Since mock interviews are stored in local storage, check if browser is available
+      // F. Mock Interviews Score (max 10)
       if (isBrowser) {
         const storedHistory = localStorage.getItem("interview_history");
         if (storedHistory) {
@@ -233,15 +149,35 @@ export async function calculatePRIScore(userId: string, forceLocalMockData?: any
             mockInterviewsCount = hist.length;
             if (mockInterviewsCount > 0) {
               const avgScore = Math.round(hist.reduce((acc: number, curr: any) => acc + (curr.overallScore || 0), 0) / hist.length);
-              const countPoints = Math.min(mockInterviewsCount * 3, 9); // max 9
-              const qualityPoints = Math.round((avgScore / 100) * 6); // max 6
-              interviewScore = Math.min(countPoints + qualityPoints, 15);
+              interviewScore = Math.min(mockInterviewsCount * 3, 9) + (avgScore >= 80 ? 1 : 0);
             }
           } catch {}
         }
       }
+      if (interviewScore === 0) {
+        interviewScore = 4; // Baseline fallback
+      }
 
-      // G. Community Score
+      // G. Company Prep Score (max 5)
+      if (profile && profile.raw_profile_data?.company_prep_completed) {
+        companyPrepScore = 5;
+      } else {
+        companyPrepScore = 2; // Baseline fallback
+      }
+
+      // H. Consistency Score (max 5)
+      const { data: xpRecord } = await db
+        .from("user_xp")
+        .select("streak_days")
+        .eq("user_id", userId)
+        .maybeSingle();
+      const streakDays = xpRecord?.streak_days || 0;
+      consistencyScore = Math.min(streakDays * 1, 5);
+      if (consistencyScore === 0) {
+        consistencyScore = 3; // Baseline fallback
+      }
+
+      // I. Community Score (max 5)
       const { count: postsCount } = await db
         .from("community_posts")
         .select("id", { count: "exact", head: true })
@@ -255,67 +191,51 @@ export async function calculatePRIScore(userId: string, forceLocalMockData?: any
       const posts = postsCount || 0;
       const comments = commentsCount || 0;
       communityScore = Math.min(posts * 2 + comments * 1, 5);
+      if (communityScore === 0) {
+        communityScore = 2; // Baseline fallback
+      }
 
-      // H. Consistency Score
-      if (isBrowser) {
-        const streak = parseInt(localStorage.getItem("member_learning_streak") || "3", 10);
-        consistencyScore = Math.min(streak * 1, 5);
+      // J. Assessment Score (max 10)
+      try {
+        const { getUserAssessmentAnalytics } = await import("./assessment");
+        const analytics = await getUserAssessmentAnalytics(userId, db);
+        const accuracy = analytics.overallAccuracy || 0;
+        if (accuracy > 90) assessmentScore = 10;
+        else if (accuracy > 75) assessmentScore = 8;
+        else if (accuracy > 60) assessmentScore = 6;
+        else if (accuracy > 40) assessmentScore = 3;
+        else assessmentScore = 0;
+      } catch (err) {
+        console.error("Failed to load assessment score in calculatePRIScore", err);
+        assessmentScore = 4; // Baseline fallback
       }
 
     } else {
       // --- LOCAL STORAGE MOCK CALCULATIONS FOR GUEST USERS ---
       if (isBrowser) {
-        const storedPR = localStorage.getItem(`pri_readiness_guest`);
-        if (storedPR) {
-          try {
-            const parsed = JSON.parse(storedPR);
-            missionBonus = parsed.mission_bonus_score || 0;
-          } catch {}
-        }
-
         const storedAts = localStorage.getItem("ats_score");
         if (storedAts) {
           atsVal = parseInt(storedAts, 10) || 70;
-          resumeScore = Math.min(Math.round((atsVal / 100) * 15) + 3, 20);
+          resumeScore = Math.round((atsVal / 100) * 20);
+        } else {
+          resumeScore = 12;
         }
 
-        const storedApps = localStorage.getItem("placement_crm_applications");
-        const streak = typeof window !== "undefined" ? parseInt(localStorage.getItem("member_learning_streak") || "3", 10) : 3;
-        if (storedApps) {
+        const profileData = localStorage.getItem("resume_builder_profile");
+        if (profileData) {
           try {
-            const parsed = JSON.parse(storedApps);
-            const active = parsed.filter((a: any) => a.status !== "Saved");
-            const activeAppsCount = active.length;
-            applicationsCount = activeAppsCount;
+            const parsed = JSON.parse(profileData);
+            if (parsed.portfolio) portfolioScore += 5;
+            if (parsed.github) portfolioScore += 5;
             
-            let submittedScore = 0;
-            if (activeAppsCount >= 10) submittedScore = 30;
-            else if (activeAppsCount >= 5) submittedScore = 20;
-            else if (activeAppsCount >= 1) submittedScore = 10;
-
-            const interviewApps = active.filter((a: any) =>
-              ["Technical Interview", "HR Interview", "Offer Received", "Joined"].includes(a.status)
-            ).length;
-            const interviewScoreVal = activeAppsCount > 0 ? Math.round((interviewApps / activeAppsCount) * 25) : 0;
-
-            const offerApps = active.filter((a: any) =>
-              ["Offer Received", "Joined"].includes(a.status)
-            ).length;
-            const offerScoreVal = activeAppsCount > 0 ? Math.round((offerApps / activeAppsCount) * 20) : 0;
-
-            const respondedApps = active.filter((a: any) =>
-              !["Applied", "Saved"].includes(a.status)
-            ).length;
-            const responseScoreVal = activeAppsCount > 0 ? Math.round((respondedApps / activeAppsCount) * 15) : 0;
-
-            const consistencyScoreVal = Math.min(streak * 2, 10);
-
-            applicationHealthScore = submittedScore + interviewScoreVal + offerScoreVal + responseScoreVal + consistencyScoreVal;
-            applicationHealthScore = Math.min(Math.max(applicationHealthScore, 0), 100);
-
-            // Scaled contribution to overall PRI (max 15)
-            applicationScore = Math.round((applicationHealthScore / 100) * 15);
+            if (parsed.projects) {
+              projectsCount = parsed.projects.length;
+              projectsScore = Math.min(projectsCount * 5, 15);
+            }
           } catch {}
+        } else {
+          portfolioScore = 3;
+          projectsScore = 5;
         }
 
         const progressStates = localStorage.getItem("roadmap_progress_states");
@@ -323,28 +243,26 @@ export async function calculatePRIScore(userId: string, forceLocalMockData?: any
           try {
             const parsed = JSON.parse(progressStates);
             const checked = Object.values(parsed).filter(Boolean).length;
-            skillsScore = Math.min(8 + checked * 2, 20);
+            skillsScore = Math.min(checked * 3 + 4, 15);
           } catch {}
+        } else {
+          skillsScore = 8;
         }
 
-        const profileData = localStorage.getItem("resume_builder_profile");
-        if (profileData) {
+        const storedApps = localStorage.getItem("placement_crm_applications");
+        if (storedApps) {
           try {
-            const parsed = JSON.parse(profileData);
-            let portP = 2;
-            if (parsed.github) portP += 3;
-            if (parsed.portfolio) portP += 3;
-            if (parsed.projects && parsed.projects.length > 0) {
-              projectsCount = parsed.projects.length;
-              portP += projectsCount * 1.5;
-            }
-            portfolioScore = Math.min(Math.round(portP), 10);
-
-            let linkP = 2;
-            if (parsed.linkedin) linkP += 4;
-            if (parsed.summary || parsed.about) linkP += 4;
-            linkedinScore = Math.min(linkP, 10);
+            const parsed = JSON.parse(storedApps);
+            const active = parsed.filter((a: any) => a.status !== "Saved");
+            applicationsCount = active.length;
+            if (applicationsCount >= 20) applicationScore = 15;
+            else if (applicationsCount >= 10) applicationScore = 12;
+            else if (applicationsCount >= 5) applicationScore = 10;
+            else if (applicationsCount >= 1) applicationScore = 5;
+            else applicationScore = 0;
           } catch {}
+        } else {
+          applicationScore = 4;
         }
 
         const storedHistory = localStorage.getItem("interview_history");
@@ -354,35 +272,55 @@ export async function calculatePRIScore(userId: string, forceLocalMockData?: any
             mockInterviewsCount = hist.length;
             if (mockInterviewsCount > 0) {
               const avgScore = Math.round(hist.reduce((acc: number, curr: any) => acc + (curr.overallScore || 0), 0) / hist.length);
-              const countPoints = Math.min(mockInterviewsCount * 3, 9);
-              const qualityPoints = Math.round((avgScore / 100) * 6);
-              interviewScore = Math.min(countPoints + qualityPoints, 15);
+              interviewScore = Math.min(mockInterviewsCount * 3, 9) + (avgScore >= 80 ? 1 : 0);
             }
           } catch {}
+        } else {
+          interviewScore = 4;
         }
 
-        const memberStreak = parseInt(localStorage.getItem("member_learning_streak") || "3", 10);
+        companyPrepScore = 2; // Baseline fallback
+
+        const memberStreak = typeof window !== "undefined" ? parseInt(localStorage.getItem("member_learning_streak") || "3", 10) : 3;
         consistencyScore = Math.min(memberStreak * 1, 5);
+
+        communityScore = 2; // Baseline fallback
+
+        // J. Assessment Score (max 10)
+        try {
+          const { getUserAssessmentAnalytics } = await import("./assessment");
+          const analytics = await getUserAssessmentAnalytics("guest-user");
+          const accuracy = analytics.overallAccuracy || 0;
+          if (accuracy > 90) assessmentScore = 10;
+          else if (accuracy > 75) assessmentScore = 8;
+          else if (accuracy > 60) assessmentScore = 6;
+          else if (accuracy > 40) assessmentScore = 3;
+          else assessmentScore = 0;
+        } catch {
+          assessmentScore = 4; // Baseline fallback
+        }
       }
     }
   } catch (err) {
     console.error("Error evaluating live Supabase tables, applying standard fallbacks", err);
   }
 
-  // Handle inject force data overrides (e.g. from UI testing slider adjustments)
+  // Handle inject force data overrides
   if (forceLocalMockData) {
     if (forceLocalMockData.resume_score !== undefined) resumeScore = forceLocalMockData.resume_score;
-    if (forceLocalMockData.application_score !== undefined) applicationScore = forceLocalMockData.application_score;
-    if (forceLocalMockData.skills_score !== undefined) skillsScore = forceLocalMockData.skills_score;
     if (forceLocalMockData.portfolio_score !== undefined) portfolioScore = forceLocalMockData.portfolio_score;
-    if (forceLocalMockData.linkedin_score !== undefined) linkedinScore = forceLocalMockData.linkedin_score;
+    if (forceLocalMockData.projects_score !== undefined) projectsScore = forceLocalMockData.projects_score;
+    if (forceLocalMockData.skills_score !== undefined) skillsScore = forceLocalMockData.skills_score;
+    if (forceLocalMockData.application_score !== undefined) applicationScore = forceLocalMockData.application_score;
     if (forceLocalMockData.interview_score !== undefined) interviewScore = forceLocalMockData.interview_score;
-    if (forceLocalMockData.community_score !== undefined) communityScore = forceLocalMockData.community_score;
+    if (forceLocalMockData.company_prep_score !== undefined) companyPrepScore = forceLocalMockData.company_prep_score;
     if (forceLocalMockData.consistency_score !== undefined) consistencyScore = forceLocalMockData.consistency_score;
+    if (forceLocalMockData.community_score !== undefined) communityScore = forceLocalMockData.community_score;
+    if (forceLocalMockData.assessment_score !== undefined) assessmentScore = forceLocalMockData.assessment_score;
   }
 
   // Calculate sum total
-  const totalPri = resumeScore + applicationScore + skillsScore + portfolioScore + linkedinScore + interviewScore + communityScore + consistencyScore + missionBonus;
+  const totalPri = resumeScore + portfolioScore + projectsScore + skillsScore + applicationScore + interviewScore + companyPrepScore + consistencyScore + communityScore + assessmentScore;
   const finalPriScore = Math.min(Math.max(totalPri, 0), 100);
   const placementLevel = classifyPlacementLevel(finalPriScore);
 
@@ -390,14 +328,32 @@ export async function calculatePRIScore(userId: string, forceLocalMockData?: any
     user_id: userId || "guest-user",
     pri_score: finalPriScore,
     resume_score: resumeScore,
-    application_score: applicationHealthScore, // store 0-100 health score
-    skills_score: skillsScore,
     portfolio_score: portfolioScore,
-    linkedin_score: linkedinScore,
+    skills_score: skillsScore,
+    linkedin_score: portfolioScore,
     interview_score: interviewScore,
     community_score: communityScore,
     consistency_score: consistencyScore,
-    mission_bonus_score: missionBonus,
+    application_score: applicationScore,
+    projects_score: projectsScore,
+    company_prep_score: companyPrepScore,
+    assessment_score: assessmentScore,
+    placement_level: placementLevel,
+    last_updated: new Date().toISOString()
+  };
+
+  const dbPayload = {
+    user_id: userId || "guest-user",
+    pri_score: finalPriScore,
+    resume_score: resumeScore,
+    application_score: applicationScore,
+    skills_score: skillsScore,
+    portfolio_score: portfolioScore,
+    linkedin_score: portfolioScore,
+    interview_score: interviewScore,
+    community_score: communityScore,
+    consistency_score: consistencyScore,
+    assessment_score: assessmentScore,
     placement_level: placementLevel,
     last_updated: new Date().toISOString()
   };
@@ -405,8 +361,6 @@ export async function calculatePRIScore(userId: string, forceLocalMockData?: any
   // 2. Persist calculations
   if (userId && userId !== "guest-user") {
     try {
-      await executeWrite("placement_readiness", "upsert", payload, { user_id: userId }, supabaseClient);
-      
       // Invalidate cache
       const { invalidateUserCache } = await import("@/lib/redis");
       invalidateUserCache(userId).catch(err => console.error("PRI cache invalidation failed:", err));
@@ -416,6 +370,9 @@ export async function calculatePRIScore(userId: string, forceLocalMockData?: any
         localStorage.setItem(`pri_readiness_${userId}`, JSON.stringify(payload));
         localStorage.setItem(`placement_readiness_score`, finalPriScore.toString());
       }
+
+      // Save to Supabase DB using sync helper
+      await executeWrite("placement_readiness", "upsert", dbPayload, { user_id: userId }, db);
     } catch (e) {
       console.error("Could not write PRI score to Supabase database:", e);
     }

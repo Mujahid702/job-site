@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Lock, Mail, Loader2, Rocket, ArrowRight } from "lucide-react";
 import { motion } from "framer-motion";
@@ -11,7 +11,17 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const router = useRouter();
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("reason") === "timeout") {
+        setInfoMessage("You have been signed out due to inactivity for security reasons.");
+      }
+    }
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,6 +84,7 @@ export default function LoginPage() {
             <div className="relative group">
               <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
               <input
+                suppressHydrationWarning={true}
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -89,6 +100,7 @@ export default function LoginPage() {
             <div className="relative group">
               <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
               <input
+                suppressHydrationWarning={true}
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -99,6 +111,12 @@ export default function LoginPage() {
             </div>
           </div>
 
+          {infoMessage && (
+            <div className="p-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl text-sm font-bold animate-pulse">
+              {infoMessage}
+            </div>
+          )}
+
           {error && (
             <div className="p-4 bg-red-50 border border-red-100 text-red-600 rounded-2xl text-sm font-bold animate-shake">
               {error}
@@ -106,6 +124,7 @@ export default function LoginPage() {
           )}
 
           <button
+            suppressHydrationWarning={true}
             type="submit"
             disabled={loading}
             className="w-full py-5 bg-blue-600 text-white font-black rounded-2xl hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20 flex items-center justify-center gap-3 group"
