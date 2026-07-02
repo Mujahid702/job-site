@@ -21,7 +21,7 @@ export async function generateResponse(options: AIRequestOptions): Promise<AIRes
   const taskType = options.taskType || 'default';
   
   // Resolve model name for logging if not specified
-  const model = options.model || (provider === 'gemini' ? 'gemini-1.5-flash' : 'default');
+  const model = options.model || (provider === 'gemini' ? 'gemini-3.5-flash' : 'default');
 
   const cachePrefix = CACHEABLE_TASKS[taskType];
   let cacheKey = '';

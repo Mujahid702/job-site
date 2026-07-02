@@ -30,7 +30,7 @@ export class OpenRouterProviderAdapter implements AIProviderAdapter {
     for (const model of modelsToTry) {
       lastModel = model;
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 25000); // 25s timeout
+      const timeoutId = setTimeout(() => controller.abort(), 90000); // 90s timeout
 
       try {
         const messages: Record<string, string>[] = [];
