@@ -39,41 +39,93 @@ export interface UserXP {
   updated_at: string;
 }
 
+// Progression structure configurations
+export const LEVEL_THRESHOLDS = [
+  0,      // Level 1
+  100,    // Level 2
+  250,    // Level 3
+  500,    // Level 4
+  1000,   // Level 5
+  2000,   // Level 6
+  3500,   // Level 7
+  5500,   // Level 8
+  8000,   // Level 9
+  12000,  // Level 10
+  17000,  // Level 11
+  25000,  // Level 12
+  35000,  // Level 13
+  50000,  // Level 14
+  75000   // Level 15
+];
+
+export const LEVEL_TITLES: Record<number, string> = {
+  1: "Placement Beginner",
+  2: "Resume Explorer",
+  3: "Skill Builder",
+  4: "Interview Apprentice",
+  5: "Career Navigator",
+  6: "Placement Challenger",
+  7: "Industry Explorer",
+  8: "Recruiter Ready",
+  9: "Interview Warrior",
+  10: "Placement Specialist",
+  11: "Offer Hunter",
+  12: "Career Accelerator",
+  13: "Top Candidate",
+  14: "Placement Elite",
+  15: "Campus Legend"
+};
+
 // Master missions hardcoded fallbacks in case database seeding hasn't occurred yet
 export const DEFAULT_MISSIONS: PlacementMission[] = [
-  { id: "m-dsa-daily", title: "Solve 2 DSA Problems", description: "Practice and solve 2 DSA coding challenges.", category: "dsa", mission_type: "daily", xp_reward: 20, pri_reward: 2, target_value: 2, is_active: true, created_at: "" },
-  { id: "m-app-daily", title: "Apply to 1 Company", description: "Track at least 1 job application in your CRM.", category: "applications", mission_type: "daily", xp_reward: 15, pri_reward: 3, target_value: 1, is_active: true, created_at: "" },
-  { id: "m-ats-daily", title: "Complete ATS Scan", description: "Scan a resume to inspect keyword match.", category: "resume", mission_type: "daily", xp_reward: 15, pri_reward: 5, target_value: 1, is_active: true, created_at: "" },
-  { id: "m-mock-daily", title: "Attend a Mock Interview", description: "Run an AI mock interview evaluation.", category: "interviews", mission_type: "daily", xp_reward: 20, pri_reward: 6, target_value: 1, is_active: true, created_at: "" },
-  
-  { id: "m-dsa-weekly", title: "Complete 10 DSA Problems", description: "Complete 10 DSA questions throughout the week.", category: "dsa", mission_type: "weekly", xp_reward: 100, pri_reward: 10, target_value: 10, is_active: true, created_at: "" },
-  { id: "m-app-weekly", title: "Apply to 10 Jobs", description: "Submit and log 10 applications in the CRM.", category: "applications", mission_type: "weekly", xp_reward: 80, pri_reward: 15, target_value: 10, is_active: true, created_at: "" },
-  { id: "m-proj-weekly", title: "Build one project feature", description: "Register and evaluate a project blueprint.", category: "projects", mission_type: "weekly", xp_reward: 50, pri_reward: 5, target_value: 1, is_active: true, created_at: "" },
-  { id: "m-mock-weekly", title: "Attend one mock interview", description: "Perform a full mock interview training session.", category: "interviews", mission_type: "weekly", xp_reward: 75, pri_reward: 6, target_value: 1, is_active: true, created_at: "" },
-  
-  { id: "m-ats-career", title: "Reach ATS Score 80+", description: "Achieve an ATS scoring threshold of 80+.", category: "resume", mission_type: "career", xp_reward: 200, pri_reward: 15, target_value: 80, is_active: true, created_at: "" },
-  { id: "m-roadmap-career", title: "Complete Full Stack Roadmap", description: "Complete the core Full Stack Developer Roadmap.", category: "roadmap", mission_type: "career", xp_reward: 300, pri_reward: 20, target_value: 1, is_active: true, created_at: "" },
-  { id: "m-portfolio-career", title: "Upload Portfolio", description: "Attach a live portfolio URL and GitHub profile.", category: "portfolio", mission_type: "career", xp_reward: 150, pri_reward: 10, target_value: 1, is_active: true, created_at: "" },
-  { id: "m-pri-career", title: "Reach PRI Score 70+", description: "Achieve a Placement Readiness Index of 70+.", category: "pri", mission_type: "career", xp_reward: 250, pri_reward: 15, target_value: 70, is_active: true, created_at: "" },
-  { id: "m-app-career", title: "Complete 100 Applications", description: "Log 100 active jobs tracked inside CRM.", category: "applications", mission_type: "career", xp_reward: 500, pri_reward: 30, target_value: 100, is_active: true, created_at: "" }
+  // CATEGORY 1: PROFILE MISSIONS (Verified automatically)
+  { id: "00000000-0000-0000-0000-000000000001", title: "Complete Onboarding", description: "Complete the student onboarding profile setup process.", category: "profile", mission_type: "career", xp_reward: 50, pri_reward: 5, target_value: 1, is_active: true, created_at: "" },
+  { id: "00000000-0000-0000-0000-000000000002", title: "Upload Resume", description: "Scan and upload your placement resume to get an ATS assessment.", category: "profile", mission_type: "career", xp_reward: 40, pri_reward: 5, target_value: 1, is_active: true, created_at: "" },
+  { id: "00000000-0000-0000-0000-000000000003", title: "Add LinkedIn Profile", description: "Link your professional LinkedIn account url to your profile.", category: "profile", mission_type: "career", xp_reward: 15, pri_reward: 3, target_value: 1, is_active: true, created_at: "" },
+  { id: "00000000-0000-0000-0000-000000000004", title: "Add GitHub Profile", description: "Link your active GitHub profile url to your profile.", category: "profile", mission_type: "career", xp_reward: 15, pri_reward: 3, target_value: 1, is_active: true, created_at: "" },
+  { id: "00000000-0000-0000-0000-000000000005", title: "Create Portfolio", description: "Link your personal web portfolio url to your profile.", category: "profile", mission_type: "career", xp_reward: 75, pri_reward: 8, target_value: 1, is_active: true, created_at: "" },
+  { id: "00000000-0000-0000-0000-000000000006", title: "Portfolio completion above 80%", description: "Achieve a profile/portfolio completion rating of 80% or above.", category: "profile", mission_type: "career", xp_reward: 75, pri_reward: 5, target_value: 1, is_active: true, created_at: "" },
+
+  // CATEGORY 2: LEARNING MISSIONS (Requires proof)
+  { id: "00000000-0000-0000-0000-000000000007", title: "Upload DSA Certificate", description: "Verify and upload a DSA course or practice certificate.", category: "learning", mission_type: "career", xp_reward: 200, pri_reward: 10, target_value: 1, is_active: true, created_at: "" },
+  { id: "00000000-0000-0000-0000-000000000008", title: "Upload Cloud Certificate", description: "Verify and upload an AWS, GCP, or Azure Cloud certificate.", category: "learning", mission_type: "career", xp_reward: 200, pri_reward: 15, target_value: 1, is_active: true, created_at: "" },
+  { id: "00000000-0000-0000-0000-000000000009", title: "Upload SQL Certificate", description: "Verify and upload a SQL or database systems certificate.", category: "learning", mission_type: "career", xp_reward: 200, pri_reward: 10, target_value: 1, is_active: true, created_at: "" },
+  { id: "00000000-0000-0000-0000-000000000010", title: "Complete Company Prep OS", description: "Finish a complete company-specific preparation track.", category: "learning", mission_type: "career", xp_reward: 150, pri_reward: 8, target_value: 1, is_active: true, created_at: "" },
+  { id: "00000000-0000-0000-0000-000000000011", title: "Finish Project Advisor roadmap", description: "Generate and complete a placement project architecture roadmap.", category: "learning", mission_type: "career", xp_reward: 75, pri_reward: 10, target_value: 1, is_active: true, created_at: "" },
+  { id: "00000000-0000-0000-0000-000000000012", title: "Resume ATS score above 80", description: "Score 80 or above in the Resume Builder ATS scanner.", category: "learning", mission_type: "career", xp_reward: 50, pri_reward: 8, target_value: 1, is_active: true, created_at: "" },
+  { id: "00000000-0000-0000-0000-000000000013", title: "JD Match score above 80", description: "Score 80 or above in a Job Description keywords match.", category: "learning", mission_type: "career", xp_reward: 40, pri_reward: 5, target_value: 1, is_active: true, created_at: "" },
+
+  // CATEGORY 3: APPLICATION MISSIONS
+  { id: "00000000-0000-0000-0000-000000000014", title: "Save First Job", description: "Track your first job application inside the CRM.", category: "applications", mission_type: "career", xp_reward: 10, pri_reward: 2, target_value: 1, is_active: true, created_at: "" },
+  { id: "00000000-0000-0000-0000-000000000015", title: "Apply to 10 Jobs", description: "Submit active applications to 10 different companies.", category: "applications", mission_type: "career", xp_reward: 100, pri_reward: 5, target_value: 10, is_active: true, created_at: "" },
+  { id: "00000000-0000-0000-0000-000000000016", title: "Apply to 25 Jobs", description: "Submit active applications to 25 different companies.", category: "applications", mission_type: "career", xp_reward: 250, pri_reward: 12, target_value: 25, is_active: true, created_at: "" },
+  { id: "00000000-0000-0000-0000-000000000017", title: "Track First Interview", description: "Progress to the interview stage in the CRM dashboard.", category: "applications", mission_type: "career", xp_reward: 400, pri_reward: 8, target_value: 1, is_active: true, created_at: "" },
+  { id: "00000000-0000-0000-0000-000000000018", title: "Reach HR Round", description: "Advance to the final HR interview round for an application.", category: "applications", mission_type: "career", xp_reward: 800, pri_reward: 15, target_value: 1, is_active: true, created_at: "" },
+  { id: "00000000-0000-0000-0000-000000000019", title: "Receive Offer Letter", description: "Get a verified job offer letter from an employer.", category: "applications", mission_type: "career", xp_reward: 1500, pri_reward: 30, target_value: 1, is_active: true, created_at: "" },
+  { id: "00000000-0000-0000-0000-000000000020", title: "Join Company", description: "Accept the offer and officially join the company.", category: "applications", mission_type: "career", xp_reward: 3000, pri_reward: 50, target_value: 1, is_active: true, created_at: "" },
+
+  // CATEGORY 4: COMMUNITY MISSIONS
+  { id: "00000000-0000-0000-0000-000000000021", title: "First Community Post", description: "Write and publish your first forum post in the community hubs.", category: "community", mission_type: "career", xp_reward: 15, pri_reward: 2, target_value: 1, is_active: true, created_at: "" },
+  { id: "00000000-0000-0000-0000-000000000022", title: "First Helpful Answer", description: "Post a helpful reply to a peer query in community discussion.", category: "community", mission_type: "career", xp_reward: 10, pri_reward: 2, target_value: 1, is_active: true, created_at: "" },
+  { id: "00000000-0000-0000-0000-000000000023", title: "Receive 10 Upvotes", description: "Earn 10 upvotes on your shared posts/replies.", category: "community", mission_type: "career", xp_reward: 50, pri_reward: 5, target_value: 10, is_active: true, created_at: "" },
+  { id: "00000000-0000-0000-0000-000000000024", title: "Receive 50 Upvotes", description: "Earn 50 upvotes on your shared posts/replies.", category: "community", mission_type: "career", xp_reward: 150, pri_reward: 10, target_value: 50, is_active: true, created_at: "" },
+  { id: "00000000-0000-0000-0000-000000000025", title: "Community Contributor Badge", description: "Unlock the special Community Contributor milestone badge.", category: "community", mission_type: "career", xp_reward: 250, pri_reward: 15, target_value: 1, is_active: true, created_at: "" }
 ];
 
 // XP level scaling curve
 export function calculateLevel(xp: number): number {
-  if (xp < 100) return 1;
-  if (xp < 250) return 2;
-  if (xp < 500) return 3;
-  if (xp < 1000) return 4;
-  return 5 + Math.floor((xp - 1000) / 1000);
+  for (let i = LEVEL_THRESHOLDS.length - 1; i >= 0; i--) {
+    if (xp >= LEVEL_THRESHOLDS[i]) {
+      return i + 1; // Level 1 to 15
+    }
+  }
+  return 1;
 }
 
 // Get XP threshold required to unlock next level
 export function getXpForNextLevel(level: number): number {
-  if (level === 1) return 100;
-  if (level === 2) return 250;
-  if (level === 3) return 500;
-  if (level === 4) return 1000;
-  return 1000 + (level - 4) * 1000;
+  if (level >= 15) return 75000;
+  return LEVEL_THRESHOLDS[level] || 75000;
 }
 
 // Load guest items from local storage helper
@@ -548,6 +600,11 @@ export async function claimMissionReward(
     // Badges check
     checkGuestBadges();
 
+    // Log ledger entry
+    import("./ledger").then(({ addLedgerEntry }) => {
+      addLedgerEntry("guest-user", `Completed "${missionDef.title}"`, missionDef.xp_reward, missionDef.pri_reward).catch(e => console.error(e));
+    });
+
     return {
       success: true,
       xpGained: missionDef.xp_reward,
@@ -654,6 +711,11 @@ export async function claimMissionReward(
 
     // Automation: check badges unlocks
     await checkAutoBadges(userId, newXpTotal, newBonusScore, db);
+
+    // Log ledger entry in DB
+    import("./ledger").then(({ addLedgerEntry }) => {
+      addLedgerEntry(userId, `Completed "${mission.title}"`, xpReward, priReward, null, db).catch(e => console.error(e));
+    });
 
     return {
       success: true,
@@ -894,5 +956,309 @@ export async function syncGuestMissions(userId: string, supabaseClient?: any): P
   } catch (err) {
     console.error("[Missions Sync] Error running sync:", err);
     return { success: false };
+  }
+}
+
+// Automatically verify and update missions progress based on user placement database entities
+export async function checkAndVerifyMissions(userId: string, supabaseClient?: any): Promise<{ success: boolean }> {
+  const isGuest = !userId || userId === "guest-user";
+  const db = await getDb(supabaseClient);
+  
+  if (isGuest) {
+    if (typeof window === "undefined") return { success: true };
+    const localProgress = getLocalData<Record<string, any>>("buggedbrain_guest_missions", {});
+    const profile = getLocalData<any>("resume_builder_profile", {});
+    const scansCount = localStorage.getItem("ats_score") ? 1 : 0;
+    const latestAts = localStorage.getItem("ats_score") ? parseInt(localStorage.getItem("ats_score") || "70", 10) : 0;
+    const apps = getLocalData<any[]>("placement_crm_applications", []);
+    const completedRoadmap = Object.values(getLocalData<Record<string, boolean>>("roadmap_progress_states", {})).filter(Boolean).length;
+    const mockInterviews = getLocalData<any[]>("interview_history", []).length;
+    
+    // Evaluate Category 1: Profile
+    localProgress["00000000-0000-0000-0000-000000000001"] = { progress: 1, completed: true, completed_at: new Date().toISOString() }; // onboarded
+    localProgress["00000000-0000-0000-0000-000000000002"] = { progress: scansCount, completed: scansCount >= 1 };
+    localProgress["00000000-0000-0000-0000-000000000003"] = { progress: profile.linkedin ? 1 : 0, completed: !!profile.linkedin };
+    localProgress["00000000-0000-0000-0000-000000000004"] = { progress: profile.github ? 1 : 0, completed: !!profile.github };
+    localProgress["00000000-0000-0000-0000-000000000005"] = { progress: profile.portfolio ? 1 : 0, completed: !!profile.portfolio };
+    localProgress["00000000-0000-0000-0000-000000000006"] = { progress: (profile.projects?.length >= 1) ? 1 : 0, completed: (profile.projects?.length >= 1) };
+
+    // Evaluate Category 2: Learning
+    const guestCerts = getLocalData<any[]>("buggedbrain_guest_certificates", []);
+    const verifiedCerts = guestCerts.filter(c => c.status === "Verified");
+    const dsaCert = verifiedCerts.some(c => {
+      const name = c.name.toLowerCase();
+      return name.includes("dsa") || name.includes("algorithm") || name.includes("data structure");
+    }) ? 1 : 0;
+    const cloudCert = verifiedCerts.some(c => {
+      const name = c.name.toLowerCase();
+      return name.includes("cloud") || name.includes("aws") || name.includes("gcp") || name.includes("azure");
+    }) ? 1 : 0;
+    const sqlCert = verifiedCerts.some(c => {
+      const name = c.name.toLowerCase();
+      return name.includes("sql") || name.includes("database") || name.includes("postgres") || name.includes("mysql");
+    }) ? 1 : 0;
+
+    localProgress["00000000-0000-0000-0000-000000000007"] = { progress: dsaCert, completed: dsaCert >= 1 };
+    localProgress["00000000-0000-0000-0000-000000000008"] = { progress: cloudCert, completed: cloudCert >= 1 };
+    localProgress["00000000-0000-0000-0000-000000000009"] = { progress: sqlCert, completed: sqlCert >= 1 };
+    localProgress["00000000-0000-0000-0000-000000000010"] = { progress: mockInterviews > 0 ? 1 : 0, completed: mockInterviews > 0 };
+    localProgress["00000000-0000-0000-0000-000000000011"] = { progress: completedRoadmap >= 1 ? 1 : 0, completed: completedRoadmap >= 1 };
+    localProgress["00000000-0000-0000-0000-000000000012"] = { progress: latestAts >= 80 ? 1 : 0, completed: latestAts >= 80 };
+    localProgress["00000000-0000-0000-0000-000000000013"] = { progress: latestAts >= 80 ? 1 : 0, completed: latestAts >= 80 };
+
+    // Evaluate Category 3: Applications
+    const activeApps = apps.filter(a => a.status !== "Saved");
+    const interviewsApps = activeApps.filter(a => ["Technical Interview", "HR Interview", "Offer Received", "Joined"].includes(a.status));
+    const hrApps = activeApps.filter(a => ["HR Interview", "Offer Received", "Joined"].includes(a.status));
+    const offerApps = activeApps.filter(a => ["Offer Received", "Joined"].includes(a.status));
+    const joinedApps = activeApps.filter(a => a.status === "Joined");
+
+    localProgress["00000000-0000-0000-0000-000000000014"] = { progress: apps.length >= 1 ? 1 : 0, completed: apps.length >= 1 };
+    localProgress["00000000-0000-0000-0000-000000000015"] = { progress: Math.min(activeApps.length, 10), completed: activeApps.length >= 10 };
+    localProgress["00000000-0000-0000-0000-000000000016"] = { progress: Math.min(activeApps.length, 25), completed: activeApps.length >= 25 };
+    localProgress["00000000-0000-0000-0000-000000000017"] = { progress: interviewsApps.length >= 1 ? 1 : 0, completed: interviewsApps.length >= 1 };
+    localProgress["00000000-0000-0000-0000-000000000018"] = { progress: hrApps.length >= 1 ? 1 : 0, completed: hrApps.length >= 1 };
+    localProgress["00000000-0000-0000-0000-000000000019"] = { progress: offerApps.length >= 1 ? 1 : 0, completed: offerApps.length >= 1 };
+    localProgress["00000000-0000-0000-0000-000000000020"] = { progress: joinedApps.length >= 1 ? 1 : 0, completed: joinedApps.length >= 1 };
+
+    // Evaluate Category 4: Community
+    localProgress["00000000-0000-0000-0000-000000000021"] = { progress: 0, completed: false };
+    localProgress["00000000-0000-0000-0000-000000000022"] = { progress: 0, completed: false };
+    localProgress["00000000-0000-0000-0000-000000000023"] = { progress: 0, completed: false };
+    localProgress["00000000-0000-0000-0000-000000000024"] = { progress: 0, completed: false };
+    localProgress["00000000-0000-0000-0000-000000000025"] = { progress: 0, completed: false };
+
+    saveLocalData("buggedbrain_guest_missions", localProgress);
+    return { success: true };
+  }
+
+  try {
+    const { data: profile } = await db.from("profiles").select("*").eq("user_id", userId).maybeSingle();
+    const { data: scans } = await db.from("resume_scans").select("ats_score").eq("user_id", userId).order("created_at", { ascending: false });
+    const { data: jdMatches } = await db.from("jd_matches").select("match_score").eq("user_id", userId);
+    const { data: apps } = await db.from("applications").select("status").eq("user_id", userId);
+    const { data: roadmaps } = await db.from("roadmap_progress").select("id").eq("user_id", userId).eq("completed", true);
+    
+    const { count: postsCount } = await db.from("community_posts").select("id", { count: "exact", head: true }).eq("user_id", userId);
+    const { count: commentsCount } = await db.from("community_comments").select("id", { count: "exact", head: true }).eq("user_id", userId);
+    
+    const hasProfile = !!profile;
+    const scansCount = scans?.length || 0;
+    const latestAts = scans && scans.length > 0 ? (scans[0].ats_score || 0) : 0;
+    
+    const maxJdMatch = jdMatches && jdMatches.length > 0 ? Math.max(...jdMatches.map((m: any) => m.match_score || 0)) : 0;
+    const completedRoadmap = roadmaps?.length || 0;
+    
+    // Fetch verified certificates from learning vault
+    const { data: dbCerts } = await db.from("learning_vault").select("*").eq("user_id", userId).eq("status", "Verified");
+    const verifiedDbCerts = dbCerts || [];
+
+    const hasDsaCert = verifiedDbCerts.some((c: any) => {
+      const name = c.name.toLowerCase();
+      return name.includes("dsa") || name.includes("algorithm") || name.includes("data structure");
+    });
+    const hasCloudCert = verifiedDbCerts.some((c: any) => {
+      const name = c.name.toLowerCase();
+      return name.includes("cloud") || name.includes("aws") || name.includes("gcp") || name.includes("azure");
+    });
+    const hasSqlCert = verifiedDbCerts.some((c: any) => {
+      const name = c.name.toLowerCase();
+      return name.includes("sql") || name.includes("database") || name.includes("postgres") || name.includes("mysql");
+    });
+    
+    const applicationsList = apps || [];
+    const activeApps = applicationsList.filter((a: any) => a.status !== "Saved");
+    const interviewApps = applicationsList.filter((a: any) => ["Technical Interview", "HR Interview", "Offer Received", "Joined"].includes(a.status));
+    const hrApps = applicationsList.filter((a: any) => ["HR Interview", "Offer Received", "Joined"].includes(a.status));
+    const offerApps = applicationsList.filter((a: any) => ["Offer Received", "Joined"].includes(a.status));
+    const joinedApps = applicationsList.filter((a: any) => a.status === "Joined");
+    
+    const { userMissions } = await getUserMissions(userId, db);
+    
+    for (const um of userMissions) {
+      let progress = 0;
+      switch (um.mission_id) {
+        // Profile
+        case "00000000-0000-0000-0000-000000000001":
+          progress = hasProfile ? 1 : 0;
+          break;
+        case "00000000-0000-0000-0000-000000000002":
+          progress = scansCount >= 1 ? 1 : 0;
+          break;
+        case "00000000-0000-0000-0000-000000000003":
+          progress = profile?.linkedin_url ? 1 : 0;
+          break;
+        case "00000000-0000-0000-0000-000000000004":
+          progress = profile?.github_url ? 1 : 0;
+          break;
+        case "00000000-0000-0000-0000-000000000005":
+          progress = profile?.portfolio_url ? 1 : 0;
+          break;
+        case "00000000-0000-0000-0000-000000000006":
+          let fields = 0;
+          if (profile?.full_name) fields++;
+          if (profile?.skills && profile.skills.length > 0) fields++;
+          if (profile?.portfolio_url) fields++;
+          if (profile?.github_url) fields++;
+          progress = (fields >= 3) ? 1 : 0;
+          break;
+          
+        // Learning
+        case "00000000-0000-0000-0000-000000000007":
+          progress = hasDsaCert ? 1 : 0;
+          break;
+        case "00000000-0000-0000-0000-000000000008":
+          progress = hasCloudCert ? 1 : 0;
+          break;
+        case "00000000-0000-0000-0000-000000000009":
+          progress = hasSqlCert ? 1 : 0;
+          break;
+        case "00000000-0000-0000-0000-000000000010":
+          progress = (profile?.raw_profile_data?.company_prep_completed) ? 1 : 0;
+          break;
+        case "00000000-0000-0000-0000-000000000011":
+          progress = completedRoadmap >= 1 ? 1 : 0;
+          break;
+        case "00000000-0000-0000-0000-000000000012":
+          progress = latestAts >= 80 ? 1 : 0;
+          break;
+        case "00000000-0000-0000-0000-000000000013":
+          progress = maxJdMatch >= 80 ? 1 : 0;
+          break;
+          
+        // Applications
+        case "00000000-0000-0000-0000-000000000014":
+          progress = applicationsList.length >= 1 ? 1 : 0;
+          break;
+        case "00000000-0000-0000-0000-000000000015":
+          progress = Math.min(activeApps.length, 10);
+          break;
+        case "00000000-0000-0000-0000-000000000016":
+          progress = Math.min(activeApps.length, 25);
+          break;
+        case "00000000-0000-0000-0000-000000000017":
+          progress = interviewApps.length >= 1 ? 1 : 0;
+          break;
+        case "00000000-0000-0000-0000-000000000018":
+          progress = hrApps.length >= 1 ? 1 : 0;
+          break;
+        case "00000000-0000-0000-0000-000000000019":
+          progress = offerApps.length >= 1 ? 1 : 0;
+          break;
+        case "00000000-0000-0000-0000-000000000020":
+          progress = joinedApps.length >= 1 ? 1 : 0;
+          break;
+          
+        // Community
+        case "00000000-0000-0000-0000-000000000021":
+          progress = (postsCount || 0) >= 1 ? 1 : 0;
+          break;
+        case "00000000-0000-0000-0000-000000000022":
+          progress = (commentsCount || 0) >= 1 ? 1 : 0;
+          break;
+        case "00000000-0000-0000-0000-000000000023":
+          progress = (profile?.raw_profile_data?.upvotes || 0) >= 10 ? 10 : 0;
+          break;
+        case "00000000-0000-0000-0000-000000000024":
+          progress = (profile?.raw_profile_data?.upvotes || 0) >= 50 ? 50 : 0;
+          break;
+        case "00000000-0000-0000-0000-000000000025":
+          progress = profile?.badges?.includes("Community Contributor") ? 1 : 0;
+          break;
+      }
+
+      const completed = progress >= um.target;
+      if (progress !== um.progress || completed !== um.completed) {
+        await db.from("user_missions").update({
+          progress,
+          completed,
+          completed_at: completed ? new Date().toISOString() : null
+        }).eq("id", um.id);
+      }
+    }
+    return { success: true };
+  } catch (err) {
+    console.error("checkAndVerifyMissions failed:", err);
+    return { success: false };
+  }
+}
+
+// Consistency calculation
+export async function calculateConsistencyPercentages(userId: string, supabaseClient?: any) {
+  const db = await getDb(supabaseClient);
+  const isGuest = !userId || userId === "guest-user";
+  
+  if (isGuest) {
+    return { weekly: 71, monthly: 60 };
+  }
+  
+  try {
+    const today = new Date();
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(today.getDate() - 30);
+    
+    const activeDaysSet = new Set<string>();
+    
+    const addDate = (dStr: string) => {
+      if (dStr) {
+        activeDaysSet.add(dStr.split("T")[0]);
+      }
+    };
+    
+    const { data: scans } = await db
+      .from("resume_scans")
+      .select("created_at")
+      .eq("user_id", userId)
+      .gte("created_at", thirtyDaysAgo.toISOString());
+    scans?.forEach((s: any) => addDate(s.created_at));
+    
+    const { data: apps } = await db
+      .from("applications")
+      .select("created_at, updated_at")
+      .eq("user_id", userId)
+      .or(`created_at.gte.${thirtyDaysAgo.toISOString()},updated_at.gte.${thirtyDaysAgo.toISOString()}`);
+    apps?.forEach((a: any) => {
+      addDate(a.created_at);
+      addDate(a.updated_at);
+    });
+    
+    const { data: posts } = await db
+      .from("community_posts")
+      .select("created_at")
+      .eq("user_id", userId)
+      .gte("created_at", thirtyDaysAgo.toISOString());
+    posts?.forEach((p: any) => addDate(p.created_at));
+    
+    const { data: comments } = await db
+      .from("community_comments")
+      .select("created_at")
+      .eq("user_id", userId)
+      .gte("created_at", thirtyDaysAgo.toISOString());
+    comments?.forEach((c: any) => addDate(c.created_at));
+    
+    const activeDays = Array.from(activeDaysSet);
+    
+    const last7DaysStr = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date();
+      d.setDate(today.getDate() - i);
+      return d.toISOString().split("T")[0];
+    });
+    
+    const last30DaysStr = Array.from({ length: 30 }, (_, i) => {
+      const d = new Date();
+      d.setDate(today.getDate() - i);
+      return d.toISOString().split("T")[0];
+    });
+    
+    const weeklyActiveCount = last7DaysStr.filter(d => activeDays.includes(d)).length;
+    const monthlyActiveCount = last30DaysStr.filter(d => activeDays.includes(d)).length;
+    
+    return {
+      weekly: Math.round((weeklyActiveCount / 7) * 100),
+      monthly: Math.round((monthlyActiveCount / 30) * 100)
+    };
+  } catch (err) {
+    console.error("Failed to calculate consistency percentages:", err);
+    return { weekly: 50, monthly: 40 };
   }
 }

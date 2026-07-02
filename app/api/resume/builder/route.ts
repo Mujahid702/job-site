@@ -399,17 +399,26 @@ export async function POST(request: Request) {
 
       const systemPrompt = `You are a premium ATS Resume parser. Parse and reorganize the raw resume text into a highly structured JSON format.
 CRITICAL DIRECTIONS:
-1. Extract name, email, phone, linkedin, github, portfolio.
-2. Group all parsed skills into logical categories (e.g. Languages, Frameworks, Databases, Tools).
-3. Extract education history, including school, degree, major, location, date, gpa.
-4. Extract work experience details, listing company, role, location, dates, and separate description bullet points (clean up phrasing, start with strong verbs, fix spelling).
-5. Extract project history, listing title, role, technologies, and separate description bullets.
-6. Extract certifications and achievements into flat arrays of strings.
-7. Write a professional, concise 3-4 sentence professional summary based on the parsed credentials.`
+1. You MUST generate a "thinking" property first. In this section, perform a step-by-step reasoning chain:
+   - Identify candidate name, contact links, and basic profile summary.
+   - Group skills into clean categories.
+   - Map experience history, project history, and education details.
+   - Confirm that no key dates, company names, or details are lost or modified.
+2. Extract name, email, phone, linkedin, github, portfolio.
+3. Group all parsed skills into logical categories (e.g. Languages, Frameworks, Databases, Tools).
+4. Extract education history, including school, degree, major, location, date, gpa.
+5. Extract work experience details, listing company, role, location, dates, and separate description bullet points (clean up phrasing, start with strong verbs, fix spelling).
+6. Extract project history, listing title, role, technologies, and separate description bullets.
+7. Extract certifications and achievements into flat arrays of strings.
+8. Write a professional, concise 3-4 sentence professional summary based on the parsed credentials.`
 
       const schema = {
         type: 'OBJECT',
         properties: {
+          thinking: {
+            type: 'STRING',
+            description: 'Step-by-step reasoning chain about parsing the resume. Generated first.'
+          },
           name: { type: 'STRING' },
           email: { type: 'STRING' },
           phone: { type: 'STRING' },
@@ -453,7 +462,7 @@ CRITICAL DIRECTIONS:
                 description: { type: 'ARRAY', items: { type: 'STRING' } },
                 technologies: { type: 'ARRAY', items: { type: 'STRING' } },
               },
-              required: ['title', 'description', 'technologies'],
+              required: ['title', 'role', 'description', 'technologies'],
             },
           },
           experience: {
@@ -474,6 +483,7 @@ CRITICAL DIRECTIONS:
           achievements: { type: 'ARRAY', items: { type: 'STRING' } },
         },
         required: [
+          'thinking',
           'name',
           'email',
           'phone',
@@ -511,16 +521,24 @@ CRITICAL DIRECTIONS:
 
       const systemPrompt = `You are a premium career consultant. Review the structured resume JSON profileData and the target job description (JD), and optimize the content for maximum matching index score.
 CRITICAL DIRECTIONS:
-1. Re-write the professional summary to align with the JD, highlighting key matching skills.
-2. Group and order the skills categories based on what the JD prioritizes.
-3. Align project and experience description bullets to focus on JD keywords and inject suggested metrics placeholders in brackets (e.g. "[Insert Performance Improvement]%").
-4. Maintain all core credentials, do not make up fake job titles or credentials.
-5. Return the full structured profile data matching the schema.`
+1. You MUST generate a "thinking" property first. In this section, perform a step-by-step reasoning chain:
+   - Match candidate skills and experience against the requirements of the job description.
+   - Plan summary alterations and bullet rewrites incorporating target keywords.
+   - Keep structural integrity without inventing fake credentials or metrics.
+2. Re-write the professional summary to align with the JD, highlighting key matching skills.
+3. Group and order the skills categories based on what the JD prioritizes.
+4. Align project and experience description bullets to focus on JD keywords and inject suggested metrics placeholders in brackets (e.g. "[Insert Performance Improvement]%").
+5. Maintain all core credentials, do not make up fake job titles or credentials.
+6. Return the full structured profile data matching the schema.`
 
       // Re-use the exact same schema structure for validation
       const schema = {
         type: 'OBJECT',
         properties: {
+          thinking: {
+            type: 'STRING',
+            description: 'Step-by-step reasoning chain about optimizing the resume. Generated first.'
+          },
           name: { type: 'STRING' },
           email: { type: 'STRING' },
           phone: { type: 'STRING' },
@@ -564,7 +582,7 @@ CRITICAL DIRECTIONS:
                 description: { type: 'ARRAY', items: { type: 'STRING' } },
                 technologies: { type: 'ARRAY', items: { type: 'STRING' } },
               },
-              required: ['title', 'description', 'technologies'],
+              required: ['title', 'role', 'description', 'technologies'],
             },
           },
           experience: {
@@ -585,6 +603,7 @@ CRITICAL DIRECTIONS:
           achievements: { type: 'ARRAY', items: { type: 'STRING' } },
         },
         required: [
+          'thinking',
           'name',
           'email',
           'phone',

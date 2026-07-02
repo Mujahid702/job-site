@@ -40,10 +40,15 @@ export async function POST(request: Request) {
 Analyze the provided resume text and the job description (JD) text, and generate custom, tailored modifications to optimize this resume for this specific job application.
 
 CRITICAL INSTRUCTIONS:
-1. Identify 5-10 missing keywords/skills from the JD that are not present in the resume but are critical.
-2. Select 3-4 weak or generic bullet points/phrases from the resume, and rewrite them into high-impact, results-oriented achievements tailored directly to the requirements in the JD. For each, explain why the optimized version stands out.
-3. Draft a tailored, highly compelling 3-4 sentence professional summary statement for the top of the resume, showcasing the candidate's fit for this specific job description.
-4. List 3-4 ATS-specific recommendations (e.g. section headers, technology grouping, phrasing adjustments) to maximize score potential.
+1. You MUST generate a "thinking" property first. In this section, perform a rigorous step-by-step chain of thought:
+   - Identify the target role and core skill requirements from the Job Description.
+   - Match the candidate's skills against these requirements to identify real, genuine missing keywords.
+   - Review the candidate's existing bullets to find weak, non-quantified statements, and map out exactly how to rewrite them to align with the JD's requirements and showcase recruiters' high-impact keywords.
+   - Devise structural ATS recommendation strategies.
+2. Identify 5-10 missing keywords/skills from the JD that are not present in the resume but are critical.
+3. Select 3-4 weak or generic bullet points/phrases from the resume, and rewrite them into high-impact, results-oriented achievements tailored directly to the requirements in the JD. For each, explain why the optimized version stands out.
+4. Draft a tailored, highly compelling 3-4 sentence professional summary statement for the top of the resume, showcasing the candidate's fit for this specific job description.
+5. List 3-4 ATS-specific recommendations (e.g. section headers, technology grouping, phrasing adjustments) to maximize score potential.
 
 RESUME TEXT:
 """
@@ -58,6 +63,10 @@ ${jdText}
     const schema = {
       type: "OBJECT",
       properties: {
+        thinking: {
+          type: "STRING",
+          description: "Step-by-step reasoning chain about missing keywords, candidate weaknesses, and optimization strategies. Generated first."
+        },
         missingKeywords: {
           type: "ARRAY",
           items: { type: "STRING" }
@@ -80,7 +89,7 @@ ${jdText}
           items: { type: "STRING" }
         }
       },
-      required: ["missingKeywords", "optimizedBullets", "tailoredSummary", "atsRecommendations"]
+      required: ["thinking", "missingKeywords", "optimizedBullets", "tailoredSummary", "atsRecommendations"]
     };
 
     const gatewayResponse = await generateResponse({

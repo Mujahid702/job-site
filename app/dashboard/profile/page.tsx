@@ -132,6 +132,55 @@ export default function ProfileDashboardPage() {
   // Feedback alerts
   const [alertMsg, setAlertMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
 
+  // Memories and Privacy states
+  const [memories, setMemories] = useState<any[]>([]);
+  const [personalizationPaused, setPersonalizationPaused] = useState(false);
+
+  const fetchMemories = async () => {
+    try {
+      const res = await fetch("/api/student/memory");
+      const result = await res.json();
+      if (res.ok && result.success) {
+        setMemories(result.data || []);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleForgetMemory = async (id: string) => {
+    try {
+      const res = await fetch(`/api/student/memory?id=${id}`, {
+        method: "DELETE"
+      });
+      const result = await res.json();
+      if (result.success) {
+        setMemories(prev => prev.filter(m => m.id !== id));
+        triggerAlert("Memory node forgotten successfully.", "success");
+      }
+    } catch {
+      triggerAlert("Failed to clear memory node.", "error");
+    }
+  };
+
+  const handleResetPersonalization = async () => {
+    if (!confirm("Are you sure you want to reset all recommendation configurations? This resets working/episodic memory matrices completely.")) {
+      return;
+    }
+    try {
+      const res = await fetch("/api/student/memory", {
+        method: "POST"
+      });
+      const result = await res.json();
+      if (result.success) {
+        setMemories([]);
+        triggerAlert("Personalization engine successfully reset.", "success");
+      }
+    } catch {
+      triggerAlert("Failed to reset personalization engine.", "error");
+    }
+  };
+
   // active sub-tab for dashboard panels
   const [activeTab, setActiveTab] = useState<"timeline" | "analytics" | "settings">("timeline");
 
@@ -144,7 +193,7 @@ export default function ProfileDashboardPage() {
       if (user) {
         // Load Profile from DB
         const dbProfile = await getUserProfile(user.id);
-        if (dbProfile) {
+        if (dbProfile && dbProfile.onboarding_completed) {
           setProfile(dbProfile);
           setFullName(dbProfile.full_name || "");
           setEmail(dbProfile.email || user.email || "");
@@ -198,6 +247,7 @@ export default function ProfileDashboardPage() {
 
         const scores = await getPlacementScores(user.id);
         setPlacementScores(scores);
+        fetchMemories();
       } else {
         // LocalStorage fallback for guests
         if (typeof window !== "undefined") {
@@ -1466,6 +1516,77 @@ export default function ProfileDashboardPage() {
                     </button>
 
                   </form>
+
+                  {/* GDPR Privacy & AI Memory Control Panel */}
+                  <div className="space-y-6 pt-8 border-t border-slate-200">
+                    <div>
+                      <h4 className="text-sm font-black text-slate-800 uppercase tracking-wider">AI Memory & Privacy Settings</h4>
+                      <p className="text-[11px] text-slate-400 font-semibold mt-0.5">
+                        Manage target guidelines, review long-term metrics, forget episodic markers, or reset adaptive profiles.
+                      </p>
+                    </div>
+
+                    {/* Memory lists */}
+                    <div className="space-y-3">
+                      {memories.length > 0 ? (
+                        memories.map((mem) => (
+                          <div key={mem.id} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between gap-4">
+                            <div className="space-y-1 truncate">
+                              <div className="flex items-center gap-1.5">
+                                <span className={cn(
+                                  "px-2 py-0.5 text-[8px] font-black uppercase tracking-wider rounded border",
+                                  mem.memory_type === "permanent" && "bg-blue-50 border-blue-100 text-blue-600",
+                                  mem.memory_type === "long_term" && "bg-purple-50 border-purple-100 text-purple-600",
+                                  mem.memory_type === "working" && "bg-amber-50 border-amber-100 text-amber-600",
+                                  mem.memory_type === "episodic" && "bg-emerald-50 border-emerald-100 text-emerald-600"
+                                )}>
+                                  {mem.memory_type}
+                                </span>
+                                <span className="text-[10px] text-slate-450 font-black uppercase tracking-wider">{mem.key}</span>
+                              </div>
+                              <p className="text-[11px] text-slate-500 font-semibold truncate max-w-md">
+                                {JSON.stringify(mem.value)}
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => handleForgetMemory(mem.id)}
+                              className="px-3 py-1.5 border border-slate-200 hover:border-rose-200 text-slate-500 hover:text-rose-600 rounded-xl text-[9px] font-black uppercase tracking-widest transition-colors cursor-pointer shrink-0"
+                            >
+                              Forget Node
+                            </button>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="py-6 text-center text-slate-400 font-bold uppercase tracking-wider text-[10px] border border-dashed border-slate-200 rounded-2xl">
+                          No personalization memories indexed yet. Evolve memory by updating resumes or finishing roadmaps.
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row gap-4 pt-2">
+                      <button
+                        onClick={handleResetPersonalization}
+                        className="px-4 py-3 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-650 text-xs font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer flex-grow text-center animate-pulse"
+                      >
+                        Reset Recommendation Persona
+                      </button>
+                      <button
+                        onClick={() => {
+                          setPersonalizationPaused(!personalizationPaused);
+                          triggerAlert(personalizationPaused ? "AI Personalization enabled." : "AI Personalization paused.", "success");
+                        }}
+                        className={cn(
+                          "px-4 py-3 border text-xs font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer flex-grow text-center",
+                          personalizationPaused
+                            ? "bg-slate-900 border-slate-900 text-white"
+                            : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+                        )}
+                      >
+                        {personalizationPaused ? "Resume Personalization" : "Pause Personalization"}
+                      </button>
+                    </div>
+                  </div>
+
                 </div>
               )}
 

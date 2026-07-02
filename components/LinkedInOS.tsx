@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Globe,
   Upload,
@@ -16,6 +16,8 @@ import {
   FileText
 } from "lucide-react";
 import { cn, flattenSkills } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
+import { upsertUserProfile } from "@/lib/db/profiles";
 
 // Types
 interface LinkedInProfile {
@@ -41,6 +43,7 @@ interface LinkedInProfile {
   }>;
   certifications: string[];
   achievements: string[];
+  avatar?: string;
 }
 
 // Pre-mapped SEO keywords per target role
@@ -123,7 +126,8 @@ const defaultProfile: LinkedInProfile = {
     }
   ],
   certifications: ["AWS Certified Developer Associate"],
-  achievements: ["Winner of VTU Inter-College Hackathon 2025"]
+  achievements: ["Winner of VTU Inter-College Hackathon 2025"],
+  avatar: ""
 };
 
 // Helper outside component for react compiler
@@ -152,6 +156,380 @@ export default function LinkedInOS() {
   const [pdfUploadProgress, setPdfUploadProgress] = useState<number | null>(null);
   const [profileUrlInput, setProfileUrlInput] = useState("");
   const [profileUrlSyncing, setProfileUrlSyncing] = useState(false);
+
+  // Real LinkedIn OAuth connection states via Supabase Auth
+  const [isLinkedinConnected, setIsLinkedinConnected] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("linkedin_oauth_connected") === "true";
+    }
+    return false;
+  });
+  const [linkedInUserMeta, setLinkedInUserMeta] = useState<{ name?: string; email?: string; avatar?: string } | null>(null);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
+  const [linkedinSyncLoading, setLinkedinSyncLoading] = useState(false);
+  const [providerToken, setProviderToken] = useState<string | null>(null);
+  const [isPublishing, setIsPublishing] = useState(false);
+
+  // Check LinkedIn session status on mount
+  useEffect(() => {
+    const checkLinkedInSession = async () => {
+      try {
+        const supabase = createClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.provider_token) {
+          setProviderToken(session.provider_token);
+        }
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const identity = user.identities?.find(id => id.provider === "linkedin_oidc");
+          if (identity) {
+            setIsLinkedinConnected(true);
+            localStorage.setItem("linkedin_oauth_connected", "true");
+            setLinkedInUserMeta({
+              name: identity.identity_data?.name,
+              email: identity.identity_data?.email,
+              avatar: identity.identity_data?.avatar_url || identity.identity_data?.picture
+            });
+            
+            // Auto pre-populate fields if profile is currently default or empty
+            if (profile.name === defaultProfile.name || !profile.name) {
+              const updated = {
+                ...profile,
+                name: identity.identity_data?.name || profile.name,
+                email: identity.identity_data?.email || profile.email,
+                avatar: identity.identity_data?.avatar_url || identity.identity_data?.picture || profile.avatar
+              };
+              saveProfile(updated);
+              
+              // Sync back to Supabase profiles table
+              upsertUserProfile(user.id, {
+                name: identity.identity_data?.name,
+                email: identity.identity_data?.email,
+                linkedin: profile.linkedin || `linkedin.com/in/${identity.identity_data?.name?.toLowerCase().replace(/\s+/g, "-")}`
+              }).catch(err => console.error("Auto profile sync failed:", err));
+            }
+          } else {
+            setIsLinkedinConnected(false);
+            localStorage.setItem("linkedin_oauth_connected", "false");
+            setLinkedInUserMeta(null);
+          }
+        }
+      } catch (err) {
+        console.error("Error checking LinkedIn identity status:", err);
+      } finally {
+        setIsCheckingSession(false);
+      }
+    };
+
+    checkLinkedInSession();
+  }, []);
+
+  // Check URL query parameters for success callback redirection
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("linkedin_sync") === "success") {
+        alert("Success! Your LinkedIn account was successfully connected and verified.");
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, newUrl);
+      }
+    }
+  }, []);
+
+  // Custom Post Composer & AI Enhancer states
+  const [customPostDraft, setCustomPostDraft] = useState("");
+  const [enhancedPostOutput, setEnhancedPostOutput] = useState("");
+  const [isEnhancingPost, setIsEnhancingPost] = useState(false);
+  const [enhancementStyle, setEnhancementStyle] = useState<"star" | "viral" | "technical" | "impact">("star");
+  const [enhancedPostTags, setEnhancedPostTags] = useState<string[]>([]);
+
+  // Completed brand tasks
+  const [completedBrandTasks, setCompletedBrandTasks] = useState<Record<string, boolean>>(() => {
+    if (typeof window !== "undefined") {
+      const cached = localStorage.getItem("linkedin_completed_tasks");
+      if (cached) {
+        try {
+          return JSON.parse(cached);
+        } catch {}
+      }
+    }
+    return {};
+  });
+
+  const saveCompletedTasks = (updated: Record<string, boolean>) => {
+    setCompletedBrandTasks(updated);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("linkedin_completed_tasks", JSON.stringify(updated));
+    }
+  };
+
+  const handleConnectLinkedInOAuth = async () => {
+    setLinkedinSyncLoading(true);
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase.auth.linkIdentity({
+        provider: "linkedin_oidc",
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(window.location.pathname + "?linkedin_sync=success")}`
+        }
+      });
+      if (error) {
+        alert(`Authentication failed: ${error.message}`);
+      } else if (data?.url) {
+        window.location.assign(data.url);
+      }
+    } catch (err: any) {
+      alert(`Connection failed: ${err.message}`);
+    } finally {
+      setLinkedinSyncLoading(false);
+    }
+  };
+
+  const handleDisconnectLinkedIn = async () => {
+    if (!confirm("Are you sure you want to disconnect your LinkedIn account?")) return;
+    setLinkedinSyncLoading(true);
+    try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("User not authenticated.");
+      
+      const identity = user.identities?.find(id => id.provider === "linkedin_oidc");
+      if (!identity) {
+        alert("No connected LinkedIn account found.");
+        return;
+      }
+      
+      const { error } = await supabase.auth.unlinkIdentity(identity);
+      if (error) throw error;
+      
+      setIsLinkedinConnected(false);
+      localStorage.setItem("linkedin_oauth_connected", "false");
+      setLinkedInUserMeta(null);
+      alert("LinkedIn account successfully disconnected.");
+    } catch (err: any) {
+      alert(`Disconnection failed: ${err.message}`);
+    } finally {
+      setLinkedinSyncLoading(false);
+    }
+  };
+
+  const handleSyncOAuthDetails = async () => {
+    if (!linkedInUserMeta) {
+      alert("No connected LinkedIn account details found. Please connect your account first.");
+      return;
+    }
+    setLinkedinSyncLoading(true);
+    try {
+      const updated: LinkedInProfile = {
+        ...profile,
+        name: linkedInUserMeta.name || profile.name,
+        email: linkedInUserMeta.email || profile.email,
+        avatar: linkedInUserMeta.avatar || profile.avatar
+      };
+      
+      saveProfile(updated);
+      
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await upsertUserProfile(user.id, {
+          name: linkedInUserMeta.name || profile.name,
+          email: linkedInUserMeta.email || profile.email,
+          linkedin: profile.linkedin || `linkedin.com/in/${(linkedInUserMeta.name || "").toLowerCase().replace(/\s+/g, "-")}`
+        });
+      }
+      
+      alert("LinkedIn profile details successfully synced to your active workspace!");
+    } catch (err: any) {
+      alert(`Sync failed: ${err.message}`);
+    } finally {
+      setLinkedinSyncLoading(false);
+    }
+  };
+
+  const handlePublishToLinkedIn = async (postContent: string) => {
+    if (!isLinkedinConnected) {
+      alert("Please connect your LinkedIn account first under the 'Profile Scan' tab.");
+      return;
+    }
+    
+    let activeToken = providerToken;
+    if (!activeToken) {
+      try {
+        const supabase = createClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        activeToken = session?.provider_token || null;
+        if (activeToken) setProviderToken(activeToken);
+      } catch (err) {
+        console.error("Error retrieving active session:", err);
+      }
+    }
+
+    if (!activeToken) {
+      alert("LinkedIn access token not found. Please try disconnecting and reconnecting your LinkedIn account to refresh credentials.");
+      return;
+    }
+
+    if (!confirm("Are you sure you want to publish this post directly to your public LinkedIn feed?")) return;
+
+    setIsPublishing(true);
+    try {
+      const res = await fetch("/api/linkedin/post", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          content: postContent,
+          providerToken: activeToken
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to publish post.");
+
+      alert("Success! Your post has been published directly to LinkedIn.");
+      
+      const updatedTasks = { ...completedBrandTasks, "task_project": true };
+      saveCompletedTasks(updatedTasks);
+      
+    } catch (err: any) {
+      alert(err.message || "Failed to publish post to LinkedIn.");
+    } finally {
+      setIsPublishing(false);
+    }
+  };
+
+  const triggerLinkedInOAuthSync = async () => {
+    setLinkedinSyncLoading(true);
+    try {
+      const apiKey = typeof window !== "undefined" ? localStorage.getItem("gemini_api_key") || "" : "";
+      const res = await fetch("/api/portfolio/linkedin", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-gemini-api-key": apiKey
+        },
+        body: JSON.stringify({
+          linkedinUrl: profile.linkedin || "linkedin.com/in/mujahid-ahmed",
+          profileText: "" // trigger fallback/mock parsing
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.message || "Failed to sync profile");
+
+      const parsedData = data.data;
+      saveProfile({
+        ...profile,
+        name: parsedData.name || profile.name,
+        headline: parsedData.headline || profile.headline,
+        about: parsedData.summary || profile.about,
+        skills: parsedData.skills && parsedData.skills.length > 0 ? parsedData.skills : profile.skills,
+        experience: parsedData.experience && parsedData.experience.length > 0 
+          ? parsedData.experience.map((exp: any) => ({
+              role: exp.role || "",
+              company: exp.company || "",
+              period: exp.dateRange || "",
+              desc: exp.description || ""
+            }))
+          : profile.experience,
+        achievements: parsedData.achievements && parsedData.achievements.length > 0 ? parsedData.achievements : profile.achievements
+      });
+
+      alert("LinkedIn profile details successfully connected & synced!");
+    } catch (err: any) {
+      alert(err.message || "Failed to sync profile information from LinkedIn.");
+    } finally {
+      setLinkedinSyncLoading(false);
+    }
+  };
+
+  const handleEnhancePost = async () => {
+    if (!customPostDraft.trim()) return;
+    setIsEnhancingPost(true);
+    try {
+      const apiKey = typeof window !== "undefined" ? localStorage.getItem("gemini_api_key") || "" : "";
+      const res = await fetch("/api/linkedin/enhance", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-gemini-api-key": apiKey
+        },
+        body: JSON.stringify({
+          draftPost: customPostDraft,
+          style: enhancementStyle,
+          targetRole: profile.role,
+          skills: profile.skills
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.message || "Failed to enhance post");
+      setEnhancedPostOutput(data.enhancedPost);
+      setEnhancedPostTags(data.tags || []);
+    } catch (err: any) {
+      // Fallback in case of offline or failure
+      const fallbackTags = ["#softwaredevelopment", `#${profile.role.replace(/\s+/g, '')}`, "#careers"];
+      const fallbackPost = `${customPostDraft}\n\n🚀 Optimized for ${enhancementStyle.toUpperCase()} style. Proud of these recent technical developments.\n\n${fallbackTags.join(" ")}`;
+      setEnhancedPostOutput(fallbackPost);
+      setEnhancedPostTags(fallbackTags);
+      alert(err.message || "Enhancement failed. Applied local style formatting instead.");
+    } finally {
+      setIsEnhancingPost(false);
+    }
+  };
+
+  const syncPostTemplateToDraft = (category: string) => {
+    const template = getPostTemplateForCat(category);
+    const full = `${template.hook}\n\n${template.body}\n\n${template.cta}\n\n${template.tags}`;
+    setCustomPostDraft(full);
+  };
+
+  const handleSelectTemplateCategory = (catId: string) => {
+    setPostCategory(catId);
+    syncPostTemplateToDraft(catId);
+  };
+
+  // Sync initial showcase post to draft when content tab is first selected
+  useEffect(() => {
+    if (activeSubTab === "content" && !customPostDraft) {
+      syncPostTemplateToDraft("showcase");
+    }
+  }, [activeSubTab]);
+
+  // Dynamic Weekly Brand Tasks Checklist
+  const getWeeklyBrandTasks = () => {
+    const projectTitle = profile.projects?.[0]?.title || "Real-time Whiteboard";
+    const projectImpact = profile.projects?.[0]?.impact || "reduced latency by 35%";
+    const missingKw = (ROLE_KEYWORDS[profile.role] || ROLE_KEYWORDS["Software Engineer"]).missing?.[0] || "System Design";
+    const recommendedKw = (ROLE_KEYWORDS[profile.role] || ROLE_KEYWORDS["Software Engineer"]).recommended?.[0] || "Git";
+
+    return [
+      {
+        id: "task_project",
+        title: `Project Showcase Post`,
+        desc: `Write a post explaining how you resolved ${projectImpact} in your "${projectTitle}" project.`,
+        type: "content"
+      },
+      {
+        id: "task_skill",
+        title: `Skill/Keyword Deep-Dive`,
+        desc: `Draft a technical post about your experience with ${recommendedKw} and clean coding principles.`,
+        type: "content"
+      },
+      {
+        id: "task_seo",
+        title: `Profile SEO Update`,
+        desc: `Integrate the missing keyword "${missingKw}" into your profile About/headline.`,
+        type: "seo"
+      },
+      {
+        id: "task_networking",
+        title: `Networking Outreach`,
+        desc: `Send a cold outreach or connection message to a recruiter matching your target role.`,
+        type: "networking"
+      }
+    ];
+  };
 
   // Copilot messages
   const [copilotMessages, setCopilotMessages] = useState<Array<{ id: string; role: "user" | "copilot"; content: string }>>([
@@ -217,7 +595,8 @@ export default function LinkedInOS() {
             education: parsed.education?.[0] 
               ? `${parsed.education[0].institution} (${parsed.education[0].degree}, ${parsed.education[0].graduationYear || "Class of 2026"})`
               : profile.education,
-            skills: flattenedSkills.length > 0 ? flattenedSkills : profile.skills
+            skills: flattenedSkills.length > 0 ? flattenedSkills : profile.skills,
+            achievements: parsed.achievements && parsed.achievements.length > 0 ? parsed.achievements : (parsed.accomplishments || profile.achievements)
           };
           saveProfile(updated);
           alert("Success! Profile parameters successfully imported from Resume OS.");
@@ -309,6 +688,7 @@ export default function LinkedInOS() {
     if (profile.skills.length >= 5) score += 10;
     if (profile.projects.length >= 1) score += 10;
     if (profile.certifications.length >= 1) score += 5;
+    if (profile.achievements && profile.achievements.length >= 1) score += 5;
     return Math.min(score, 100);
   };
 
@@ -326,6 +706,14 @@ export default function LinkedInOS() {
 
     if (profile.linkedin.includes("linkedin.com/in/")) score += 10;
     if (profile.skills.length >= 8) score += 10;
+
+    // Add completed brand tasks boost (+5% per task completed)
+    const completedCount = Object.values(completedBrandTasks).filter(Boolean).length;
+    score += completedCount * 5;
+
+    // Real LinkedIn OAuth connection boost
+    if (isLinkedinConnected) score += 15;
+
     return Math.min(score, 100);
   };
 
@@ -343,6 +731,11 @@ export default function LinkedInOS() {
   };
 
   // Derived metrics
+  const isDetailsSynced = !!(isLinkedinConnected && linkedInUserMeta && 
+    profile.name === linkedInUserMeta.name && 
+    profile.email === linkedInUserMeta.email && 
+    (profile.avatar === linkedInUserMeta.avatar || (!profile.avatar && !linkedInUserMeta.avatar)));
+
   const profileScore = getProfileScore();
   const visibilityScore = getVisibilityScore();
   const seoScore = getSeoScore();
@@ -514,8 +907,8 @@ export default function LinkedInOS() {
   };
 
   // Post templates based on content generator selections
-  const getPostTemplate = () => {
-    if (postCategory === "journey") {
+  const getPostTemplateForCat = (category: string) => {
+    if (category === "journey") {
       return {
         hook: "🚀 Thrilled to share my placement preparation update today!",
         body: `For the past few months, I have been engineering full stack applications and practicing DSA loops on BuggedBrain. Learning how databases manage transaction concurrency locks under load has been eye-opening.\n\nMy target role is ${profile.role}, focusing on React, Node.js, and Cloud API architectures. Ready to tackle the technical rounds ahead!`,
@@ -523,7 +916,7 @@ export default function LinkedInOS() {
         tags: "#hiring #placement2026 #fullstack #freshersjobs #softwareengineering"
       };
     }
-    if (postCategory === "hackathon") {
+    if (category === "hackathon") {
       return {
         hook: "🏆 What a weekend! Had an amazing time competing in the hackathon!",
         body: `Our team engineered a dynamic placement diagnostic dashboard in just 36 hours. I was responsible for designing the database index caches and integrating AI estratégica models.\n\nWe faced database locks under concurrency loops, but resolved it by optimizing process threads.`,
@@ -531,7 +924,7 @@ export default function LinkedInOS() {
         tags: "#hackathon #reactjs #webdevelopment #developerlife #github"
       };
     }
-    if (postCategory === "update") {
+    if (category === "update") {
       return {
         hook: "⚡ Day 10 of my 30-Day coding streak: Optimizing API latencies!",
         body: `Today, I rewrote the SQL query routines in my project, replacing nested joins with optimized database indexing structures. This change dropped REST endpoint response times by 35%.\n\nConsistent daily progress is key.`,
@@ -546,6 +939,8 @@ export default function LinkedInOS() {
       tags: "#projectshowcase #websockets #reactjs #typescript #portfolio"
     };
   };
+
+  const getPostTemplate = () => getPostTemplateForCat(postCategory);
 
   // Networking templates
   const getNetworkingTemplate = () => {
@@ -614,8 +1009,45 @@ export default function LinkedInOS() {
           {activeSubTab === "analyzer" && (
             <div className="space-y-8 animate-fade-in">
               <div className="flex justify-between items-center flex-wrap gap-4">
-                <h2 className="text-xl font-black text-slate-900 font-display">Profile Upload & Channels</h2>
+                <div className="space-y-1">
+                  <h2 className="text-xl font-black text-slate-900 font-display">Profile Integration & Channels</h2>
+                  {isLinkedinConnected ? (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 border border-emerald-200 text-emerald-800 text-[9px] font-black uppercase tracking-wider rounded-lg shadow-sm">
+                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Connected via OAuth</span>
+                      </div>
+                      {linkedInUserMeta?.name && (
+                        <span className="text-[10px] text-slate-500 font-bold">
+                          as {linkedInUserMeta.name}
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-slate-100 text-slate-500 text-[9px] font-black uppercase tracking-wider rounded-md">
+                      Disconnected
+                    </div>
+                  )}
+                </div>
                 <div className="flex gap-2">
+                  {isLinkedinConnected ? (
+                    <button
+                      onClick={handleDisconnectLinkedIn}
+                      disabled={linkedinSyncLoading}
+                      className="px-3.5 py-2 bg-red-55 border border-red-100 text-red-750 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-red-100 transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      {linkedinSyncLoading ? "Disconnecting..." : "Disconnect LinkedIn"}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleConnectLinkedInOAuth}
+                      disabled={linkedinSyncLoading}
+                      className="px-3.5 py-2 bg-blue-50 border border-blue-100 text-blue-700 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-blue-100 transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                    >
+                      <Globe className="w-3.5 h-3.5" />
+                      {linkedinSyncLoading ? "Connecting..." : "Connect LinkedIn"}
+                    </button>
+                  )}
                   <button
                     onClick={handleImportFromResume}
                     className="px-3.5 py-2 bg-indigo-50 border border-indigo-100 text-indigo-750 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-indigo-100 transition-all cursor-pointer"
@@ -630,6 +1062,98 @@ export default function LinkedInOS() {
                   </button>
                 </div>
               </div>
+
+              {/* Premium LinkedIn Live Profile Card */}
+              {isLinkedinConnected && linkedInUserMeta && (
+                <div className="relative rounded-[2rem] overflow-hidden border border-slate-200 shadow-lg bg-white transition-all hover:shadow-xl animate-fade-in group">
+                  {/* LinkedIn Header Banner styling */}
+                  <div className="h-28 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-800 relative flex items-center justify-end p-4">
+                    <span className="text-[9px] font-black uppercase tracking-wider bg-white/20 backdrop-blur-md text-white px-2.5 py-1 rounded-md border border-white/10">
+                      LinkedIn Active Identity Linked
+                    </span>
+                  </div>
+
+                  <div className="px-8 pb-6 relative flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                    {/* User profile details block */}
+                    <div className="flex flex-col md:flex-row items-center md:items-start gap-4 -mt-12 text-center md:text-left">
+                      {/* Overlapping Avatar container */}
+                      <div className="w-24 h-24 rounded-full border-4 border-white bg-slate-100 overflow-hidden shadow-md shrink-0 flex items-center justify-center relative group-hover:scale-105 transition-transform duration-300">
+                        {linkedInUserMeta.avatar ? (
+                          <img
+                            src={linkedInUserMeta.avatar}
+                            alt={linkedInUserMeta.name || "LinkedIn User"}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-gradient-to-tr from-blue-500 to-indigo-600 flex items-center justify-center text-white text-3xl font-black">
+                            {(linkedInUserMeta.name || profile.name || "U")[0]}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="pt-2 md:pt-14 space-y-1">
+                        <div className="flex items-center justify-center md:justify-start gap-2">
+                          <h3 className="text-xl font-black text-slate-900 font-display">
+                            {linkedInUserMeta.name || profile.name}
+                          </h3>
+                          <span className="inline-flex items-center justify-center w-5 h-5 bg-blue-100 text-blue-600 rounded-full text-[10px] font-black" title="Verified OAuth identity">
+                            ✓
+                          </span>
+                        </div>
+                        <p className="text-xs font-bold text-slate-500 max-w-md">
+                          {profile.headline || `${profile.role} | Aspiring Engineer`}
+                        </p>
+                        <div className="flex items-center justify-center md:justify-start gap-2 text-[10px] text-slate-450 font-semibold">
+                          <span>{linkedInUserMeta.email}</span>
+                          <span>•</span>
+                          <span>{profile.education.split(" (")[0]}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Sync button & status indicators */}
+                    <div className="md:pt-14 shrink-0 w-full md:w-auto flex flex-col items-center md:items-end gap-2">
+                      {isDetailsSynced ? (
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-150 rounded-xl text-emerald-800 text-[10px] font-black uppercase tracking-wider">
+                          <Check className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Active Profile Synced</span>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={handleSyncOAuthDetails}
+                          disabled={linkedinSyncLoading}
+                          className="w-full md:w-auto px-5 py-2.5 bg-slate-900 hover:bg-blue-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer shadow-md flex items-center justify-center gap-2"
+                        >
+                          <Sparkles className="w-3.5 h-3.5 animate-pulse text-yellow-300" />
+                          <span>{linkedinSyncLoading ? "Syncing..." : "Sync LinkedIn Profile"}</span>
+                        </button>
+                      )}
+                      {!isDetailsSynced && (
+                        <span className="text-[9px] text-amber-600 font-bold animate-pulse">
+                          Sync pending: workspace profile uses default details.
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Informational banner about OIDC data limitations */}
+              {isLinkedinConnected && (
+                <div className="p-4 bg-blue-50/70 border border-blue-150 rounded-2xl flex items-start gap-3 mt-4">
+                  <div className="p-1.5 bg-blue-600 text-white rounded-lg shrink-0">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <div className="space-y-1">
+                    <h4 className="text-xs font-black text-blue-900">LinkedIn Integration Note</h4>
+                    <p className="text-[11px] text-blue-750 font-bold leading-normal">
+                      Your LinkedIn account is securely connected via Supabase Auth. Standard LinkedIn OpenID Connect API only shares basic identity fields (your verified name and email address) for privacy reasons. 
+                      To pull in your complete work experience, skills, and projects, we recommend copy-pasting your raw LinkedIn profile text or uploading your exported PDF profile in the panels below.
+                    </p>
+                  </div>
+                </div>
+              )}
+
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* PDF scan upload */}
@@ -725,6 +1249,27 @@ export default function LinkedInOS() {
                     className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none leading-relaxed"
                   />
                 </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">Certifications (one per line)</label>
+                    <textarea
+                      rows={3}
+                      value={profile.certifications?.join("\n") || ""}
+                      onChange={(e) => handleUpdateField("certifications", e.target.value.split("\n").filter(Boolean))}
+                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none leading-relaxed"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">Achievements (one per line)</label>
+                    <textarea
+                      rows={3}
+                      value={profile.achievements?.join("\n") || ""}
+                      onChange={(e) => handleUpdateField("achievements", e.target.value.split("\n").filter(Boolean))}
+                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none leading-relaxed"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -800,7 +1345,7 @@ export default function LinkedInOS() {
                         onClick={() => setAboutLength(len as "short" | "medium" | "long")}
                         className={cn(
                           "px-2.5 py-1 text-[9px] font-black uppercase tracking-widest rounded border cursor-pointer transition-all",
-                          aboutLength === len ? "bg-slate-950 border-slate-950 text-white" : "bg-white border-slate-200 text-slate-400"
+                          aboutLength === len ? "bg-slate-900 border-slate-900 text-white" : "bg-white border-slate-200 text-slate-400"
                         )}
                       >
                         {len}
@@ -1038,7 +1583,7 @@ export default function LinkedInOS() {
                       onClick={() => setOutreachType(tp.id as "connection" | "followup" | "referral" | "cold")}
                       className={cn(
                         "px-2 py-0.5 text-[8px] font-black uppercase tracking-widest rounded border cursor-pointer transition-all",
-                        outreachType === tp.id ? "bg-slate-950 border-slate-950 text-white" : "bg-white border-slate-200 text-slate-400"
+                        outreachType === tp.id ? "bg-slate-900 border-slate-900 text-white" : "bg-white border-slate-200 text-slate-400"
                       )}
                     >
                       {tp.label}
@@ -1065,10 +1610,16 @@ export default function LinkedInOS() {
 
           {/* TAB 6: CONTENT CREATOR */}
           {activeSubTab === "content" && (
-            <div className="space-y-6 animate-fade-in">
+            <div className="space-y-8 animate-fade-in">
               <div className="flex justify-between items-center flex-wrap gap-4">
-                <h2 className="text-xl font-black text-slate-900 font-display">Personal Brand Content Creator</h2>
-                <div className="flex gap-2">
+                <div className="space-y-1">
+                  <h2 className="text-xl font-black text-slate-900 font-display">Personal Brand Content Creator</h2>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                    Draft, structure, and enhance your professional updates with AI.
+                  </p>
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest self-center mr-1">Quick Templates:</span>
                   {[
                     { id: "showcase", label: "Project Showcase" },
                     { id: "journey", label: "Learning Journey" },
@@ -1077,10 +1628,10 @@ export default function LinkedInOS() {
                   ].map(cat => (
                     <button
                       key={cat.id}
-                      onClick={() => setPostCategory(cat.id)}
+                      onClick={() => handleSelectTemplateCategory(cat.id)}
                       className={cn(
                         "px-3 py-1.5 text-[9px] font-black uppercase tracking-widest border rounded-lg cursor-pointer transition-all",
-                        postCategory === cat.id ? "bg-slate-900 border-slate-900 text-white" : "bg-white border-slate-200 text-slate-500"
+                        postCategory === cat.id ? "bg-slate-900 border-slate-900 text-white shadow-sm" : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50"
                       )}
                     >
                       {cat.label}
@@ -1089,35 +1640,161 @@ export default function LinkedInOS() {
                 </div>
               </div>
 
-              <div className="border border-slate-200 rounded-[2rem] overflow-hidden shadow-sm">
-                <div className="bg-slate-50 p-4 border-b border-slate-200 flex justify-between items-center text-xs font-black text-slate-400 uppercase tracking-widest">
-                  <span>LinkedIn Post Editor</span>
-                  <button
-                    onClick={() => {
-                      const fullPost = `${getPostTemplate().hook}\n\n${getPostTemplate().body}\n\n${getPostTemplate().cta}\n\n${getPostTemplate().tags}`;
-                      handleCopyText(fullPost, "post-tp");
-                    }}
-                    className="text-slate-500 hover:text-slate-800 transition-all flex items-center gap-1.5"
-                  >
-                    {copiedKey === "post-tp" ? (
-                      <>
-                        <Check className="w-4 h-4 text-emerald-600" />
-                        <span className="text-emerald-600">Copied</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-4 h-4" />
-                        <span>Copy Post</span>
-                      </>
-                    )}
-                  </button>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* Compose Draft Column */}
+                <div className="space-y-6">
+                  <div className="border border-slate-200 rounded-[2rem] overflow-hidden shadow-sm bg-white">
+                    <div className="bg-slate-50 p-4 border-b border-slate-200 flex justify-between items-center text-xs font-black text-slate-400 uppercase tracking-widest">
+                      <span>Post Composer</span>
+                      <div className="flex items-center gap-3">
+                        {customPostDraft.trim() && (
+                          <button
+                            disabled={isPublishing}
+                            onClick={() => {
+                              if (!isLinkedinConnected) {
+                                alert("Please connect your LinkedIn account first under the 'Profile Scan' tab.");
+                                return;
+                              }
+                              handlePublishToLinkedIn(customPostDraft);
+                            }}
+                            className={cn(
+                              "transition-all flex items-center gap-1 text-[9px] lowercase font-semibold cursor-pointer",
+                              isLinkedinConnected ? "text-blue-600 hover:text-blue-800" : "text-slate-450 hover:text-slate-650"
+                            )}
+                          >
+                            <Send className="w-2.5 h-2.5" />
+                            <span>{isLinkedinConnected ? "publish raw" : "connect & publish raw"}</span>
+                          </button>
+                        )}
+                        <span className="text-[9px] font-bold text-slate-400">
+                          {customPostDraft.length} chars
+                        </span>
+                      </div>
+                    </div>
+                    <div className="p-5">
+                      <textarea
+                        rows={12}
+                        placeholder="Write your raw LinkedIn update here, or select a quick template above..."
+                        value={customPostDraft}
+                        onChange={(e) => setCustomPostDraft(e.target.value)}
+                        className="w-full p-4 bg-slate-50 border border-slate-250 rounded-2xl text-xs font-bold focus:outline-none focus:bg-white leading-relaxed resize-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="border border-slate-200 rounded-[2rem] p-6 bg-slate-50/30 space-y-4">
+                    <strong className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">AI Optimization Style</strong>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { id: "star", label: "STAR Structure", desc: "S-T-A-R bullets" },
+                        { id: "viral", label: "Viral Hook", desc: "Engaging hook & story" },
+                        { id: "technical", label: "Technical Depth", desc: "Tech specs & codebase" },
+                        { id: "impact", label: "Impact Stats", desc: "Metrics & achievements" }
+                      ].map(styleOpt => (
+                        <button
+                          key={styleOpt.id}
+                          onClick={() => setEnhancementStyle(styleOpt.id as any)}
+                          className={cn(
+                            "p-3 rounded-xl border text-left cursor-pointer transition-all",
+                            enhancementStyle === styleOpt.id
+                              ? "bg-slate-900 border-slate-900 text-white shadow-sm"
+                              : "bg-white border-slate-150 text-slate-650 hover:bg-slate-50"
+                          )}
+                        >
+                          <div className="text-[10px] font-black uppercase tracking-wider">{styleOpt.label}</div>
+                          <div className={cn("text-[8px] font-bold mt-0.5", enhancementStyle === styleOpt.id ? "text-slate-300" : "text-slate-400")}>
+                            {styleOpt.desc}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+
+                    <button
+                      onClick={handleEnhancePost}
+                      disabled={isEnhancingPost || !customPostDraft.trim()}
+                      className="w-full py-3.5 bg-indigo-650 text-white font-black text-[10px] uppercase tracking-widest rounded-xl hover:bg-indigo-700 transition-all cursor-pointer disabled:opacity-40 flex items-center justify-center gap-2"
+                    >
+                      <Sparkles className={cn("w-3.5 h-3.5", isEnhancingPost && "animate-spin")} />
+                      {isEnhancingPost ? "Optimizing Post Copy..." : "Enhance Draft with AI"}
+                    </button>
+                  </div>
                 </div>
 
-                <div className="p-6 space-y-4 bg-white text-xs font-semibold leading-relaxed text-slate-800">
-                  <p className="text-blue-600 font-black text-sm">{getPostTemplate().hook}</p>
-                  <p className="whitespace-pre-wrap text-slate-700">{getPostTemplate().body}</p>
-                  <p className="font-bold text-slate-900">{getPostTemplate().cta}</p>
-                  <p className="text-slate-400 font-mono tracking-wider">{getPostTemplate().tags}</p>
+                {/* AI Enhanced Output Column */}
+                <div className="space-y-6">
+                  <div className="border border-slate-200 rounded-[2rem] overflow-hidden shadow-sm bg-white min-h-[420px] flex flex-col">
+                    <div className="bg-slate-50 p-4 border-b border-slate-200 flex justify-between items-center text-xs font-black text-slate-400 uppercase tracking-widest shrink-0">
+                      <span>AI Optimized Copy</span>
+                      {enhancedPostOutput && (
+                        <div className="flex items-center gap-4">
+                          <button
+                            disabled={isPublishing}
+                            onClick={() => {
+                              if (!isLinkedinConnected) {
+                                alert("Please connect your LinkedIn account first under the 'Profile Scan' tab.");
+                                return;
+                              }
+                              handlePublishToLinkedIn(enhancedPostOutput);
+                            }}
+                            className={cn(
+                              "transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer",
+                              isLinkedinConnected ? "text-blue-600 hover:text-blue-800 font-bold" : "text-slate-450 hover:text-slate-600"
+                            )}
+                          >
+                            <Send className={cn("w-3.5 h-3.5", isPublishing && "animate-pulse")} />
+                            <span>{isPublishing ? "Publishing..." : isLinkedinConnected ? "Publish to LinkedIn" : "Connect & Publish"}</span>
+                          </button>
+                          <button
+                            onClick={() => handleCopyText(enhancedPostOutput, "enhanced-post")}
+                            className="text-indigo-600 hover:text-indigo-800 transition-all flex items-center gap-1.5"
+                          >
+                            {copiedKey === "enhanced-post" ? (
+                              <>
+                                <Check className="w-4 h-4 text-emerald-600" />
+                                <span className="text-emerald-600">Copied</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-4 h-4" />
+                                <span>Copy Post</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div className="p-6 flex-grow flex flex-col justify-between">
+                      {enhancedPostOutput ? (
+                        <div className="space-y-4">
+                          <p className="text-xs font-bold leading-relaxed text-slate-700 whitespace-pre-wrap select-text">
+                            {enhancedPostOutput}
+                          </p>
+                          {enhancedPostTags.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5 pt-2">
+                              {enhancedPostTags.map((tag, i) => (
+                                <span key={i} className="text-[9px] font-black font-mono text-indigo-650 bg-indigo-50 px-2 py-0.5 rounded">
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex-grow flex flex-col items-center justify-center text-center p-8 space-y-3">
+                          <div className="w-12 h-12 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-400">
+                            <Sparkles className="w-5 h-5" />
+                          </div>
+                          <div className="space-y-1">
+                            <strong className="text-xs font-black text-slate-700 block">No Enhanced Draft Yet</strong>
+                            <p className="text-[10px] text-slate-400 font-bold max-w-[220px]">
+                              Compose a raw draft, select your brand style guide, and trigger AI enhancement.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1224,6 +1901,74 @@ export default function LinkedInOS() {
                 <span className="font-black">What Hurts:</span> Missing priority search tags (e.g. **{(ROLE_KEYWORDS[profile.role] || ROLE_KEYWORDS["Software Engineer"]).missing.slice(0, 2).join(", ")}**).
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* Weekly Brand Tasks checklist */}
+        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200/60 shadow-sm space-y-6">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-2">
+              <Check className="w-5 h-5 text-indigo-650 shrink-0" />
+              <h3 className="text-base font-black text-slate-900 font-display">Weekly Brand Tasks</h3>
+            </div>
+            <span className="text-[10px] font-black bg-indigo-50 text-indigo-750 px-2.5 py-1 rounded-full uppercase tracking-wider">
+              {Object.values(completedBrandTasks).filter(Boolean).length} / 4 Done
+            </span>
+          </div>
+
+          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider leading-relaxed">
+            Complete tasks to boost recruiter search index (+5% per task completed)
+          </p>
+
+          <div className="space-y-3 pt-2">
+            {getWeeklyBrandTasks().map((task) => {
+              const isDone = !!completedBrandTasks[task.id];
+              return (
+                <div
+                  key={task.id}
+                  onClick={() => {
+                    const updated = { ...completedBrandTasks, [task.id]: !isDone };
+                    saveCompletedTasks(updated);
+                  }}
+                  className={cn(
+                    "flex items-start gap-3.5 p-4 rounded-2xl border transition-all cursor-pointer select-none group",
+                    isDone
+                      ? "bg-slate-50/40 border-slate-200 text-slate-400"
+                      : "bg-white border-slate-150 text-slate-700 hover:border-indigo-300 hover:bg-slate-50/20"
+                  )}
+                >
+                  <div
+                    className={cn(
+                      "w-5 h-5 rounded-lg border flex items-center justify-center shrink-0 transition-all",
+                      isDone
+                        ? "bg-indigo-600 border-indigo-600 text-white"
+                        : "border-slate-300 group-hover:border-indigo-500 bg-white"
+                    )}
+                  >
+                    {isDone && <Check className="w-3.5 h-3.5 stroke-[3px]" />}
+                  </div>
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className={cn(
+                        "text-xs font-black tracking-tight",
+                        isDone ? "line-through text-slate-400" : "text-slate-800"
+                      )}>
+                        {task.title}
+                      </span>
+                      <span className="text-[8px] font-black text-indigo-650 tracking-widest uppercase">
+                        +5% Boost
+                      </span>
+                    </div>
+                    <p className={cn(
+                      "text-[10px] font-medium leading-normal",
+                      isDone ? "text-slate-400 line-through" : "text-slate-500"
+                    )}>
+                      {task.desc}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
 

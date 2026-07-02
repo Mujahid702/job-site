@@ -17,7 +17,7 @@ async function getDb(supabaseClient?: any) {
 }
 
 // Map database row to PlacementApplication frontend object
-function mapRowToApplication(row: any): PlacementApplication {
+export function mapRowToApplication(row: any): PlacementApplication {
   const details = row.details || {};
   
   // Normalize date format from ISO/Timestamptz to YYYY-MM-DD
@@ -50,7 +50,11 @@ function mapRowToApplication(row: any): PlacementApplication {
     deadline: details.deadline || undefined,
     assessmentDate: details.assessmentDate || undefined,
     interviewDate: details.interviewDate || undefined,
-    offerExpiry: details.offerExpiry || undefined
+    offerExpiry: details.offerExpiry || undefined,
+    googleDeadlineEventId: details.googleDeadlineEventId || undefined,
+    googleDeadlineCalendarLink: details.googleDeadlineCalendarLink || undefined,
+    outlookDeadlineEventId: details.outlookDeadlineEventId || undefined,
+    outlookDeadlineCalendarLink: details.outlookDeadlineCalendarLink || undefined
   };
 }
 
@@ -196,6 +200,12 @@ export async function createApplication(
     const { invalidateUserCache } = await import("@/lib/redis");
     invalidateUserCache(userId).catch(err => console.error("Cache invalidation error:", err));
 
+    // Trigger calendar sync
+    const { syncApplicationToCalendars } = await import("@/lib/calendar-sync");
+    syncApplicationToCalendars(userId, createdApp, db).catch(err => {
+      console.error("Failed to run calendar sync in createApplication:", err);
+    });
+
     return { success: true, data: createdApp };
   } catch (err) {
     console.error("Exception creating application:", err);
@@ -208,7 +218,8 @@ export async function updateApplication(
   id: string,
   app: Partial<PlacementApplication>,
   userId: string,
-  supabaseClient?: any
+  supabaseClient?: any,
+  bypassCalendarSync?: boolean
 ): Promise<{ success: boolean; error?: any }> {
   try {
     const db = await getDb(supabaseClient);
@@ -293,6 +304,16 @@ export async function updateApplication(
     const { invalidateUserCache } = await import("@/lib/redis");
     invalidateUserCache(userId).catch(err => console.error("Cache invalidation error:", err));
 
+    if (!bypassCalendarSync) {
+      const { application: updatedApp } = await getApplicationById(id, userId, db);
+      if (updatedApp) {
+        const { syncApplicationToCalendars } = await import("@/lib/calendar-sync");
+        syncApplicationToCalendars(userId, updatedApp, db).catch(err => {
+          console.error("Failed to run calendar sync in updateApplication:", err);
+        });
+      }
+    }
+
     return { success: true };
   } catch (err) {
     console.error("Exception updating application:", err);
@@ -361,6 +382,15 @@ export async function updateApplicationStatus(
     const { invalidateUserCache } = await import("@/lib/redis");
     invalidateUserCache(userId).catch(err => console.error("Cache invalidation error:", err));
 
+    // Sync to calendars
+    const { application: updatedApp } = await getApplicationById(id, userId, db);
+    if (updatedApp) {
+      const { syncApplicationToCalendars } = await import("@/lib/calendar-sync");
+      syncApplicationToCalendars(userId, updatedApp, db).catch(err => {
+        console.error("Failed to run calendar sync in updateApplicationStatus:", err);
+      });
+    }
+
     return { success: true };
   } catch (err) {
     console.error("Exception updating status:", err);
@@ -372,6 +402,16 @@ export async function updateApplicationStatus(
 export async function deleteApplication(id: string, userId: string, supabaseClient?: any): Promise<{ success: boolean; error?: any }> {
   try {
     const db = await getDb(supabaseClient);
+
+    // Fetch before deleting to remove calendar events
+    const { application: appBeforeDeletion } = await getApplicationById(id, userId, db);
+    if (appBeforeDeletion) {
+      const { deleteApplicationFromCalendars } = await import("@/lib/calendar-sync");
+      deleteApplicationFromCalendars(userId, appBeforeDeletion, db).catch(err => {
+        console.error("Failed to run calendar cleanup in deleteApplication:", err);
+      });
+    }
+
     const { error } = await db
       .from("applications")
       .delete()

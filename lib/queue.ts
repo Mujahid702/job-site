@@ -27,7 +27,37 @@ export function getQueue(): QueueTask[] {
 
 export function saveQueue(queue: QueueTask[]) {
   if (typeof window === 'undefined') return
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(queue))
+  
+  // 1. Strip large base64 fileData from COMPLETED or FAILED tasks to reclaim space
+  const cleanedQueue = queue.map(task => {
+    if ((task.status === 'COMPLETED' || task.status === 'FAILED') && task.payload) {
+      const { fileData, ...restPayload } = task.payload
+      return {
+        ...task,
+        payload: restPayload
+      }
+    }
+    return task
+  })
+
+  // 2. Keep only the 5 most recent tasks to prevent infinite storage growth
+  const prunedQueue = cleanedQueue
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 5)
+
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(prunedQueue))
+  } catch (err) {
+    console.warn("Storage quota exceeded, purging completed/failed tasks from queue", err)
+    // Emergency fallback: keep only active PENDING or PROCESSING tasks
+    const emergencyQueue = cleanedQueue.filter(t => t.status === 'PENDING' || t.status === 'PROCESSING')
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(emergencyQueue))
+    } catch (criticalErr) {
+      console.error("Critical storage quota failure:", criticalErr)
+      localStorage.removeItem(STORAGE_KEY)
+    }
+  }
 }
 
 export function enqueueTask(

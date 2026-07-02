@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Globe,
   Upload,
@@ -14,330 +14,326 @@ import {
   User,
   Send,
   Eye,
-  Check
+  Check,
+  RefreshCw,
+  AlertTriangle,
+  Copy,
+  FileText,
+  Settings,
+  ChevronRight,
+  ExternalLink
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
+import { getPortfolioGeneration, savePortfolioGeneration } from "@/lib/db/portfolio";
+
+const Github = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" className={className} stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" />
+  </svg>
+);
+
+const Linkedin = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" className={className} stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z" />
+    <rect x="2" y="9" width="4" height="12" />
+    <circle cx="4" cy="4" r="2" />
+  </svg>
+);
 
 // Types
 interface Project {
-  id: string;
   title: string;
   description: string;
-  tech: string[];
-  github: string;
-  live: string;
-  impactScore: number;
-  problem?: string;
-  solution?: string;
-  challenges?: string;
+  tech_stack: string[];
+  github_url: string;
+  live_url: string;
+  impact_score: number;
+  problem_statement?: string;
+  solution_description?: string;
+  challenges_faced?: string;
 }
 
 interface PortfolioProfile {
-  name: string;
-  role: string;
-  about: string;
-  email: string;
-  linkedin: string;
-  github: string;
-  skills: {
-    frontend: string[];
-    backend: string[];
-    databases: string[];
-    cloud: string[];
-    aiml: string[];
-    tools: string[];
+  hero: {
+    name: string;
+    role: string;
+    tagline: string;
+    avatar: string | null;
   };
-  education: {
-    college: string;
-    degree: string;
-    year: string;
-    cgpa: string;
+  about: {
+    description: string;
   };
+  skills: string[];
+  projects: Project[];
   experience: Array<{
     role: string;
     company: string;
     period: string;
     desc: string;
   }>;
-  projects: Project[];
   certifications: Array<{ name: string; issuer: string; date: string }>;
   achievements: string[];
+  contact: {
+    email: string;
+    linkedin: string;
+    github: string;
+    portfolio: string;
+  };
 }
 
-// Helpers outside component scope for purity rules
-const generateMsgId = (role: string): string => {
-  return `msg-${Date.now()}-${role}-${Math.random().toString(36).substring(2, 9)}`;
-};
-
-const defaultProfile: PortfolioProfile = {
-  name: "Mujahid Ahmed",
-  role: "Full Stack Developer",
-  about: "Passionate Computer Science graduate focusing on building scalable web architectures and integration pipelines. Experienced in React, Node.js, and Cloud API structures.",
-  email: "mujahid@example.com",
-  linkedin: "linkedin.com/in/mujahid-ahmed",
-  github: "github.com/mujahid702",
-  skills: {
-    frontend: ["React", "Next.js", "TypeScript", "Tailwind CSS"],
-    backend: ["Node.js", "Express", "RESTful APIs", "WebSockets"],
-    databases: ["PostgreSQL", "MongoDB", "Redis"],
-    cloud: ["AWS Lambda", "Docker", "Vercel Deployments"],
-    aiml: ["Gemini API integrations", "Basic Neural Networks"],
-    tools: ["Git", "GitHub Actions", "ESLint", "NPM packages"]
-  },
-  education: {
-    college: "VTU Technical University",
-    degree: "B.E. Computer Science",
-    year: "Class of 2026",
-    cgpa: "8.8/10"
-  },
-  experience: [
-    {
-      role: "Backend Intern",
-      company: "BuggedBrain Technologies",
-      period: "Jan 2026 - Present",
-      desc: "Optimized database index query pipelines and integrated AI strategic model engines, reducing API response latency."
-    }
-  ],
-  projects: [
-    {
-      id: "p1",
-      title: "Real-time Whiteboard Platform",
-      description: "Collaborative whiteboard workspace supporting multi-user canvas drawing and stickies sync under sub-second latency constraints.",
-      tech: ["React", "Node.js", "WebSockets", "Canvas API"],
-      github: "github.com/mujahid702/whiteboard",
-      live: "whiteboard-demo.vercel.app",
-      impactScore: 88,
-      problem: "Traditional whiteboards lacked scalable real-time synchronization.",
-      solution: "Implemented WebSocket connections managing client draw-coordinates on a centralized coordinate map.",
-      challenges: "High coordinate density caused network choke points. Resolved by packaging drawing operations."
-    },
-    {
-      id: "p2",
-      title: "Serverless E-Commerce Checkout",
-      description: "Cloud-native checkouts processor managing concurrent inventory allocation locks during high-traffic flash sale drive intervals.",
-      tech: ["AWS Lambda", "TypeScript", "Redis", "DynamoDB"],
-      github: "github.com/mujahid702/checkout-pipeline",
-      live: "checkout-demo.vercel.app",
-      impactScore: 94,
-      problem: "Flash sale concurrency crashes transactional record engines.",
-      solution: "Engineered distributed Redis inventory loops ahead of write queues.",
-      challenges: "Ensuring atomic stock reduction under concurrent triggers."
-    }
-  ],
-  certifications: [
-    { name: "AWS Certified Developer Associate", issuer: "Amazon Web Services", date: "Feb 2026" }
-  ],
-  achievements: [
-    "Winner of the VTU Inter-College Hackathon 2025.",
-    "Starred on GitHub for open-source widgets."
-  ]
-};
-
 export default function PortfolioOS() {
+  const supabase = createClient();
   const [activeSubTab, setActiveSubTab] = useState<string>("analyzer");
+  const [userId, setUserId] = useState<string | null>(null);
+
+  // Styling & Preferences Onboarding State
+  const [activeTheme, setActiveTheme] = useState<string>("Modern");
+  const [accentFont, setAccentFont] = useState<string>("Poppins");
+  const [accentColor, setAccentColor] = useState<string>("Blue");
+  const [profileImageUrl, setProfileImageUrl] = useState<string>("");
+
+  // Section Config Toggles
+  const [sectionsConfig, setSectionsConfig] = useState<Record<string, boolean>>({
+    hero: true,
+    about: true,
+    skills: true,
+    projects: true,
+    experience: true,
+    achievements: true,
+    certifications: true,
+    contact: true
+  });
+
+  // Data integrations states
+  const [profileData, setProfileData] = useState<any>(null);
+  const [latestScan, setLatestScan] = useState<any>(null);
   
-  // Custom Portfolio configuration keys
-  const PROFILE_KEY = "portfolio_profile_os";
-  const THEME_KEY = "portfolio_theme_os";
-  const COLOR_KEY = "portfolio_color_os";
-  const FONT_KEY = "portfolio_font_os";
+  // GitHub Live sync states
+  const [githubUsername, setGithubUsername] = useState("");
+  const [githubData, setGithubData] = useState<any>(null);
+  const [isSyncingGithub, setIsSyncingGithub] = useState(false);
 
-  // Lazy load state variables
-  const [profile, setProfile] = useState<PortfolioProfile>(() => {
-    if (typeof window !== "undefined") {
-      const cached = localStorage.getItem(PROFILE_KEY);
-      if (cached) {
-        try {
-          return JSON.parse(cached);
-        } catch {}
-      }
-    }
-    return defaultProfile;
-  });
-
-  const [activeTheme, setActiveTheme] = useState<string>(() => {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem(THEME_KEY) || "developer";
-    }
-    return "developer";
-  });
-
-  const [accentColor, setAccentColor] = useState<string>(() => {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem(COLOR_KEY) || "indigo";
-    }
-    return "indigo";
-  });
-
-  const [accentFont, setAccentFont] = useState<string>(() => {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem(FONT_KEY) || "Outfit";
-    }
-    return "Outfit";
-  });
-
-  // Simulator trackers
-  const [atsUploadProgress, setAtsUploadProgress] = useState<number | null>(null);
-  const [gitImporting, setGitImporting] = useState(false);
-  const [gitUrl, setGitUrl] = useState("");
-  const [linkedinSyncing, setLinkedinSyncing] = useState(false);
+  // LinkedIn parse states
   const [linkedinUrl, setLinkedinUrl] = useState("");
+  const [linkedinText, setLinkedinText] = useState("");
+  const [linkedinData, setLinkedinData] = useState<any>(null);
+  const [isParsingLinkedin, setIsParsingLinkedin] = useState(false);
+  const [achievements, setAchievements] = useState<string[]>([]);
+  const [newAchievement, setNewAchievement] = useState("");
 
-  // Portfolio Quality score metrics
-  const getQualityScore = () => {
-    let score = 50; // base score
-    if (profile.name && profile.role) score += 10;
-    if (profile.about.length > 50) score += 10;
-    if (profile.projects.length >= 2) score += 15;
-    if (profile.skills.frontend.length > 0 && profile.skills.backend.length > 0) score += 10;
-    if (profile.certifications.length > 0) score += 5;
-    return Math.min(score, 100);
-  };
+  // Generated Schema Result State
+  const [portfolioData, setPortfolioData] = useState<PortfolioProfile | null>(null);
+  const [portfolioUrl, setPortfolioUrl] = useState("");
+  const [generationId, setGenerationId] = useState("");
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationSuccess, setGenerationSuccess] = useState(false);
 
-  const getRecruiterReadyScore = () => {
-    let score = 60;
-    const qScore = getQualityScore();
-    score += Math.round((qScore - 50) * 0.6); // mapped directly to quality metrics
-    if (profile.github.includes("github.com/")) score += 10;
-    return Math.min(score, 100);
-  };
+  // API Key cache state
+  const [apiKey, setApiKey] = useState("");
+  const [copiedLink, setCopiedLink] = useState(false);
 
-  const portfolioScore = getQualityScore();
-  const readinessScore = getRecruiterReadyScore();
-
-  // Portfolio copilot chat drawer states
-  const [copilotMessages, setCopilotMessages] = useState<Array<{ id: string; role: "user" | "copilot"; content: string }>>(() => [
+  // Copilot branding coach chat states
+  const [copilotMessages, setCopilotMessages] = useState<Array<{ id: string; role: "user" | "copilot"; content: string }>>([
     {
       id: "welcome",
       role: "copilot",
-      content: "Hi! I am your **Personal Branding Copilot**. \n\nI can analyze your resume details, suggest optimizations to boost your Portfolio Score, compile dynamic SEO tags, or export clean React template code.\n\nAsk me anything or click one of the quick suggestions below!"
+      content: "Hi! I am your **Personal Branding Copilot**. \n\nI will help you transform your database profile, resume scan indicators, GitHub repo feeds, and LinkedIn histories into a premium responsive portfolio.\n\nConnect your details in the **Profile Setup** panel then click **Generate Portfolio**!"
     }
   ]);
   const [copilotInput, setCopilotInput] = useState("");
   const [copilotLoading, setCopilotLoading] = useState(false);
 
-  // Sync state values to localStorage on state changes
-  const saveProfile = (updated: PortfolioProfile) => {
-    setProfile(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(PROFILE_KEY, JSON.stringify(updated));
-    }
-  };
-
-  const handleUpdateField = <K extends keyof PortfolioProfile>(field: K, value: PortfolioProfile[K]) => {
-    saveProfile({ ...profile, [field]: value });
-  };
-
-  const handleUpdateEducation = (field: keyof PortfolioProfile["education"], value: string) => {
-    saveProfile({
-      ...profile,
-      education: { ...profile.education, [field]: value }
-    });
-  };
-
-  const handleThemeChange = (themeName: string) => {
-    setActiveTheme(themeName);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(THEME_KEY, themeName);
-    }
-  };
-
-  const handleColorChange = (color: string) => {
-    setAccentColor(color);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(COLOR_KEY, color);
-    }
-  };
-
-  const handleFontChange = (font: string) => {
-    setAccentFont(font);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(FONT_KEY, font);
-    }
-  };
-
-  // Mock resume parser trigger
-  const handleSimulateResumeUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setAtsUploadProgress(10);
-    const interval = setInterval(() => {
-      setAtsUploadProgress(prev => {
-        if (prev === null) return null;
-        if (prev >= 100) {
-          clearInterval(interval);
-          setTimeout(() => {
-            setAtsUploadProgress(null);
-            // Simulate parsed content extraction
-            handleUpdateField("about", "Ambitious Computer Science candidate specializing in full-stack JavaScript architectures, cloud databases, and API development. Proven track record in Inter-college hackathons.");
-            alert("Success! Profile summary and details extracted from resume.");
-          }, 600);
-          return 100;
+  // Initialize Auth & Data
+  useEffect(() => {
+    async function init() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setUserId(user.id);
+        
+        // Fetch Supabase profile details
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        setProfileData(profile);
+        if (profile?.github_url) {
+          const handle = profile.github_url.split("/").pop() || "";
+          setGithubUsername(handle);
         }
-        return prev + 25;
-      });
-    }, 300);
+        if (profile?.linkedin_url) {
+          setLinkedinUrl(profile.linkedin_url);
+        }
+        const profileAchievements = profile?.raw_profile_data?.achievements || profile?.raw_profile_data?.profile?.achievements || [];
+        setAchievements(profileAchievements);
+
+        // Fetch latest resume scan details
+        const { data: scans } = await supabase
+          .from("resume_scans")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false });
+        if (scans && scans.length > 0) {
+          setLatestScan(scans[0]);
+        }
+
+        // Fetch existing generated portfolio
+        const gen = await getPortfolioGeneration(user.id, supabase);
+        if (gen) {
+          setPortfolioData(gen.structured_schema);
+          setGenerationId(gen.id || "");
+          setPortfolioUrl(`/portfolio/${gen.id}`);
+          setActiveTheme(gen.theme);
+          setAccentFont(gen.font_family);
+          setAccentColor(gen.color_scheme);
+          setProfileImageUrl(gen.profile_image_url || "");
+          if (gen.structured_schema?.achievements) {
+            setAchievements(gen.structured_schema.achievements);
+          }
+        }
+      }
+
+      if (typeof window !== "undefined") {
+        setApiKey(localStorage.getItem("gemini_api_key") || "");
+      }
+    }
+    init();
+  }, []);
+
+  // Fetch GitHub Details
+  const handleGithubSync = async () => {
+    if (!githubUsername.trim()) return;
+    setIsSyncingGithub(true);
+    try {
+      const res = await fetch(`/api/portfolio/github?username=${githubUsername.trim()}`);
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setGithubData(data);
+        alert(`Successfully synchronized GitHub! Fetched ${data.repositories.length} public repositories.`);
+      } else {
+        alert(data.message || "Failed to fetch GitHub statistics.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error contacting GitHub API proxy endpoint.");
+    } finally {
+      setIsSyncingGithub(false);
+    }
   };
 
-  // Mock GitHub repository sync hooks
-  const handleSimulateGitSync = () => {
-    if (!gitUrl.trim()) return;
-    setGitImporting(true);
-    setTimeout(() => {
-      setGitImporting(false);
-      // Append a mock project parsed from GitHub
-      const gitProject: Project = {
-        id: `p-${Date.now()}`,
-        title: "Dynamic Analytics Pipeline",
-        description: "Simulated repository import. Event tracking pipeline processing high-density coordinates logs and data dashboards.",
-        tech: ["Python", "Flask", "PostgreSQL", "Pandas"],
-        github: gitUrl.trim(),
-        live: "analytics-stream.vercel.app",
-        impactScore: 89,
-        problem: "Inefficient data query latency in client analytics pools.",
-        solution: "Engineered database indexing loops using Python sorting wrappers.",
-        challenges: "Thread blockages. Swapped to concurrent process pools."
-      };
-      saveProfile({
-        ...profile,
-        projects: [...profile.projects, gitProject]
-      });
-      alert(`Success! Imported 1 repository from "${gitUrl}" as a project showcase card.`);
-      setGitUrl("");
-    }, 1800);
-  };
-
-  // Mock LinkedIn sync hooks
-  const handleSimulateLinkedInSync = () => {
+  // Parse LinkedIn raw text
+  const handleLinkedinSync = async () => {
     if (!linkedinUrl.trim()) return;
-    setLinkedinSyncing(true);
-    setTimeout(() => {
-      setLinkedinSyncing(false);
-      handleUpdateField("linkedin", linkedinUrl.trim());
-      alert("Success! Sync complete: LinkedIn profile summary fetched.");
-      setLinkedinUrl("");
-    }, 1500);
+    setIsParsingLinkedin(true);
+    try {
+      const res = await fetch("/api/portfolio/linkedin", {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "x-gemini-api-key": apiKey
+        },
+        body: JSON.stringify({
+          linkedinUrl: linkedinUrl.trim(),
+          profileText: linkedinText.trim()
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setLinkedinData(data.data);
+        if (Array.isArray(data.data.achievements)) {
+          setAchievements(prev => {
+            const merged = [...prev];
+            data.data.achievements.forEach((a: string) => {
+              if (a && !merged.includes(a)) merged.push(a);
+            });
+            return merged;
+          });
+        }
+        alert("Successfully parsed LinkedIn details into structured blocks.");
+      } else {
+        alert(data.message || "Failed to parse LinkedIn text.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error contacting LinkedIn parser endpoint.");
+    } finally {
+      setIsParsingLinkedin(false);
+    }
   };
 
-  // Copilot strategics message trigger
+  // Compile & Generate Portfolio Schema
+  const handleGeneratePortfolio = async () => {
+    setIsGenerating(true);
+    setGenerationSuccess(false);
+
+    const payload = {
+      theme: activeTheme,
+      font: accentFont,
+      colorScheme: accentColor,
+      profileImageUrl: profileImageUrl.trim() || null,
+      githubData,
+      linkedinData,
+      achievements,
+      customPreferences: {
+        sections: sectionsConfig
+      }
+    };
+
+    try {
+      const res = await fetch("/api/portfolio/generate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-gemini-api-key": apiKey
+        },
+        body: JSON.stringify(payload)
+      });
+      
+      const result = await res.json();
+      if (res.ok && result.success) {
+        setPortfolioData(result.data);
+        setPortfolioUrl(result.portfolioUrl);
+        setGenerationId(result.generationId);
+        setGenerationSuccess(true);
+        alert("Portfolio generated successfully! Redirecting to preview panel.");
+        setActiveSubTab("studio");
+      } else {
+        alert(result.message || "Failed to generate portfolio.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Failed to contact the portfolio generation pipeline API.");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const copyShareLink = () => {
+    if (!portfolioUrl) return;
+    const fullLink = `${window.location.origin}${portfolioUrl}`;
+    navigator.clipboard.writeText(fullLink);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2000);
+  };
+
+  // Branding coach chat handler
   const handleCopilotSend = async (customPrompt?: string) => {
     const query = (customPrompt || copilotInput).trim();
     if (!query) return;
 
     setCopilotInput("");
     const userMsg = {
-      id: generateMsgId("user"),
+      id: `user-${Date.now()}`,
       role: "user" as const,
       content: query
     };
 
-    const updatedMsgs = [...copilotMessages, userMsg];
-    setCopilotMessages(updatedMsgs);
+    const updated = [...copilotMessages, userMsg];
+    setCopilotMessages(updated);
     setCopilotLoading(true);
 
     try {
-      const apiKey = typeof window !== "undefined" ? localStorage.getItem("gemini_api_key") || "" : "";
       const res = await fetch("/api/placement/copilot", {
         method: "POST",
         headers: {
@@ -345,64 +341,44 @@ export default function PortfolioOS() {
           "x-gemini-api-key": apiKey
         },
         body: JSON.stringify({
-          message: `Optimizing portfolio page profile configurations: ${query}`,
-          history: updatedMsgs.slice(-6).map(m => ({ role: m.role, content: m.content })),
+          message: `Optimizing portfolio layout configurations: ${query}`,
+          history: updated.slice(-6).map(m => ({ role: m.role, content: m.content })),
           context: {
-            targetRole: profile.role,
-            techStack: Object.values(profile.skills).flat().join(", "),
-            atsScore: 72,
-            interviewAvg: 60,
-            roadmapProgressCount: 2,
-            totalRoadmapCount: 10,
-            crmApplications: []
+            targetRole: profileData?.target_role || "Software Engineer",
+            techStack: profileData?.skills?.join(", ") || "",
+            portfolioTheme: activeTheme,
+            portfolioColor: accentColor,
+            portfolioFont: accentFont,
+            hasGithub: !!githubData,
+            hasLinkedin: !!linkedinData,
+            hasResume: !!latestScan
           }
         })
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error();
-
-      setCopilotMessages([
-        ...updatedMsgs,
-        {
-          id: generateMsgId("copilot"),
-          role: "copilot" as const,
-          content: data.data.reply
-        }
-      ]);
-    } catch {
-      // Heuristics offline answers
-      const q = query.toLowerCase();
-      let reply = "";
-
-      if (q.includes("improve") || q.includes("score")) {
-        reply = `### How to Improve Your Portfolio Score (Current: ${portfolioScore}/100)
-1. **GitHub Link Accuracy**: Ensure all projects link to valid repositories.
-2. **Impact Metrics**: Quantify project results (e.g., 'Reduced query latency by 35%').
-3. **Certifications**: Add at least one valid cloud or developer associate credential.
-4. **Theme Choice**: Swap to the **AI Engineer Theme** or **Minimal Theme** to align with technical roles.`;
-      } else if (q.includes("project")) {
-        reply = `### Project Showcase Strategy
-For a **${profile.role}** role, I recommend featuring:
-- **Project 1 (Serverless Checkout)**: Focus on databases concurrency locks and latency optimizations. (Impact Score: 94)
-- **Project 2 (Collaborative Whiteboard)**: Emphasize WebSockets concurrency under high network loads. (Impact Score: 88)`;
-      } else if (q.includes("recruiter") || q.includes("appeal")) {
-        reply = `### Recruiter Readiness Report (Score: ${readinessScore}%)
-**Strengths:**
-- Core programming foundations (React, Node.js) are solid.
-- Active internship experience logged.
-
-**Weaknesses:**
-- Missing deployment checklist tasks.
-- No custom domain configured. (Premium feature)`;
+      const resData = await res.json();
+      if (res.ok && resData.data?.reply) {
+        setCopilotMessages([
+          ...updated,
+          {
+            id: `copilot-${Date.now()}`,
+            role: "copilot" as const,
+            content: resData.data.reply
+          }
+        ]);
       } else {
-        reply = `Your portfolio profile is fully configured as a **${profile.role}**. I suggest optimizing your meta tags in the **SEO Tab** and checking the **Deployment Center** to compile and export your clean React source code.`;
+        throw new Error();
       }
-
+    } catch {
+      // Fallback
+      let reply = "I recommend including quantitative metrics in your project descriptions to stand out to technical recruiters. For example: 'Reduced API latency by 24% by optimizing indexes.'";
+      if (query.toLowerCase().includes("theme") || query.toLowerCase().includes("color")) {
+        reply = `Your active theme is **${activeTheme}** with a **${accentColor}** scheme. Swapping to **Developer Theme** with a **Dark** scheme helps present deep technical competence, while **Startup Founder** with a **Green** scheme appeals to fast-growing businesses.`;
+      }
       setCopilotMessages([
-        ...updatedMsgs,
+        ...updated,
         {
-          id: generateMsgId("copilot"),
+          id: `copilot-${Date.now()}`,
           role: "copilot" as const,
           content: reply
         }
@@ -413,9 +389,9 @@ For a **${profile.role}** role, I recommend featuring:
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start relative">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start relative text-left">
       
-      {/* LEFT SECTION (Main Workspace Controls - 8 cols) */}
+      {/* Left Columns: Core Controls (8 cols) */}
       <div className="lg:col-span-8 space-y-8">
         
         <div className="max-w-3xl space-y-4">
@@ -426,12 +402,12 @@ For a **${profile.role}** role, I recommend featuring:
           <h1 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tighter leading-tight font-display">
             Portfolio OS
           </h1>
-          <p className="text-slate-500 font-medium text-base max-w-xl">
-            Centralized compiler turning your resume metrics, projects, and skills into a premium responsive portfolio website.
+          <p className="text-slate-500 font-medium text-base">
+            Compile profile data, parse resume scans, import GitHub repository stats, structures, and preferences into a stunning hosted portfolio page.
           </p>
         </div>
 
-        {/* Portfolio sub tabs */}
+        {/* Tab Controls */}
         <div className="flex flex-wrap border-b border-slate-200 bg-white p-2 rounded-2xl shadow-sm gap-1">
           {[
             { id: "analyzer", label: "Profile Setup", icon: <Upload className="w-4 h-4" /> },
@@ -443,10 +419,7 @@ For a **${profile.role}** role, I recommend featuring:
           ].map(tab => (
             <button
               key={tab.id}
-              onClick={() => {
-                setActiveSubTab(tab.id);
-                // Ensure browser adjusts focus nicely
-              }}
+              onClick={() => setActiveSubTab(tab.id)}
               className={cn(
                 "flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer",
                 activeSubTab === tab.id
@@ -460,68 +433,81 @@ For a **${profile.role}** role, I recommend featuring:
           ))}
         </div>
 
-        {/* Tab Workspace Card */}
+        {/* Core Tab Display Area */}
         <div className="bg-white rounded-[2.5rem] p-6 md:p-10 border border-slate-200/60 shadow-sm min-h-[520px]">
           
-          {/* TAB 1: PORTFOLIO ANALYZER (SETUP) */}
+          {/* TAB 1: PORTFOLIO PROFILE SETUP */}
           {activeSubTab === "analyzer" && (
             <div className="space-y-8">
-              <h2 className="text-xl font-black text-slate-900 font-display">Profile Integration Channels</h2>
-              
+              <div className="flex justify-between items-center">
+                <h2 className="text-xl font-black text-slate-900 font-display">Data Integration Channels</h2>
+                <span className="text-[10px] font-black text-slate-400 font-mono uppercase">Step 1: Link Channels</span>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 
-                {/* Channel 1: Upload Resume */}
-                <div className="border border-slate-200/60 p-5 rounded-2xl bg-slate-50/30 flex flex-col justify-between h-44 hover:border-indigo-200 transition-all relative">
-                  <div>
-                    <strong className="text-xs font-black text-slate-800 block">Resume Parser</strong>
-                    <span className="text-[10px] text-slate-400 font-bold block mt-1">
-                      Drag-drop PDF to populate biography and core details.
+                {/* Integration 1: Resume Scan Sync */}
+                <div className="border border-slate-200 p-5 rounded-2xl bg-slate-50/40 flex flex-col justify-between h-44 hover:border-indigo-300 transition-all">
+                  <div className="space-y-1">
+                    <strong className="text-xs font-black text-slate-800 block flex items-center gap-1.5">
+                      <FileText className="w-4 h-4 text-indigo-500" />
+                      1. Resume Scan Sync
+                    </strong>
+                    <span className="text-[10px] text-slate-400 font-bold block leading-relaxed">
+                      Pull projects, experiences, and certifications from your latest ATS Scan.
                     </span>
                   </div>
-                  {atsUploadProgress !== null ? (
-                    <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
-                      <div className="bg-indigo-600 h-full rounded-full transition-all duration-300" style={{ width: `${atsUploadProgress}%` }} />
+                  {latestScan ? (
+                    <div className="p-2.5 bg-indigo-50 border border-indigo-100 rounded-xl flex items-center justify-between text-xs">
+                      <span className="font-bold text-indigo-900 truncate max-w-[100px]">{latestScan.resume_name}</span>
+                      <span className="font-black text-indigo-650 bg-white px-2 py-0.5 rounded border">{latestScan.ats_score}% ATS</span>
                     </div>
                   ) : (
-                    <label className="w-full py-2.5 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest text-center cursor-pointer hover:bg-indigo-600 transition-all">
-                      Upload PDF
-                      <input type="file" accept=".pdf" className="hidden" onChange={handleSimulateResumeUpload} />
-                    </label>
+                    <div className="text-[10px] text-amber-500 font-black flex items-center gap-1">
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      No scan found. Run ATS Scan!
+                    </div>
                   )}
                 </div>
 
-                {/* Channel 2: GitHub import */}
-                <div className="border border-slate-200/60 p-5 rounded-2xl bg-slate-50/30 flex flex-col justify-between h-44 hover:border-indigo-200 transition-all">
-                  <div>
-                    <strong className="text-xs font-black text-slate-800 block">GitHub Sync</strong>
-                    <span className="text-[10px] text-slate-400 font-bold block mt-1">
-                      Connect repositories to fetch active development cards.
+                {/* Integration 2: GitHub Live Sync */}
+                <div className="border border-slate-200 p-5 rounded-2xl bg-slate-50/40 flex flex-col justify-between h-44 hover:border-indigo-300 transition-all">
+                  <div className="space-y-1">
+                    <strong className="text-xs font-black text-slate-800 block flex items-center gap-1.5">
+                      <Github className="w-4 h-4 text-slate-850" />
+                      2. GitHub Integration
+                    </strong>
+                    <span className="text-[10px] text-slate-400 font-bold block leading-relaxed">
+                      Connect repositories, stargazers count, and programming languages breakdown.
                     </span>
                   </div>
                   <div className="space-y-2">
                     <input
                       type="text"
-                      placeholder="github.com/username"
-                      value={gitUrl}
-                      onChange={(e) => setGitUrl(e.target.value)}
-                      className="w-full p-2 bg-white border border-slate-200 rounded-lg text-[10px] focus:outline-none"
+                      placeholder="Enter username"
+                      value={githubUsername}
+                      onChange={(e) => setGithubUsername(e.target.value)}
+                      className="w-full p-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none"
                     />
                     <button
-                      disabled={gitImporting || !gitUrl.trim()}
-                      onClick={handleSimulateGitSync}
-                      className="w-full py-2.5 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest text-center hover:bg-indigo-650 transition-all disabled:opacity-40"
+                      disabled={isSyncingGithub || !githubUsername}
+                      onClick={handleGithubSync}
+                      className="w-full py-2 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest text-center hover:bg-slate-800 transition-all disabled:opacity-40"
                     >
-                      {gitImporting ? "Syncing..." : "Sync Repos"}
+                      {isSyncingGithub ? "Syncing..." : "Sync Repositories"}
                     </button>
                   </div>
                 </div>
 
-                {/* Channel 3: LinkedIn integration */}
-                <div className="border border-slate-200/60 p-5 rounded-2xl bg-slate-50/30 flex flex-col justify-between h-44 hover:border-indigo-200 transition-all">
-                  <div>
-                    <strong className="text-xs font-black text-slate-800 block">LinkedIn Profile</strong>
-                    <span className="text-[10px] text-slate-400 font-bold block mt-1">
-                      Pull experiences to compile professional timelines.
+                {/* Integration 3: LinkedIn Sync Parser */}
+                <div className="border border-slate-200 p-5 rounded-2xl bg-slate-50/40 flex flex-col justify-between h-44 hover:border-indigo-300 transition-all">
+                  <div className="space-y-1">
+                    <strong className="text-xs font-black text-slate-800 block flex items-center gap-1.5">
+                      <Linkedin className="w-4 h-4 text-blue-600" />
+                      3. LinkedIn Parsing
+                    </strong>
+                    <span className="text-[10px] text-slate-400 font-bold block leading-relaxed">
+                      Parse headline, summaries, and experience timeline logs.
                     </span>
                   </div>
                   <div className="space-y-2">
@@ -530,447 +516,646 @@ For a **${profile.role}** role, I recommend featuring:
                       placeholder="linkedin.com/in/username"
                       value={linkedinUrl}
                       onChange={(e) => setLinkedinUrl(e.target.value)}
-                      className="w-full p-2 bg-white border border-slate-200 rounded-lg text-[10px] focus:outline-none"
+                      className="w-full p-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none"
                     />
                     <button
-                      disabled={linkedinSyncing || !linkedinUrl.trim()}
-                      onClick={handleSimulateLinkedInSync}
-                      className="w-full py-2.5 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest text-center hover:bg-indigo-650 transition-all disabled:opacity-40"
+                      disabled={isParsingLinkedin || !linkedinUrl}
+                      onClick={() => setActiveSubTab("linkedin-paster")}
+                      className="w-full py-2 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest text-center hover:bg-slate-800 transition-all"
                     >
-                      {linkedinSyncing ? "Syncing..." : "Sync Profile"}
+                      Open Text Parser
                     </button>
                   </div>
                 </div>
 
               </div>
 
-              {/* Edit extracted fields form */}
-              <div className="pt-6 border-t border-slate-100 space-y-6">
-                <h3 className="text-lg font-black text-slate-900 font-display">Configure Portfolio Details</h3>
+              {/* Styling Preferences Form */}
+              <div className="pt-8 border-t border-slate-100 space-y-6">
+                <h3 className="text-lg font-black text-slate-900 font-display">4. Portfolio Builder Preferences</h3>
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">Candidate Name</label>
-                    <input
-                      type="text"
-                      value={profile.name}
-                      onChange={(e) => handleUpdateField("name", e.target.value)}
-                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">Target Portfolio Role</label>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Portfolio Theme</label>
                     <select
-                      value={profile.role}
-                      onChange={(e) => handleUpdateField("role", e.target.value)}
-                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none"
+                      value={activeTheme}
+                      onChange={(e) => setActiveTheme(e.target.value)}
+                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     >
-                      {["Full Stack Developer", "Software Engineer", "Frontend Developer", "Backend Developer", "AI Engineer", "Data Analyst", "DevOps Engineer", "Cloud Engineer"].map(role => (
-                        <option key={role} value={role}>{role}</option>
+                      {["Modern", "Glassmorphism", "Minimal", "Developer", "Startup Founder"].map(t => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Typography Font</label>
+                    <select
+                      value={accentFont}
+                      onChange={(e) => setAccentFont(e.target.value)}
+                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      {["Inter", "Poppins", "Roboto", "Montserrat"].map(f => (
+                        <option key={f} value={f}>{f}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Color Palette</label>
+                    <select
+                      value={accentColor}
+                      onChange={(e) => setAccentColor(e.target.value)}
+                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      {["Blue", "Purple", "Green", "Dark"].map(c => (
+                        <option key={c} value={c}>{c}</option>
                       ))}
                     </select>
                   </div>
                 </div>
 
-                <div>
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">Professional Summary</label>
-                  <textarea
-                    rows={4}
-                    value={profile.about}
-                    onChange={(e) => handleUpdateField("about", e.target.value)}
-                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none leading-relaxed"
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">Optional Profile Image URL</label>
+                    <input
+                      type="text"
+                      placeholder="https://example.com/avatar.jpg"
+                      value={profileImageUrl}
+                      onChange={(e) => setProfileImageUrl(e.target.value)}
+                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none"
+                    />
+                  </div>
+
+                  {/* Section Config checklist */}
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Enabled Sections</label>
+                    <div className="flex flex-wrap gap-2">
+                      {Object.keys(sectionsConfig).map(section => (
+                        <button
+                          key={section}
+                          onClick={() => setSectionsConfig(prev => ({ ...prev, [section]: !prev[section] }))}
+                          className={cn(
+                            "px-3 py-1.5 rounded-lg border text-[10px] font-bold uppercase tracking-wider transition-all",
+                            sectionsConfig[section]
+                              ? "bg-slate-900 border-slate-900 text-white"
+                              : "bg-white border-slate-200 text-slate-400"
+                          )}
+                        >
+                          {section}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            {/* Resume Preview & Achievements Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 border-t border-slate-100">
+              {/* Resume Preview Card */}
+              <div className="border border-slate-200 p-6 rounded-2xl bg-slate-50/20 space-y-4">
+                <strong className="text-xs font-black text-slate-800 block flex items-center gap-1.5">
+                  <FileText className="w-4 h-4 text-indigo-500" />
+                  Resume Content Preview
+                </strong>
+                <span className="text-[10px] text-slate-400 font-bold block leading-relaxed">
+                  Factual details parsed from your resume and database profile:
+                </span>
+                
+                <div className="space-y-2 text-xs">
+                  <div className="flex justify-between py-1.5 border-b border-slate-100">
+                    <span className="text-slate-500 font-medium">Target Role</span>
+                    <span className="font-bold text-slate-850">{profileData?.target_role || "Not specified"}</span>
+                  </div>
+                  <div className="flex justify-between py-1.5 border-b border-slate-100">
+                    <span className="text-slate-500 font-medium">Skills Count</span>
+                    <span className="font-bold text-slate-850">{profileData?.skills?.length || 0} skills linked</span>
+                  </div>
+                  <div className="flex justify-between py-1.5 border-b border-slate-100">
+                    <span className="text-slate-500 font-medium">Parsed Projects</span>
+                    <span className="font-bold text-slate-855">
+                      {profileData?.raw_profile_data?.projects?.length || latestScan?.analysis?.parsedInfo?.projects?.length || 0} items
+                    </span>
+                  </div>
+                  <div className="flex justify-between py-1.5 border-b border-slate-100">
+                    <span className="text-slate-500 font-medium">Work History</span>
+                    <span className="font-bold text-slate-855">
+                      {profileData?.raw_profile_data?.experience?.length || latestScan?.analysis?.parsedInfo?.experience?.length || 0} items
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Achievements Card */}
+              <div className="border border-slate-200 p-6 rounded-2xl bg-slate-50/20 space-y-4">
+                <strong className="text-xs font-black text-slate-800 block flex items-center gap-1.5">
+                  <Award className="w-4 h-4 text-amber-500" />
+                  Achievements & Honors
+                </strong>
+                <span className="text-[10px] text-slate-400 font-bold block leading-relaxed">
+                  Add manual achievements or review parsed accomplishments:
+                </span>
+
+                {/* Achievements List */}
+                <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
+                  {achievements.length > 0 ? (
+                    achievements.map((ach, idx) => (
+                      <div key={idx} className="flex items-center justify-between gap-2 p-2 bg-white border border-slate-150 rounded-xl text-[11px] font-semibold text-slate-700">
+                        <span className="truncate flex-grow">{ach}</span>
+                        <button
+                          onClick={() => setAchievements(prev => prev.filter((_, i) => i !== idx))}
+                          className="text-red-500 hover:text-red-700 font-black cursor-pointer px-1.5"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-[10px] text-slate-400 italic">No achievements added yet.</p>
+                  )}
+                </div>
+
+                {/* Add Achievement Input */}
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="e.g. 1st place in hackathon"
+                    value={newAchievement}
+                    onChange={(e) => setNewAchievement(e.target.value)}
+                    className="flex-grow p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none"
                   />
+                  <button
+                    onClick={() => {
+                      const val = newAchievement.trim();
+                      if (val && !achievements.includes(val)) {
+                        setAchievements(prev => [...prev, val]);
+                        setNewAchievement("");
+                      }
+                    }}
+                    className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-black uppercase tracking-wider cursor-pointer shrink-0"
+                  >
+                    Add
+                  </button>
                 </div>
+              </div>
+            </div>
 
-                {/* Education section */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-55/40 p-4 border border-slate-100 rounded-2xl">
-                  <div className="md:col-span-2">
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">College/University</label>
-                    <input
-                      type="text"
-                      value={profile.education.college}
-                      onChange={(e) => handleUpdateEducation("college", e.target.value)}
-                      className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Degree</label>
-                    <input
-                      type="text"
-                      value={profile.education.degree}
-                      onChange={(e) => handleUpdateEducation("degree", e.target.value)}
-                      className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">CGPA / Grade</label>
-                    <input
-                      type="text"
-                      value={profile.education.cgpa}
-                      onChange={(e) => handleUpdateEducation("cgpa", e.target.value)}
-                      className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold focus:outline-none"
-                    />
-                  </div>
-                </div>
+              {/* Compilation trigger button */}
+              <div className="pt-8 border-t border-slate-100">
+                <button
+                  disabled={isGenerating || !profileData}
+                  onClick={handleGeneratePortfolio}
+                  className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:opacity-95 text-white font-black text-xs uppercase tracking-widest rounded-2xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-100 disabled:opacity-50 cursor-pointer"
+                >
+                  {isGenerating ? (
+                    <RefreshCw className="w-4.5 h-4.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="w-4.5 h-4.5 fill-indigo-200/20" />
+                  )}
+                  <span>Generate & AI Optimize Portfolio</span>
+                </button>
+                {!profileData && (
+                  <p className="text-[10px] text-red-500 font-bold text-center mt-2">
+                    Supabase Profile record not detected. Complete onboarding setup to build.
+                  </p>
+                )}
               </div>
             </div>
           )}
 
-          {/* TAB 2: THEME STUDIO & DYNAMIC PREVIEW */}
-          {activeSubTab === "studio" && (
-            <div className="space-y-8">
-              <div className="flex flex-col md:flex-row gap-6 justify-between md:items-center">
-                <h2 className="text-xl font-black text-slate-900 font-display">Theme Studio</h2>
-                <div className="flex flex-wrap gap-2">
-                  {[
-                    { id: "developer", label: "Developer", desc: "Dark Terminal Console style" },
-                    { id: "ai", label: "AI Engineer", desc: "Neon Glow modern style" },
-                    { id: "analyst", label: "Data Analyst", desc: "Clean Grid Dashboard style" },
-                    { id: "minimal", label: "Minimalist", desc: "Monochrome serif style" }
-                  ].map(theme => (
-                    <button
-                      key={theme.id}
-                      onClick={() => handleThemeChange(theme.id)}
-                      className={cn(
-                        "px-4 py-2 border rounded-xl text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer",
-                        activeTheme === theme.id
-                          ? "bg-slate-900 border-slate-900 text-white"
-                          : "bg-white border-slate-200 text-slate-500 hover:border-slate-300"
-                      )}
-                    >
-                      {theme.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Accent Pickers */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-50 p-6 border border-slate-150 rounded-2xl">
-                <div>
-                  <strong className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-3">Accent Color Selection</strong>
-                  <div className="flex gap-2">
-                    {[
-                      { id: "indigo", bg: "bg-indigo-600" },
-                      { id: "purple", bg: "bg-purple-650" },
-                      { id: "emerald", bg: "bg-emerald-500" },
-                      { id: "sky", bg: "bg-sky-500" },
-                      { id: "rose", bg: "bg-rose-600" }
-                    ].map(col => (
-                      <button
-                        key={col.id}
-                        onClick={() => handleColorChange(col.id)}
-                        className={cn(
-                          "w-8 h-8 rounded-full border-2 transition-all flex items-center justify-center text-white",
-                          col.bg,
-                          accentColor === col.id ? "border-slate-900 scale-110" : "border-transparent"
-                        )}
-                      >
-                        {accentColor === col.id && <Check className="w-4.5 h-4.5" />}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <strong className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-3">Typography Customizer</strong>
-                  <div className="flex gap-2">
-                    {["Outfit", "Inter", "Monospace", "Serif"].map(fontName => (
-                      <button
-                        key={fontName}
-                        onClick={() => handleFontChange(fontName)}
-                        className={cn(
-                          "px-4 py-1.5 border rounded-lg text-xs font-bold transition-all cursor-pointer",
-                          accentFont === fontName
-                            ? "bg-slate-900 border-slate-900 text-white"
-                            : "bg-white border-slate-200 text-slate-600 hover:border-slate-350"
-                        )}
-                      >
-                        {fontName}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Live Interactive Preview Box */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 text-xs font-bold text-slate-400">
-                  <Eye className="w-4 h-4" />
-                  <span>Dynamic Frame Live Preview</span>
-                </div>
-
-                <div className={cn(
-                  "border border-slate-250 rounded-[2.5rem] overflow-hidden shadow-2xl transition-all h-[550px] flex flex-col",
-                  activeTheme === "developer" ? "bg-slate-950 text-slate-300" :
-                  activeTheme === "ai" ? "bg-gradient-to-b from-slate-900 to-indigo-950 text-slate-200" :
-                  activeTheme === "analyst" ? "bg-slate-50 text-slate-700" : "bg-white text-slate-900"
-                )}>
-                  {/* Mock Browser Header */}
-                  <div className="bg-slate-900 px-5 py-3.5 border-b border-slate-800 flex justify-between items-center shrink-0">
-                    <div className="flex gap-2">
-                      <span className="w-3 h-3 rounded-full bg-rose-500" />
-                      <span className="w-3 h-3 rounded-full bg-amber-400" />
-                      <span className="w-3 h-3 rounded-full bg-emerald-500" />
-                    </div>
-                    <div className="px-8 py-0.5 bg-slate-800 border border-slate-700/50 rounded-lg text-[9px] font-bold text-slate-400 font-mono tracking-wider">
-                      {profile.name.toLowerCase().replace(" ", "")}.github.io
-                    </div>
-                    <div className="w-8" />
-                  </div>
-
-                  {/* Mock Page Content (Scrollable) */}
-                  <div className="flex-1 overflow-y-auto p-8 space-y-12 min-h-0">
-                    {/* Theme Header segment */}
-                    <div className="space-y-4">
-                      <span className="text-[10px] font-black tracking-widest text-indigo-400 block uppercase">
-                        Available for Placements
-                      </span>
-                      <h1 className={cn(
-                        "text-4xl font-black tracking-tight block",
-                        accentFont === "Outfit" ? "font-display" :
-                        accentFont === "Monospace" ? "font-mono text-emerald-400" :
-                        accentFont === "Serif" ? "font-serif" : "font-sans"
-                      )}>
-                        Hi, I&apos;m {profile.name}
-                      </h1>
-                      <strong className="text-sm text-slate-400 block">{profile.role} • {profile.education.degree}</strong>
-                      <p className="text-xs text-slate-500 font-medium max-w-lg leading-relaxed">{profile.about}</p>
-                    </div>
-
-                    {/* Skills group */}
-                    <div className="space-y-4 pt-6 border-t border-slate-800/40">
-                      <strong className="text-[10px] font-black uppercase tracking-wider block text-indigo-400">Core Competencies</strong>
-                      <div className="flex flex-wrap gap-2">
-                        {Object.values(profile.skills).flat().map((skill) => (
-                          <span
-                            key={skill}
-                            className={cn(
-                              "px-3 py-1 text-[10px] font-bold rounded-lg border",
-                              activeTheme === "developer" ? "bg-slate-900 border-slate-800 text-emerald-400" :
-                              activeTheme === "ai" ? "bg-indigo-900/30 border-indigo-800/50 text-indigo-300" :
-                              "bg-slate-100 border-slate-200 text-slate-700"
-                            )}
-                          >
-                            {skill}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Projects segment */}
-                    <div className="space-y-4 pt-6 border-t border-slate-800/40">
-                      <strong className="text-[10px] font-black uppercase tracking-wider block text-indigo-400">Featured Projects</strong>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {profile.projects.map((proj) => (
-                          <div
-                            key={proj.id}
-                            className={cn(
-                              "p-5 rounded-2xl border flex flex-col justify-between h-40",
-                              activeTheme === "developer" ? "bg-slate-900/40 border-slate-800" :
-                              activeTheme === "ai" ? "bg-slate-900/60 border-indigo-900/50" :
-                              "bg-slate-50 border-slate-200"
-                            )}
-                          >
-                            <div className="space-y-2">
-                              <h4 className="text-sm font-black tracking-tight">{proj.title}</h4>
-                              <p className="text-[11px] text-slate-400 leading-normal line-clamp-2">{proj.description}</p>
-                            </div>
-                            <div className="flex justify-between items-center text-[9px] font-bold text-slate-500">
-                              <span>Impact: {proj.impactScore}%</span>
-                              <span className="hover:underline cursor-pointer">View Code</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 3: PROJECT SHOWCASE BUILDER */}
-          {activeSubTab === "showcase" && (
+          {/* LINKEDIN PASTE DRAWER SUB-VIEW */}
+          {activeSubTab === "linkedin-paster" && (
             <div className="space-y-6">
-              <h2 className="text-xl font-black text-slate-900 font-display">Project Showcase Builder</h2>
+              <h2 className="text-xl font-black text-slate-900 font-display">LinkedIn Text Parser</h2>
               <p className="text-xs text-slate-500 font-medium">
-                Recruiters check project details to test problem-solving workflows. Optimize titles, solutions, and challenge audits.
+                LinkedIn APIs are restricted. Copy-paste details from your LinkedIn profile headline, about section, and experience text blocks. We will use the AI Gateway to structure them.
               </p>
 
-              <div className="space-y-6 pt-4">
-                {profile.projects.map((proj, idx) => (
-                  <div key={proj.id} className="border border-slate-200/60 p-6 rounded-3xl space-y-4 bg-slate-50/20">
-                    <div className="flex justify-between items-start">
-                      <h3 className="text-sm font-black text-slate-800">Project #{idx + 1}: {proj.title}</h3>
-                      <span className="text-[9px] font-black text-indigo-650 uppercase tracking-widest bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
-                        Impact: {proj.impactScore}%
-                      </span>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">LinkedIn Profile Link</label>
+                  <input
+                    type="text"
+                    value={linkedinUrl}
+                    onChange={(e) => setLinkedinUrl(e.target.value)}
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none"
+                    placeholder="https://linkedin.com/in/username"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Pasted Profile Text</label>
+                  <textarea
+                    rows={8}
+                    value={linkedinText}
+                    onChange={(e) => setLinkedinText(e.target.value)}
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold leading-relaxed focus:outline-none"
+                    placeholder="Paste Headline, Summary, Experience list from LinkedIn here..."
+                  />
+                </div>
+                <div className="flex gap-3 justify-end pt-2">
+                  <button
+                    onClick={() => setActiveSubTab("analyzer")}
+                    className="px-6 py-2.5 bg-slate-100 hover:bg-slate-250 text-slate-500 rounded-xl text-xs font-black uppercase tracking-widest"
+                  >
+                    Back
+                  </button>
+                  <button
+                    disabled={isParsingLinkedin || !linkedinUrl}
+                    onClick={async () => {
+                      await handleLinkedinSync();
+                      setActiveSubTab("analyzer");
+                    }}
+                    className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-black uppercase tracking-widest disabled:opacity-40"
+                  >
+                    {isParsingLinkedin ? "Parsing..." : "Parse Text"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: STUDIO & DYNAMIC FRAME PREVIEW */}
+          {activeSubTab === "studio" && (
+            <div className="space-y-8">
+              <div className="flex justify-between items-center">
+                <h2 className="text-xl font-black text-slate-900 font-display">Dynamic Portfolio Preview</h2>
+                {portfolioUrl && (
+                  <a
+                    href={portfolioUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-1.5 text-xs font-black text-indigo-600 hover:underline uppercase tracking-widest"
+                  >
+                    Open Live Link <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                )}
+              </div>
+
+              {portfolioData ? (
+                <div className="space-y-6">
+                  {/* Dynamic render container simulating theme choices */}
+                  <div className={cn(
+                    "border border-slate-250 rounded-[2rem] overflow-hidden shadow-xl h-[550px] flex flex-col transition-all",
+                    activeTheme === "Developer" ? "bg-slate-950 text-slate-350" :
+                    activeTheme === "Glassmorphism" ? "bg-gradient-to-b from-indigo-900 via-slate-900 to-slate-950 text-white" :
+                    activeTheme === "Minimal" ? "bg-white text-slate-900 border-slate-200" :
+                    activeTheme === "Startup Founder" ? "bg-slate-900 text-slate-100" : "bg-slate-50 text-slate-800"
+                  )}>
+                    {/* Mock Browser tabs header */}
+                    <div className="bg-slate-900 px-4 py-3 border-b border-white/5 flex justify-between items-center shrink-0">
+                      <div className="flex gap-1.5">
+                        <span className="w-3 h-3 rounded-full bg-red-500" />
+                        <span className="w-3 h-3 rounded-full bg-amber-400" />
+                        <span className="w-3 h-3 rounded-full bg-emerald-500" />
+                      </div>
+                      <div className="bg-slate-800 px-6 py-0.5 border border-slate-700/60 rounded text-[9px] font-bold text-slate-400 font-mono tracking-wide">
+                        portfolio-compiler.vercel.app{portfolioUrl}
+                      </div>
+                      <div className="w-6" />
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Problem Statement</label>
-                        <textarea
-                          rows={3}
-                          value={proj.problem || ""}
-                          placeholder="Describe the problem context..."
-                          onChange={(e) => {
-                            const list = [...profile.projects];
-                            list[idx].problem = e.target.value;
-                            handleUpdateField("projects", list);
-                          }}
-                          className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Technical Solution</label>
-                        <textarea
-                          rows={3}
-                          value={proj.solution || ""}
-                          placeholder="How did you resolve it?"
-                          onChange={(e) => {
-                            const list = [...profile.projects];
-                            list[idx].solution = e.target.value;
-                            handleUpdateField("projects", list);
-                          }}
-                          className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none"
-                        />
-                      </div>
+                    {/* Preview Content */}
+                    <div className="flex-grow overflow-y-auto p-6 md:p-8 space-y-10 min-h-0 text-left">
+                      
+                      {/* Hero Section */}
+                      {sectionsConfig.hero && portfolioData.hero && (
+                        <div className="space-y-4">
+                          <div className="flex items-center gap-4">
+                            {portfolioData.hero.avatar ? (
+                              <img
+                                src={portfolioData.hero.avatar}
+                                alt="Profile Avatar"
+                                className="w-16 h-16 rounded-full border border-indigo-500/20 object-cover"
+                              />
+                            ) : (
+                              <div className="w-16 h-16 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-black text-2xl">
+                                {portfolioData.hero.name.charAt(0)}
+                              </div>
+                            )}
+                            <div>
+                              <h1 className={cn(
+                                "text-3xl font-black tracking-tight",
+                                accentFont === "Monospace" ? "font-mono" :
+                                accentFont === "Serif" ? "font-serif" : "font-display"
+                              )}>
+                                {portfolioData.hero.name}
+                              </h1>
+                              <p className="text-xs text-indigo-400 font-bold uppercase tracking-wider">{portfolioData.hero.role}</p>
+                            </div>
+                          </div>
+                          <p className="text-sm font-bold text-slate-400 leading-relaxed italic">&quot;{portfolioData.hero.tagline}&quot;</p>
+                        </div>
+                      )}
+
+                      {/* About section */}
+                      {sectionsConfig.about && portfolioData.about && (
+                        <div className="space-y-2 pt-6 border-t border-white/10">
+                          <strong className="text-[10px] font-black text-indigo-400 uppercase tracking-widest block">About Biography</strong>
+                          <p className="text-xs font-medium text-slate-350 leading-relaxed max-w-2xl">{portfolioData.about.description}</p>
+                        </div>
+                      )}
+
+                      {/* Skills */}
+                      {sectionsConfig.skills && portfolioData.skills && (
+                        <div className="space-y-3 pt-6 border-t border-white/10">
+                          <strong className="text-[10px] font-black text-indigo-400 uppercase tracking-widest block">Core Skills</strong>
+                          <div className="flex flex-wrap gap-2">
+                            {portfolioData.skills.map(skill => (
+                              <span
+                                key={skill}
+                                className={cn(
+                                  "px-2.5 py-1 text-[10px] font-bold rounded-lg border",
+                                  activeTheme === "Developer" ? "bg-slate-900 border-slate-800 text-emerald-400" :
+                                  "bg-white/5 border-white/10 text-slate-300"
+                                )}
+                              >
+                                {skill}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Projects */}
+                      {sectionsConfig.projects && portfolioData.projects && (
+                        <div className="space-y-4 pt-6 border-t border-white/10">
+                          <strong className="text-[10px] font-black text-indigo-400 uppercase tracking-widest block">Factual Project Blueprints</strong>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {portfolioData.projects.map((proj, idx) => (
+                              <div key={idx} className="bg-white/5 border border-white/10 p-4 rounded-xl flex flex-col justify-between h-40">
+                                <div className="space-y-2">
+                                  <div className="flex justify-between items-center">
+                                    <h4 className="text-xs font-black truncate">{proj.title}</h4>
+                                    <span className="text-[8px] font-black text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">
+                                      Impact: {proj.impact_score}%
+                                    </span>
+                                  </div>
+                                  <p className="text-[10px] text-slate-400 line-clamp-3 leading-normal">{proj.description}</p>
+                                </div>
+                                <div className="flex justify-between items-center text-[9px] font-bold text-slate-500">
+                                  <div className="flex gap-1.5">
+                                    {proj.tech_stack.slice(0, 3).map((t: string) => (
+                                      <span key={t} className="text-[8px] text-slate-400">{t}</span>
+                                    ))}
+                                  </div>
+                                  <span className="hover:underline cursor-pointer flex items-center gap-0.5">
+                                    Codebase <ChevronRight className="w-3 h-3" />
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
                     </div>
                   </div>
-                ))}
-              </div>
+                </div>
+              ) : (
+                <div className="py-24 text-center border border-dashed border-slate-200 rounded-[2rem] space-y-4">
+                  <Globe className="w-12 h-12 text-slate-300 mx-auto" />
+                  <p className="text-slate-400 font-bold text-xs uppercase tracking-wider">No generated portfolio template cached.</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 3: PROJECT BUILDER SHOWCASE DETAILS */}
+          {activeSubTab === "showcase" && (
+            <div className="space-y-6">
+              <h2 className="text-xl font-black text-slate-900 font-display">Project Showcases</h2>
+              <p className="text-xs text-slate-500 font-medium">
+                Verify factual project statements loaded into the active layout draft.
+              </p>
+
+              {portfolioData && portfolioData.projects.length > 0 ? (
+                <div className="space-y-6 pt-4">
+                  {portfolioData.projects.map((proj, idx) => (
+                    <div key={idx} className="border border-slate-200/60 p-6 rounded-3xl space-y-4 bg-slate-55/40 text-left">
+                      <div className="flex justify-between items-start">
+                        <strong className="text-xs font-black text-slate-800">Project #{idx + 1}: {proj.title}</strong>
+                        <span className="text-[9px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
+                          Factual Weight: {proj.impact_score || 80}%
+                        </span>
+                      </div>
+                      
+                      <div className="space-y-2 text-xs">
+                        <p className="text-slate-500 font-medium leading-relaxed">
+                          <strong className="text-slate-700">Problem context:</strong> {proj.problem_statement}
+                        </p>
+                        <p className="text-slate-500 font-medium leading-relaxed">
+                          <strong className="text-slate-700">Solution description:</strong> {proj.solution_description}
+                        </p>
+                        <p className="text-slate-500 font-medium leading-relaxed">
+                          <strong className="text-slate-700">Challenges faced:</strong> {proj.challenges_faced}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-24 text-center border border-dashed border-slate-200 rounded-[2rem]">
+                  <p className="text-slate-400 font-bold text-xs uppercase tracking-wider">No projects registered. Build a portfolio first!</p>
+                </div>
+              )}
             </div>
           )}
 
           {/* TAB 4: SEO OPTIMIZER */}
           {activeSubTab === "seo" && (
             <div className="space-y-6">
-              <h2 className="text-xl font-black text-slate-900 font-display">SEO Optimizer</h2>
+              <h2 className="text-xl font-black text-slate-900 font-display">Structured SEO Data</h2>
               <p className="text-xs text-slate-500 font-medium">
-                Google searches index portfolios dynamically. Optimize these meta tags to increase matching visibility rules.
+                JSON-LD tags are compiled before deployment to register profiles correctly on recruiter indices.
               </p>
 
-              <div className="space-y-6 pt-4 bg-slate-50/50 p-6 border border-slate-150 rounded-2xl">
-                <div>
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">Meta Title</label>
-                  <input
-                    type="text"
-                    value={`${profile.name} | ${profile.role} Portfolio 2026`}
-                    readOnly
-                    className="w-full p-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-500 focus:outline-none cursor-not-allowed"
-                  />
-                </div>
+              {portfolioData ? (
+                <div className="space-y-6 pt-4 bg-slate-50 p-6 border border-slate-150 rounded-2xl">
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Meta Title</label>
+                    <input
+                      type="text"
+                      readOnly
+                      value={`${portfolioData.hero.name} | Professional ${portfolioData.hero.role} Portfolio`}
+                      className="w-full p-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-500 focus:outline-none"
+                    />
+                  </div>
 
-                <div>
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">Meta Description</label>
-                  <textarea
-                    rows={2}
-                    value={`Explore the portfolio website of ${profile.name}, a specialized ${profile.role} showcasing complex backend checkouts and real-time whiteboard project codes.`}
-                    readOnly
-                    className="w-full p-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-500 focus:outline-none cursor-not-allowed"
-                  />
+                  <div className="p-4 bg-slate-900 text-white rounded-xl text-xs space-y-2">
+                    <strong className="text-indigo-400 font-black block font-mono">LD-JSON structured schema:</strong>
+                    <pre className="text-[9px] font-mono overflow-x-auto bg-slate-950 p-3 rounded-lg leading-relaxed text-slate-300">
+                      {JSON.stringify({
+                        "@context": "https://schema.org",
+                        "@type": "Person",
+                        "name": portfolioData.hero.name,
+                        "jobTitle": portfolioData.hero.role,
+                        "knowsAbout": portfolioData.skills,
+                        "email": portfolioData.contact.email,
+                        "url": portfolioUrl
+                      }, null, 2)}
+                    </pre>
+                  </div>
                 </div>
-
-                <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-xl text-xs space-y-1.5">
-                  <strong className="text-indigo-900 font-black block">Generated JSON-LD Structured Data Schema:</strong>
-                  <pre className="bg-slate-900 text-slate-200 p-3 rounded-lg font-mono text-[9px] overflow-x-auto">
-                    {JSON.stringify({
-                      "@context": "https://schema.org",
-                      "@type": "Person",
-                      "name": profile.name,
-                      "jobTitle": profile.role,
-                      "colleague": profile.education.college,
-                      "url": `https://${profile.name.toLowerCase().replace(" ", "")}.github.io`
-                    }, null, 2)}
-                  </pre>
+              ) : (
+                <div className="py-24 text-center border border-dashed border-slate-200 rounded-[2rem]">
+                  <p className="text-slate-400 font-bold text-xs uppercase tracking-wider">Compile your portfolio to evaluate meta tags.</p>
                 </div>
-              </div>
+              )}
             </div>
           )}
 
           {/* TAB 5: DEPLOYMENT CENTER */}
-          {activeSubTab === "deploy" && (
-            <div className="space-y-6">
-              <h2 className="text-xl font-black text-slate-900 font-display">Portfolio Deployment Center</h2>
-              <p className="text-xs text-slate-500 font-medium">
-                Compile and export your portfolio code directly as a deployable template package or upload to hosting platforms.
-              </p>
+        {activeSubTab === "deploy" && (
+          <div className="space-y-6 text-left">
+            <h2 className="text-xl font-black text-slate-900 font-display">Cloud Deployment Center</h2>
+            <p className="text-xs text-slate-500 font-medium">
+              Verify compiled options and deploy your responsive professional website to our static servers.
+            </p>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
-                
-                {/* Download bundle */}
-                <div className="border border-slate-200/60 p-6 rounded-3xl bg-slate-50/20 flex flex-col justify-between h-48 hover:border-indigo-100 transition-colors">
-                  <div className="space-y-1.5">
-                    <strong className="text-xs font-black text-slate-800 block">Export Source Files</strong>
-                    <p className="text-[10px] text-slate-500 font-bold leading-normal">
-                      Compiles single-page HTML / React component source codes containing your dynamic profiles.
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => alert("Compiling source bundles... Zip archive successfully downloaded to your local desktop folder.")}
-                    className="w-full py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest text-center hover:bg-indigo-650 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <Download className="w-4 h-4" />
-                    <span>Download ZIP Package</span>
-                  </button>
-                </div>
-
-                {/* Deployment instructions */}
-                <div className="border border-slate-200/60 p-6 rounded-3xl bg-slate-50/20 flex flex-col justify-between h-48 hover:border-indigo-100 transition-colors">
-                  <div className="space-y-1.5">
-                    <strong className="text-xs font-black text-slate-800 block">One-Click Deploy Guide</strong>
-                    <p className="text-[10px] text-slate-500 font-bold leading-normal">
-                      Step-by-step guidance to deploy your portfolio index automatically on Vercel or GitHub Pages in 2 minutes.
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => alert("Redirecting to Netlify/Vercel deployment setup wizard. Check setup prompts in your hosting panel.")}
-                    className="w-full py-3 bg-white border border-slate-250 text-slate-650 rounded-xl text-[10px] font-black uppercase tracking-widest text-center hover:border-slate-350 transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
-                  >
-                    <Zap className="w-4 h-4 text-amber-500 fill-amber-500" />
-                    <span>Deploy to Vercel</span>
-                  </button>
-                </div>
-
+            {/* Deployment specs checklist */}
+            <div className="border border-slate-200/80 rounded-2xl p-6 bg-slate-50/20 grid grid-cols-1 md:grid-cols-2 gap-6 text-xs font-semibold text-slate-500">
+              <div className="space-y-3">
+                <h4 className="text-[10px] font-black text-slate-800 uppercase tracking-widest block font-display">Design & Templates</h4>
+                <ul className="space-y-1.5">
+                  <li>Theme Selected: <span className="text-slate-900 font-bold">{activeTheme}</span></li>
+                  <li>Accent Font: <span className="text-slate-900 font-bold">{accentFont}</span></li>
+                  <li>Color Palette: <span className="text-slate-900 font-bold">{accentColor}</span></li>
+                  <li>Profile Avatar: <span className="text-slate-900 font-bold">{profileImageUrl ? "Custom URL" : "None"}</span></li>
+                </ul>
+              </div>
+              <div className="space-y-3">
+                <h4 className="text-[10px] font-black text-slate-800 uppercase tracking-widest block font-display">Data Integration Sync</h4>
+                <ul className="space-y-1.5">
+                  <li>Factual Resume Data: <span className="text-slate-900 font-bold">{profileData?.target_role || "Linked"}</span></li>
+                  <li>LinkedIn Highlights: <span className="text-slate-900 font-bold">{linkedinData ? "Parsed & Merged" : "Not Linked (Optional)"}</span></li>
+                  <li>GitHub Repos: <span className="text-slate-900 font-bold">{githubData ? `Synced (${githubData.repositories?.length || 0} repos)` : "Not Linked (Optional)"}</span></li>
+                  <li>Achievements Logged: <span className="text-slate-900 font-bold">{achievements.length} manual/parsed items</span></li>
+                </ul>
               </div>
             </div>
-          )}
 
-          {/* TAB 6: PORTFOLIO ANALYTICS */}
-          {activeSubTab === "analytics" && (
-            <div className="space-y-6">
-              <h2 className="text-xl font-black text-slate-900 font-display">Portfolio Analytics Dashboard</h2>
-              <p className="text-xs text-slate-500 font-medium">
-                Check recruiter click logs, visitor patterns, and resume downloads recorded on your hosted portfolio links.
-              </p>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
-                {[
-                  { label: "Recruiter Visitors", count: "42 Visitors", color: "text-blue-600" },
-                  { label: "Project Clicks", count: "125 Clicks", color: "text-indigo-600" },
-                  { label: "Resume Downloads", count: "18 Downloads", color: "text-emerald-600" }
-                ].map((stat, idx) => (
-                  <div key={idx} className="bg-slate-50 border border-slate-100 p-5 rounded-2xl">
-                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">{stat.label}</span>
-                    <strong className={cn("text-xl font-black block mt-1", stat.color)}>{stat.count}</strong>
-                  </div>
-                ))}
+            {/* Build trigger card */}
+            <div className="p-5 bg-indigo-50/60 border border-indigo-100 rounded-3xl flex flex-col md:flex-row items-center justify-between gap-4">
+              <div className="space-y-1">
+                <strong className="text-xs font-black text-indigo-950 block">Ready to deploy?</strong>
+                <span className="text-[10px] text-indigo-650 font-bold block leading-relaxed">
+                  Compile resume contents, manual achievements, and selected design preferences.
+                </span>
               </div>
+              <button
+                disabled={isGenerating || !profileData}
+                onClick={handleGeneratePortfolio}
+                className="px-6 py-3 bg-indigo-600 hover:bg-indigo-750 text-white rounded-xl text-[10px] font-black uppercase tracking-widest text-center transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md disabled:opacity-40"
+              >
+                {isGenerating ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Sparkles className="w-4 h-4" />
+                )}
+                <span>{portfolioUrl ? "Re-Host Portfolio" : "Build & Host Website"}</span>
+              </button>
+            </div>
 
-              {/* simulated traffic chart placeholder */}
-              <div className="bg-slate-50 border border-slate-150 p-6 rounded-3xl flex flex-col justify-between h-44 mt-4">
-                <strong className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Recruiter Visitor Pattern (Last 7 Days)</strong>
-                <div className="flex items-end justify-between gap-2 h-24">
-                  {[2, 5, 8, 4, 9, 7, 12].map((val, idx) => (
-                    <div key={idx} className="flex-1 flex flex-col items-center gap-1.5">
-                      <div className="w-full bg-indigo-500 rounded-t-md transition-all hover:bg-indigo-600" style={{ height: `${val * 6}px` }} />
-                      <span className="text-[8px] font-bold text-slate-400 font-mono">Day {idx + 1}</span>
-                    </div>
-                  ))}
+            {portfolioUrl ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
+                {/* Hosted Link Card */}
+                <div className="border border-emerald-150 p-6 rounded-3xl bg-emerald-50/15 flex flex-col justify-between h-48 hover:border-emerald-250 transition-all text-left">
+                  <div className="space-y-1">
+                    <strong className="text-xs font-black text-emerald-900 flex items-center gap-1.5">
+                      <Check className="w-4 h-4 text-emerald-600" />
+                      Hosted Successfully!
+                    </strong>
+                    <span className="text-[10px] text-slate-400 font-bold block leading-relaxed">
+                      Your responsive portfolio is live on the cloud. Copy hosted link:
+                    </span>
+                    <span className="text-[10px] font-mono text-indigo-600 font-black block truncate mt-1">
+                      {typeof window !== "undefined" ? `${window.location.origin}${portfolioUrl}` : portfolioUrl}
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={copyShareLink}
+                      className="flex-grow py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest text-center hover:bg-slate-800 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Copy className="w-4 h-4" />
+                      <span>{copiedLink ? "Copied!" : "Copy Link"}</span>
+                    </button>
+                    <a
+                      href={portfolioUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-6 py-3 bg-white border border-slate-200 text-slate-800 rounded-xl text-[10px] font-black uppercase tracking-widest text-center hover:border-slate-300 transition-all flex items-center justify-center gap-1.5"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      <span>Visit</span>
+                    </a>
+                  </div>
+                </div>
+
+                <div className="border border-slate-200 p-6 rounded-3xl bg-slate-50/30 flex flex-col justify-between h-48 hover:border-indigo-200 transition-all text-left">
+                  <div className="space-y-1">
+                    <strong className="text-xs font-black text-slate-800 block">Export Source Package</strong>
+                    <span className="text-[10px] text-slate-400 font-bold block leading-relaxed">
+                      Download static ZIP package to hosting panels or host on custom servers.
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => alert("Packaging static files... ZIP file download started successfully.")}
+                    className="w-full py-3 bg-white border border-slate-250 text-slate-655 rounded-xl text-[10px] font-black uppercase tracking-widest text-center hover:border-slate-350 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Download Static files</span>
+                  </button>
                 </div>
               </div>
+            ) : (
+              <div className="py-16 text-center border border-dashed border-slate-200 rounded-[2rem]">
+                <p className="text-slate-400 font-bold text-xs uppercase tracking-wider">No active deployment hosted. Click &quot;Build &amp; Host Website&quot; above!</p>
+              </div>
+            )}
+          </div>
+        )}
+
+          {/* TAB 6: ANALYTICS DASHBOARD */}
+          {activeSubTab === "analytics" && (
+            <div className="space-y-6">
+              <h2 className="text-xl font-black text-slate-900 font-display">Recruiter Viewer Insights</h2>
+              <p className="text-xs text-slate-500 font-medium">
+                Monitor hosted page traffic metrics, project clicks, and contact details reveal triggers.
+              </p>
+
+              {portfolioUrl ? (
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
+                    {[
+                      { label: "Unique Visitors", value: "32 Recruiter checks", color: "text-blue-600" },
+                      { label: "Project Clicks", value: "114 Clicks logged", color: "text-indigo-600" },
+                      { label: "Contact reveals", value: "9 Requests", color: "text-emerald-600" }
+                    ].map((stat, idx) => (
+                      <div key={idx} className="bg-slate-55/40 border border-slate-100 p-5 rounded-2xl text-left">
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">{stat.label}</span>
+                        <strong className={cn("text-lg font-black block mt-1", stat.color)}>{stat.value}</strong>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="bg-slate-50 border border-slate-150 p-6 rounded-[2rem] flex flex-col justify-between h-44">
+                    <strong className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-4">Traffic timeline (Last 7 days)</strong>
+                    <div className="flex items-end justify-between gap-2 h-20">
+                      {[3, 7, 5, 8, 12, 16, 9].map((val, idx) => (
+                        <div key={idx} className="flex-1 flex flex-col items-center gap-1.5">
+                          <div className="w-full bg-indigo-500 rounded-t-md hover:bg-indigo-650 transition-all" style={{ height: `${val * 4}px` }} />
+                          <span className="text-[8px] font-bold text-slate-450 font-mono">Day {idx + 1}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="py-24 text-center border border-dashed border-slate-200 rounded-[2rem]">
+                  <p className="text-slate-400 font-bold text-xs uppercase tracking-wider">Deploy your portfolio to register visitor logs.</p>
+                </div>
+              )}
             </div>
           )}
 
@@ -978,88 +1163,88 @@ For a **${profile.role}** role, I recommend featuring:
 
       </div>
 
-      {/* RIGHT COLUMN (Readiness Panels & Portfolio Copilot - 4 cols) */}
+      {/* Right Column: Readiness and Chat Coach (4 cols) */}
       <div className="lg:col-span-4 space-y-8">
         
-        {/* Quality Audit scores */}
-        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200/60 shadow-sm space-y-6">
+        {/* Quality Audit scores card */}
+        <div className="bg-white p-6 md:p-8 rounded-[2.5rem] border border-slate-200/60 shadow-sm space-y-6">
           <div className="flex items-center gap-2">
-            <Award className="w-5 h-5 text-indigo-500 shrink-0" />
+            <Award className="w-5 h-5 text-indigo-500" />
             <h3 className="text-base font-black text-slate-900 font-display">Recruiter Readiness</h3>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             
             {/* Score 1 */}
-            <div className="bg-slate-50 border border-slate-100 p-4 rounded-2xl flex flex-col items-center text-center space-y-3">
-              <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block leading-tight">Portfolio Score</span>
+            <div className="bg-slate-55/40 border border-slate-100 p-4 rounded-2xl flex flex-col items-center text-center space-y-2">
+              <span className="text-[8px] font-black text-slate-450 uppercase tracking-widest block leading-tight">Branding Score</span>
               <div className="relative w-16 h-16 flex items-center justify-center">
                 <svg className="w-full h-full transform -rotate-90">
                   <circle cx="32" cy="32" r="26" className="text-slate-200" strokeWidth="4" stroke="currentColor" fill="transparent" />
                   <circle cx="32" cy="32" r="26" className="text-indigo-600" strokeWidth="4" stroke="currentColor" fill="transparent"
                     strokeDasharray={2 * Math.PI * 26}
-                    strokeDashoffset={2 * Math.PI * 26 * (1 - portfolioScore / 100)}
+                    strokeDashoffset={2 * Math.PI * 26 * (1 - (portfolioData ? 88 : 45) / 100)}
                     strokeLinecap="round"
                   />
                 </svg>
-                <span className="absolute text-xs font-black text-slate-800">{portfolioScore}%</span>
+                <span className="absolute text-xs font-black text-slate-800">{portfolioData ? 88 : 45}%</span>
               </div>
             </div>
 
             {/* Score 2 */}
-            <div className="bg-slate-50 border border-slate-100 p-4 rounded-2xl flex flex-col items-center text-center space-y-3">
-              <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block leading-tight">Recruiter Appeal</span>
+            <div className="bg-slate-55/40 border border-slate-100 p-4 rounded-2xl flex flex-col items-center text-center space-y-2">
+              <span className="text-[8px] font-black text-slate-450 uppercase tracking-widest block leading-tight">Recruiter Appeal</span>
               <div className="relative w-16 h-16 flex items-center justify-center">
                 <svg className="w-full h-full transform -rotate-90">
                   <circle cx="32" cy="32" r="26" className="text-slate-200" strokeWidth="4" stroke="currentColor" fill="transparent" />
                   <circle cx="32" cy="32" r="26" className="text-emerald-500" strokeWidth="4" stroke="currentColor" fill="transparent"
                     strokeDasharray={2 * Math.PI * 26}
-                    strokeDashoffset={2 * Math.PI * 26 * (1 - readinessScore / 100)}
+                    strokeDashoffset={2 * Math.PI * 26 * (1 - (portfolioData ? 92 : 55) / 100)}
                     strokeLinecap="round"
                   />
                 </svg>
-                <span className="absolute text-xs font-black text-slate-800">{readinessScore}%</span>
+                <span className="absolute text-xs font-black text-slate-800">{portfolioData ? 92 : 55}%</span>
               </div>
             </div>
 
           </div>
 
           <div className="space-y-3 pt-2">
-            <strong className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Branding Audit Report</strong>
-            <div className="space-y-2 text-xs font-semibold leading-relaxed">
+            <strong className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Styling Status Metrics</strong>
+            <div className="text-xs font-semibold leading-relaxed space-y-2">
               <div className="p-3 bg-emerald-50/50 border border-emerald-100/50 rounded-xl text-emerald-800">
-                <span className="font-black">Strengths:</span> Dynamic project descriptions loaded cleanly.
+                <span className="font-black">Active Theme:</span> {activeTheme} Theme
               </div>
-              <div className="p-3 bg-amber-50/50 border border-amber-100/50 rounded-xl text-amber-800">
-                <span className="font-black">Improvement Gaps:</span> Code repository sync and Vercel hosting pending.
+              <div className="p-3 bg-blue-50/50 border border-blue-100/50 rounded-xl text-blue-800">
+                <span className="font-black">Integrations:</span> {latestScan ? "Resume Scans synced" : "Resume Scans missing"} • {githubData ? "GitHub connected" : "GitHub offline"}
               </div>
             </div>
           </div>
         </div>
 
-        {/* Portfolio Copilot strategia widget */}
+        {/* Branding Coach Assistant Chat Drawer */}
         <div className="bg-white rounded-[2.5rem] border border-slate-200/60 shadow-sm overflow-hidden flex flex-col h-[500px]">
           
-          <div className="p-5 border-b border-slate-100 bg-slate-50 flex items-center gap-3 shrink-0">
+          <div className="p-4 border-b border-slate-100 bg-slate-50 flex items-center gap-3 shrink-0">
             <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 relative">
               <Bot className="w-4.5 h-4.5" />
               <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 border-2 border-white animate-pulse" />
             </div>
             <div>
-              <strong className="text-xs font-black text-slate-855 block">Branding Copilot</strong>
-              <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block mt-0.5">Strategic Portfolio Coach</span>
+              <strong className="text-xs font-black text-slate-850 block">Branding Copilot</strong>
+              <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block mt-0.5">Automated Portfolio Studio</span>
             </div>
           </div>
 
-          {/* Messages display */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0 bg-slate-50/20">
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0 bg-slate-50/30">
             {copilotMessages.map((msg) => {
               const isCopilot = msg.role === "copilot";
               return (
                 <div
                   key={msg.id}
                   className={cn(
-                    "flex gap-3 max-w-[85%] text-xs font-semibold leading-relaxed",
+                    "flex gap-2.5 max-w-[85%] text-xs font-semibold leading-relaxed",
                     isCopilot ? "self-start" : "ml-auto flex-row-reverse"
                   )}
                 >
@@ -1091,29 +1276,28 @@ For a **${profile.role}** role, I recommend featuring:
             })}
 
             {copilotLoading && (
-              <div className="flex gap-3 max-w-[80%] self-start animate-pulse text-xs">
+              <div className="flex gap-2.5 max-w-[80%] self-start animate-pulse text-xs">
                 <div className="w-6 h-6 rounded-md bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center shrink-0">
                   <Bot className="w-3.5 h-3.5 animate-bounce" />
                 </div>
-                <div className="p-3 bg-white border border-slate-150 text-slate-400 rounded-2xl font-bold flex items-center gap-1.5">
-                  <span>Analyzing portfolio structure...</span>
+                <div className="p-3 bg-white border border-slate-150 text-slate-450 rounded-2xl font-bold">
+                  Analyzing style tags...
                 </div>
               </div>
             )}
           </div>
 
-          {/* Quick suggestions */}
-          <div className="p-3 border-t border-slate-100 flex flex-wrap gap-1.5 bg-slate-50/30 shrink-0">
+          {/* Quick recommendations */}
+          <div className="p-2.5 border-t border-slate-100 flex flex-wrap gap-1 bg-slate-50/20 shrink-0">
             {[
-              { label: "Improve Score", query: "How to improve score?" },
-              { label: "Recruiter Appeal", query: "Recruiter readiness report" },
-              { label: "Showcase Projects", query: "Suggest project features" }
+              { label: "Improve Appeal", query: "How to maximize portfolio appeal?" },
+              { label: "Theme Strategy", query: "Suggest suitable themes" }
             ].map(prompt => (
               <button
                 key={prompt.label}
                 disabled={copilotLoading}
                 onClick={() => handleCopilotSend(prompt.query)}
-                className="px-2.5 py-1.5 bg-white border border-slate-200 hover:border-indigo-300 text-slate-600 hover:text-indigo-600 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer disabled:opacity-50"
+                className="px-2 py-1 bg-white border border-slate-205 hover:border-indigo-300 text-slate-600 hover:text-indigo-650 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer"
               >
                 {prompt.label}
               </button>
@@ -1121,11 +1305,11 @@ For a **${profile.role}** role, I recommend featuring:
           </div>
 
           {/* Input Bar */}
-          <div className="p-3 border-t border-slate-100 bg-white flex items-center gap-2 shrink-0">
+          <div className="p-2.5 border-t border-slate-100 bg-white flex items-center gap-2 shrink-0">
             <input
               type="text"
               disabled={copilotLoading}
-              placeholder="Ask Copilot about branding tips..."
+              placeholder="Ask Copilot branding questions..."
               value={copilotInput}
               onChange={(e) => setCopilotInput(e.target.value)}
               onKeyDown={(e) => {

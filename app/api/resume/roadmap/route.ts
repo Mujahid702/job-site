@@ -43,20 +43,36 @@ ${resumeText || "No resume uploaded yet."}
 - Completed Projects list: ${completedProjects ? JSON.stringify(completedProjects) : "None registered"}
 
 CRITICAL REQUIREMENTS:
-1. Generate an explainable, personalized Career Readiness Report detailing target role alignment.
-2. Formulate a comprehensive Skill Gap Analysis mapping the candidate's current skills (derived from the resume) against the target role requirements. Categorize them into Strong (already has), Missing (relevant but lacking), and Critical Missing (urgent blockades).
-3. Create 5 progressive roadmap stages: "Stage 1: Foundation", "Stage 2: Core Skills", "Stage 3: Projects", "Stage 4: Interview Prep", "Stage 5: Placement Ready". Populate each stage with 2-3 specific learning steps containingEstimated Time, Difficulty ("Beginner" | "Intermediate" | "Advanced"), and Priority ("High" | "Medium" | "Low").
-4. Provide a Resource Library recommending practical documentation, courses, YouTube guides, or practice sites. Group them into levels (Beginner, Intermediate, Advanced).
-5. Suggest 3 premium project recommendations specific to the target role. Provide Resume Impact (%), Recruiter Attraction (%), Difficulty, and Portfolio Value ratings for each.
-6. Provide a Company Readiness analysis for: IBM, TCS, Infosys, Accenture, Deloitte, Capgemini, Cognizant, Wipro, and HCLTech. Estimate a match percentage (%) and list exact improvement areas for each company based on their standard recruitment benchmarks.
-7. Generate a 30/60/90 Day action plan containing daily tasks, weekly tasks, and monthly goals.
-8. Set up the Achievements badges system with unlock states: "Roadmap Starter", "Skill Master", "Project Builder", "Interview Ready", "Placement Ready" based on the candidate's profile metrics.
+1. You MUST generate a "thinking" property first. In this section, perform a rigorous step-by-step chain of thought:
+   - Identify the user's current background, strengths, weaknesses, and targets.
+   - Outline the genuine skills and certifications required for a high-performing candidate in the target role.
+   - Map a logical, customized roadmap stage progression to close key skill gaps.
+   - Ground all recommendations, resource links, project suggestions, and company matching scores directly in this reasoning steps block.
+2. Generate an explainable, personalized Career Readiness Report detailing target role alignment.
+3. Formulate a comprehensive Skill Gap Analysis mapping the candidate's current skills (derived from the resume) against the target role requirements. Categorize them into Strong (already has), Missing (relevant but lacking), and Critical Missing (urgent blockades).
+4. Create 5 progressive roadmap stages: "Stage 1: Foundation", "Stage 2: Core Skills", "Stage 3: Projects", "Stage 4: Interview Prep", "Stage 5: Placement Ready". Populate each stage with:
+      - *estimatedDuration*: Time required (e.g. "10 Days", "2 Weeks").
+      - *difficulty*: Stage complexity ("Beginner" | "Intermediate" | "Advanced").
+      - *expectedOutcome*: Clear description of what the candidate will achieve.
+      - *skillsCovered*: Array of specific skills learned in this stage.
+      - *recruiterImportance*: How much recruiters prioritize this stage ("High" | "Medium" | "Low").
+      - *learningResources*: Curated links specific to this stage (Official Documentation, YouTube Playlists, Practice Websites, etc.).
+      - *actionChecklist*: Array of 3-5 trackable tasks (e.g. "Learn SQL Joins", "Complete 20 LeetCode SQL challenges") with status "Pending", a verification status (e.g. "Verifies via Assessment OS score", "Verifies via Project OS upload", "Self-Reported"), and an xpReward (between 100-300).
+5. Provide a Resource Library recommending practical documentation, courses, YouTube guides, or practice sites. Group them into levels (Beginner, Intermediate, Advanced).
+6. Suggest 3 premium project recommendations specific to the target role. Provide Resume Impact (%), Recruiter Attraction (%), Difficulty, and Portfolio Value ratings for each.
+7. Provide a Company Readiness analysis for: IBM, TCS, Infosys, Accenture, Deloitte, Capgemini, Cognizant, Wipro, and HCLTech. Estimate a match percentage (%) and list exact improvement areas for each company based on their standard recruitment benchmarks.
+8. Generate a 30/60/90 Day action plan containing daily tasks, weekly tasks, and monthly goals.
+9. Set up the Achievements badges system with unlock states: "Roadmap Starter", "Skill Master", "Project Builder", "Interview Ready", "Placement Ready" based on the candidate's profile metrics.
 
 Do NOT include any surrounding markdown code blocks in the API response. Output ONLY pure, valid JSON matching the schema.`;
 
     const schema = {
       type: "OBJECT",
       properties: {
+        thinking: {
+          type: "STRING",
+          description: "Step-by-step reasoning chain about candidate profile analysis, target role requirements, and customization plans. Generated first."
+        },
         careerReadinessReport: {
           type: "OBJECT",
           properties: {
@@ -92,22 +108,38 @@ Do NOT include any surrounding markdown code blocks in the API response. Output 
             properties: {
               stageName: { type: "STRING" },
               stageIndex: { type: "INTEGER" },
-              steps: {
+              estimatedDuration: { type: "STRING" },
+              difficulty: { type: "STRING" },
+              expectedOutcome: { type: "STRING" },
+              skillsCovered: { type: "ARRAY", items: { type: "STRING" } },
+              recruiterImportance: { type: "STRING" },
+              learningResources: {
                 type: "ARRAY",
                 items: {
                   type: "OBJECT",
                   properties: {
-                    skillName: { type: "STRING" },
-                    whyItMatters: { type: "STRING" },
-                    estimatedTime: { type: "STRING" },
-                    difficulty: { type: "STRING" },
-                    priority: { type: "STRING" }
+                    title: { type: "STRING" },
+                    url: { type: "STRING" },
+                    type: { type: "STRING" }
                   },
-                  required: ["skillName", "whyItMatters", "estimatedTime", "difficulty", "priority"]
+                  required: ["title", "url", "type"]
+                }
+              },
+              actionChecklist: {
+                type: "ARRAY",
+                items: {
+                  type: "OBJECT",
+                  properties: {
+                    taskName: { type: "STRING" },
+                    status: { type: "STRING" },
+                    verificationStatus: { type: "STRING" },
+                    xpReward: { type: "INTEGER" }
+                  },
+                  required: ["taskName", "status", "verificationStatus", "xpReward"]
                 }
               }
             },
-            required: ["stageName", "stageIndex", "steps"]
+            required: ["stageName", "stageIndex", "estimatedDuration", "difficulty", "expectedOutcome", "skillsCovered", "recruiterImportance", "learningResources", "actionChecklist"]
           }
         },
         resources: {
@@ -197,6 +229,7 @@ Do NOT include any surrounding markdown code blocks in the API response. Output 
         }
       },
       required: [
+        "thinking",
         "careerReadinessReport",
         "readinessPredictions",
         "skillGap",

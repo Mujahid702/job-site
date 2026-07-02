@@ -12,6 +12,18 @@ export interface InterviewSchedule {
   time: string;
   platform: string;
   notes?: string;
+  mode?: string; // Online, In-Person, Phone Call
+  meetingLink?: string; // Meet, Zoom URL
+  recruiterName?: string;
+  recruiterEmail?: string;
+  recruiterPhone?: string;
+  checklist?: string[];
+  companyTasks?: string[];
+  roleTasks?: string[];
+  googleEventId?: string;
+  googleCalendarLink?: string;
+  outlookEventId?: string;
+  outlookCalendarLink?: string;
 }
 
 export interface OfferDetails {
@@ -33,8 +45,16 @@ export interface OARecord {
   difficulty: "Easy" | "Medium" | "Hard";
   topicsAsked: string[];
   score: number;
-  result: "Cleared" | "Failed" | "Pending";
+  result: "Cleared" | "Failed" | "Pending" | "Expired";
   prepNotes: string;
+  platform?: string;
+  deadline?: string;
+  duration?: number;
+  status?: "Pending" | "Completed" | "Expired";
+  googleEventId?: string;
+  googleCalendarLink?: string;
+  outlookEventId?: string;
+  outlookCalendarLink?: string;
 }
 
 export interface InterviewRoundRecord {
@@ -75,6 +95,10 @@ export interface PlacementApplication {
   assessmentDate?: string; // YYYY-MM-DD
   interviewDate?: string; // YYYY-MM-DD
   offerExpiry?: string; // YYYY-MM-DD
+  googleDeadlineEventId?: string;
+  googleDeadlineCalendarLink?: string;
+  outlookDeadlineEventId?: string;
+  outlookDeadlineCalendarLink?: string;
 }
 
 export interface CrmDocument {

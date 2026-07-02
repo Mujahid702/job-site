@@ -69,18 +69,28 @@ export async function getUserProfile(userId: string, supabaseClient?: any): Prom
 }
 
 export async function upsertUserProfile(userId: string, profileData: any, supabaseClient?: any): Promise<{ success: boolean; error?: any }> {
+  // Load existing profile to preserve onboarding properties
+  const existingProfile = await getUserProfile(userId, supabaseClient);
+
   // Parse fields from structured ProfileData if present
-  const full_name = profileData.name || profileData.full_name || null;
-  const email = profileData.email || null;
-  const phone_number = profileData.phone || profileData.phone_number || null;
+  const full_name = profileData.name || profileData.full_name || existingProfile?.full_name || null;
+  const email = profileData.email || existingProfile?.email || null;
+  const phone_number = profileData.phone || profileData.phone_number || existingProfile?.phone_number || null;
   
   // Extract college, degree, branch, grad year, semester, and CGPA
-  let college = profileData.college || null;
-  let branch = profileData.branch || null;
-  let degree = profileData.degree || null;
-  let graduation_year = profileData.graduation_year ? parseInt(profileData.graduation_year, 10) : null;
-  let current_semester = profileData.current_semester ? parseInt(profileData.current_semester, 10) : null;
-  let cgpa = profileData.cgpa || null;
+  let college = profileData.college || existingProfile?.college || null;
+  let branch = profileData.branch || existingProfile?.branch || null;
+  let degree = profileData.degree || existingProfile?.degree || null;
+  
+  let graduation_year = profileData.graduation_year !== undefined
+    ? (profileData.graduation_year ? parseInt(profileData.graduation_year, 10) : null)
+    : (existingProfile?.graduation_year ?? null);
+    
+  let current_semester = profileData.current_semester !== undefined
+    ? (profileData.current_semester ? parseInt(profileData.current_semester, 10) : null)
+    : (existingProfile?.current_semester ?? null);
+    
+  let cgpa = profileData.cgpa || existingProfile?.cgpa || null;
 
   if (profileData.education && profileData.education.length > 0) {
     const firstEdu = profileData.education[0];
@@ -112,28 +122,40 @@ export async function upsertUserProfile(userId: string, profileData: any, supaba
         }
       }
     });
+  } else if (existingProfile?.skills) {
+    skills = existingProfile.skills;
   }
 
-  const linkedin_url = profileData.linkedin || profileData.linkedin_url || null;
-  const github_url = profileData.github || profileData.github_url || null;
-  const portfolio_url = profileData.portfolio || profileData.portfolio_url || null;
-  const target_role = profileData.targetRole || profileData.target_role || null;
+  const linkedin_url = profileData.linkedin || profileData.linkedin_url || existingProfile?.linkedin_url || null;
+  const github_url = profileData.github || profileData.github_url || existingProfile?.github_url || null;
+  const portfolio_url = profileData.portfolio || profileData.portfolio_url || existingProfile?.portfolio_url || null;
+  const target_role = profileData.targetRole || profileData.target_role || existingProfile?.target_role || null;
   
   // Resume details
-  const resume_url = profileData.resume_url || null;
-  const resume_name = profileData.resume_name || null;
-  const resume_uploaded_at = profileData.resume_uploaded_at || null;
+  const resume_url = profileData.resume_url || existingProfile?.resume_url || null;
+  const resume_name = profileData.resume_name || existingProfile?.resume_name || null;
+  const resume_uploaded_at = profileData.resume_uploaded_at || existingProfile?.resume_uploaded_at || null;
 
   // Onboarding specific fields mapping
-  const onboarding_completed = profileData.onboarding_completed ?? false;
-  const onboarding_status = profileData.onboarding_status || 'not_started';
-  const onboarding_step = profileData.onboarding_step || 1;
-  const career_goal = profileData.career_goal || null;
-  const experience_level = profileData.experience_level || null;
-  const dream_companies = profileData.dream_companies || null;
-  const preferred_locations = profileData.preferred_locations || null;
-  const target_ctc = profileData.target_ctc || null;
-  const profile_completion = profileData.profile_completion || 0;
+  const onboarding_completed = profileData.onboarding_completed !== undefined
+    ? profileData.onboarding_completed
+    : (existingProfile?.onboarding_completed ?? false);
+  const onboarding_status = profileData.onboarding_status || existingProfile?.onboarding_status || 'not_started';
+  const onboarding_step = profileData.onboarding_step || existingProfile?.onboarding_step || 1;
+  const career_goal = profileData.career_goal || existingProfile?.career_goal || null;
+  const experience_level = profileData.experience_level || existingProfile?.experience_level || null;
+  const dream_companies = profileData.dream_companies || existingProfile?.dream_companies || null;
+  const preferred_locations = profileData.preferred_locations || existingProfile?.preferred_locations || null;
+  const target_ctc = profileData.target_ctc || existingProfile?.target_ctc || null;
+  const profile_completion = profileData.profile_completion !== undefined
+    ? profileData.profile_completion
+    : (existingProfile?.profile_completion ?? 0);
+
+  // Merge raw_profile_data
+  const mergedRawData = {
+    ...(existingProfile?.raw_profile_data || {}),
+    ...(profileData || {})
+  };
 
   const dbPayload: DBProfile = {
     user_id: userId,
@@ -154,7 +176,7 @@ export async function upsertUserProfile(userId: string, profileData: any, supaba
     resume_url,
     resume_name,
     resume_uploaded_at,
-    raw_profile_data: profileData,
+    raw_profile_data: mergedRawData,
     onboarding_completed,
     onboarding_status,
     onboarding_step,

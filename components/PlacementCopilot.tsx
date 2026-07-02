@@ -11,7 +11,12 @@ import {
   User,
   Zap,
   ArrowRight,
-  LineChart
+  LineChart,
+  Target,
+  Sparkles,
+  CheckSquare,
+  Award,
+  Plus
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -40,7 +45,7 @@ interface PlacementCopilotProps {
 const SUGGESTED_PROMPTS = [
   "Am I ready for placements?",
   "Improve my resume",
-  "Prepare for IBM",
+  "Prepare for Deloitte",
   "Suggest projects",
   "Find skill gaps",
   "Generate today's placement plan"
@@ -86,6 +91,24 @@ export default function PlacementCopilot({
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [inputText, setInputText] = useState("");
 
+  // Dynamic dashboard states
+  const [predictiveScore, setPredictiveScore] = useState<number>(68);
+  const [predictiveMetrics, setPredictiveMetrics] = useState<string[]>([
+    "+8% if ATS score reaches 90%",
+    "+5% if SQL assessment > 80%",
+    "+6% if another project is added"
+  ]);
+  const [dailyPlan, setDailyPlan] = useState<string[]>([
+    "Improve ATS score by 6 points",
+    "Practice 10 SQL queries",
+    "Track 1 application in CRM"
+  ]);
+  const [completedDailyTasks, setCompletedDailyTasks] = useState<Record<number, boolean>>({});
+  const [dynamicMission, setDynamicMission] = useState<{ title: string; reward: string }>({
+    title: "Complete SQL join practice questions",
+    reward: "40 XP"
+  });
+
   useEffect(() => {
     if (!activeTaskId) return;
 
@@ -116,6 +139,23 @@ export default function PlacementCopilot({
 
           if (copilotResponse.healthReport) {
             setActiveHealthReport(copilotResponse.healthReport);
+          }
+
+          if (copilotResponse.predictiveScore !== undefined) {
+            setPredictiveScore(copilotResponse.predictiveScore);
+          }
+
+          if (copilotResponse.predictiveMetrics) {
+            setPredictiveMetrics(copilotResponse.predictiveMetrics);
+          }
+
+          if (copilotResponse.dailyPlan) {
+            setDailyPlan(copilotResponse.dailyPlan);
+            setCompletedDailyTasks({});
+          }
+
+          if (copilotResponse.dynamicMission) {
+            setDynamicMission(copilotResponse.dynamicMission);
           }
 
           if (copilotResponse.action) {
@@ -376,13 +416,13 @@ export default function PlacementCopilot({
       const overall = Math.round((resume * 0.35) + (interview * 0.35) + (projectsCount * 0.3));
 
       const replyText = `### 📊 Placement Health Diagnostic Report (Offline mode)
-
+ 
 I have compiled your profile parameters to check your overall ready index:
 - **Resume Quality**: ${resume}% (ATS scan benchmark)
 - **Interview Readiness**: ${interview}% (Mock metrics review)
 - **Project Portfolio**: ${projectsCount}% (Evaluated from workspace cache)
 - **Overall Readiness**: **${overall}%**
-
+ 
 #### 💡 Strategy Audit:
 ${overall >= 80 
   ? "Your profile is in the **Placement Ready** tier. Keep applying to top roles and finalize schedules." 
@@ -404,12 +444,12 @@ ${overall >= 80
     if (q.includes("resume") || q.includes("cv") || q.includes("ats")) {
       return {
         content: `### 📄 Resume Enhancement Strategy
-
+ 
 Based on your current ATS rating of **${context.atsScore}%**:
 1. **Tech Stack Keywords**: Ensure standard database normalization, API routing protocols, and cloud services (AWS, Docker) are clearly indexed.
 2. **Action Metrics**: Replace vague descriptions with quantified results (e.g., "Optimized queries, reducing load latencies by 35%").
 3. **Format Standard**: Keep to a single-column, scan-optimized format.
-
+ 
 Redirecting you to **Resume OS** to inspect direct improvement alerts...`,
         action: "OPEN_ATS"
       };
@@ -419,92 +459,40 @@ Redirecting you to **Resume OS** to inspect direct improvement alerts...`,
     if (q.includes("interview") || q.includes("prep") || q.includes("mock")) {
       return {
         content: `### 🎤 Interview Coaching Blueprint
-
+ 
 Your current mock interview rating is **${context.interviewAvg}%**:
 - **Strong Areas**: Technical concepts and syntax structure.
 - **Improvement Target**: Behavioral responses (STAR framework) and pace reduction variables.
 - **Recommended Action**: Complete 2 simulated technical and behavioral mock sessions to evaluate fillers.
-
+ 
 Redirecting you to the **AI Interview Simulator**...`,
         action: "OPEN_INTERVIEW"
-      };
-    }
-
-    // 4. Company Specifics
-    if (q.includes("ibm") || q.includes("deloitte") || q.includes("tcs") || q.includes("accenture")) {
-      const comp = q.includes("ibm") ? "IBM" : q.includes("deloitte") ? "Deloitte" : q.includes("tcs") ? "TCS" : "Accenture";
-      return {
-        content: `### 🏢 Company Preparation Tracker: ${comp}
-
-To crack the recruitment drive for **${comp}**:
-- **Aptitude Filters**: Focus on logical arrays, pseudocodes, and relational database normalize checks.
-- **Technical Focus**: Relational SQL structures, basic object-oriented constructs, and core coding tests.
-- **STAR Stories**: Tailor 2 projects outlining team dynamics and server deployment resolutions.
-
-Opening the **Company Preparation Dashboard**...`,
-        action: "OPEN_COMPANY"
-      };
-    }
-
-    // 5. Project suggestions
-    if (q.includes("project") || q.includes("portfolio")) {
-      return {
-        content: `### 🛠️ Strategic Project Suggestions
-
-For a target track of **${context.targetRole}**, build:
-1. **High-Throughput Order Pipeline**: Using Node.js, Redis transactional queue pipelines, and NoSQL databases. (Impact: 94%, Recruiter Attraction: High)
-2. **Real-time Whiteboard Platform**: Emphasizing socket concurrency and browser drawing streams. (Impact: 88%, Recruiter Attraction: Medium)
-
-Redirecting you to the **Project Advisor** catalog...`,
-        action: "OPEN_PROJECTS"
-      };
-    }
-
-    // 6. Roadmap
-    if (q.includes("roadmap") || q.includes("learn") || q.includes("study")) {
-      return {
-        content: `### 📚 Career Learning Roadmap: ${context.targetRole}
-
-Your current roadmap progress is **${context.roadmapProgressCount}/${context.totalRoadmapCount}** items checked:
-- **Phase 1**: Finalize SQL normalizing and API framework setups.
-- **Phase 2**: Launch containerization checks (Docker configurations).
-- **Phase 3**: Solve DSA graph nodes and tree structures.
-
-Redirecting you to the **Career Roadmaps Navigator** to trace tasks...`,
-        action: "OPEN_ROADMAP"
-      };
-    }
-
-    // 7. Today's Plan
-    if (q.includes("plan") || q.includes("today") || q.includes("action")) {
-      return {
-        content: `### 📅 Today's Placement Plan Checklist
-
-Based on your context, complete these tasks:
-1. **Resume**: Optimize keywords for target **${context.targetRole}** listings (Target: ${context.atsScore}% -> 80%).
-2. **Learning**: Solve 2 DSA arrays/tree challenges inside the resources panel.
-3. **CRM Track**: Review pending recruiter follow-ups for active applications.
-4. **Interview Prep**: Complete a 15-minute mock simulation.`,
-        action: null
       };
     }
 
     // Default Fallback
     return {
       content: `I have analyzed your request regarding: "${query}". 
-
+ 
 As your AI Copilot, I recommend:
 1. Reviewing your **Resume OS** templates to ensure keyword density matches your target track.
 2. Managing active interview calendars in the **Placement CRM** dashboard.
 3. Completing roadmap checkpoints to increase your **Placement Readiness Index**.
-
+ 
 Ask me specifically about "placement health", "resume tips", "mock interviews", or "project ideas" to fetch deep diagnostic alerts!`,
       action: null
     };
   };
 
+  const handleToggleTask = (idx: number) => {
+    setCompletedDailyTasks(prev => ({
+      ...prev,
+      [idx]: !prev[idx]
+    }));
+  };
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start text-left">
       
       {/* CHAT SECTION (Left/Main) */}
       <div className="lg:col-span-8 flex flex-col bg-white border border-slate-200/60 rounded-[2.5rem] shadow-sm overflow-hidden h-[680px]">
@@ -582,13 +570,12 @@ Ask me specifically about "placement health", "resume tips", "mock interviews", 
                 <div className="space-y-1">
                   <div
                     className={cn(
-                      "p-4 rounded-3xl text-xs font-semibold leading-relaxed whitespace-pre-wrap",
+                      "p-4 rounded-3xl text-xs font-semibold leading-relaxed whitespace-pre-wrap text-left",
                       isCopilot
                         ? "bg-slate-50 border border-slate-150 text-slate-700"
                         : "bg-slate-900 text-white"
                     )}
                   >
-                    {/* Simplified markdown formatter for bolding, lists and tables */}
                     {msg.content.split("\n").map((line, idx) => {
                       if (line.startsWith("### ")) {
                         return <h4 key={idx} className="font-black text-slate-900 text-sm mt-3 mb-1 first:mt-0 font-display">{line.replace("### ", "")}</h4>;
@@ -605,7 +592,6 @@ Ask me specifically about "placement health", "resume tips", "mock interviews", 
                         let parsedLine: React.ReactNode = line;
                         boldMatch.forEach((match) => {
                           const clean = match.replace(/\*\*/g, "");
-                          // simplistic replacement representation
                           const parts = (parsedLine as string).split(match);
                           parsedLine = (
                             <>
@@ -661,13 +647,13 @@ Ask me specifically about "placement health", "resume tips", "mock interviews", 
         <div className="p-4 border-t border-slate-100 bg-white flex items-center gap-3 shrink-0">
           <input
             type="text"
-            placeholder="Ask AI Copilot about readiness, resume scores, or IBM preparation tracks..."
+            placeholder="Ask AI Copilot about readiness, resume scores, or Deloitte preparation tracks..."
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !isLoading) handleSendMessage(inputText);
             }}
-            className="flex-1 p-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-slate-800 font-bold text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all"
+            className="flex-1 p-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-slate-800 font-bold text-xs focus:outline-none"
           />
           <button
             onClick={() => handleSendMessage(inputText)}
@@ -683,11 +669,85 @@ Ask me specifically about "placement health", "resume tips", "mock interviews", 
       {/* HEALTH DIAGNOSTIC PANEL (Right) */}
       <div className="lg:col-span-4 space-y-8">
         
+        {/* PREDICTIVE PROBABILITY METER (PHASE 7) */}
+        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200/60 shadow-sm space-y-6">
+          <div className="flex items-center gap-2">
+            <Target className="w-5 h-5 text-indigo-500 shrink-0" />
+            <h3 className="text-base font-black text-slate-900 font-display">Placement Probability</h3>
+          </div>
+
+          <div className="flex flex-col items-center justify-center py-4 bg-slate-50 rounded-3xl border border-slate-100 space-y-2">
+            <strong className="text-4xl font-black text-indigo-600 tracking-tighter">{predictiveScore}%</strong>
+            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest font-mono">Calculated probability</span>
+          </div>
+
+          <div className="space-y-3">
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block font-mono">Actionable upgrades:</span>
+            <div className="space-y-2 text-xs font-semibold text-slate-600">
+              {predictiveMetrics.map((met, idx) => (
+                <div key={idx} className="flex gap-2 items-start">
+                  <Plus className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                  <p className="leading-relaxed">{met}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* AUTONOMOUS PLANS & PERSONALIZED MISSIONS (PHASE 9 & 10) */}
+        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200/60 shadow-sm space-y-6">
+          <div className="flex items-center gap-2">
+            <CheckSquare className="w-5 h-5 text-indigo-500 shrink-0" />
+            <h3 className="text-base font-black text-slate-900 font-display">Today&apos;s Placement Plan</h3>
+          </div>
+
+          <div className="space-y-3 font-semibold text-xs text-slate-650">
+            {dailyPlan.map((planText, pIdx) => {
+              const isChecked = !!completedDailyTasks[pIdx];
+              return (
+                <button
+                  key={pIdx}
+                  onClick={() => handleToggleTask(pIdx)}
+                  className="w-full text-left p-3.5 bg-slate-50 border border-slate-100 hover:border-slate-250 rounded-2xl flex items-start gap-3 transition-all"
+                >
+                  <span className={cn(
+                    "w-4 h-4 rounded border flex items-center justify-center shrink-0 mt-0.5 transition-all",
+                    isChecked ? "bg-indigo-600 border-indigo-600 text-white" : "border-slate-300 bg-white"
+                  )}>
+                    {isChecked && "✓"}
+                  </span>
+                  <span className={cn("leading-relaxed", isChecked ? "line-through text-slate-400" : "text-slate-700")}>
+                    {planText}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Dynamic Mission Card */}
+          {dynamicMission && (
+            <div className="p-5 border border-indigo-150 bg-indigo-50/20 rounded-[2rem] space-y-4">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-indigo-600 shrink-0" />
+                <strong className="text-[10px] font-black text-indigo-650 uppercase tracking-widest font-mono">Personalized Mission</strong>
+              </div>
+              <p className="text-xs font-semibold text-slate-700 leading-normal">{dynamicMission.title}</p>
+              <div className="flex justify-between items-center text-[10px] font-mono text-slate-400 font-bold">
+                <span>XP reward:</span>
+                <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-full font-black flex items-center gap-1">
+                  <Award className="w-3.5 h-3.5 fill-indigo-100" />
+                  {dynamicMission.reward}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Health gauges visual dashboard */}
         <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200/60 shadow-sm space-y-6">
           <div className="flex items-center gap-2">
             <LineChart className="w-5 h-5 text-indigo-500 shrink-0" />
-            <h3 className="text-lg font-black text-slate-900 font-display">Placement Health</h3>
+            <h3 className="text-base font-black text-slate-900 font-display">Workspace Health</h3>
           </div>
           
           <AnimatePresence mode="wait">
@@ -700,12 +760,12 @@ Ask me specifically about "placement health", "resume tips", "mock interviews", 
                 className="grid grid-cols-2 gap-6"
               >
                 {[
-                  { label: "Resume Index", val: activeHealthReport.resumeQuality, color: "text-blue-600" },
+                  { label: "Resume Quality", val: activeHealthReport.resumeQuality, color: "text-blue-600" },
                   { label: "Interview Index", val: activeHealthReport.interviewReadiness, color: "text-indigo-600" },
-                  { label: "Projects Index", val: activeHealthReport.projects, color: "text-amber-500" },
-                  { label: "Overall Ready", val: activeHealthReport.overallReadiness, color: "text-emerald-600" }
+                  { label: "Projects Metric", val: activeHealthReport.projects, color: "text-amber-550" },
+                  { label: "Overall PRI", val: activeHealthReport.overallReadiness, color: "text-emerald-600" }
                 ].map((gauge, gIdx) => (
-                  <div key={gIdx} className="bg-slate-50/50 p-4 rounded-2xl border border-slate-100 flex flex-col items-center justify-center text-center space-y-3 shadow-inner">
+                  <div key={gIdx} className="bg-slate-50/50 p-4 rounded-2xl border border-slate-100 flex flex-col items-center justify-center text-center space-y-3">
                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{gauge.label}</span>
                     <div className="relative w-16 h-16 flex items-center justify-center">
                       <svg className="w-full h-full transform -rotate-90">
@@ -723,7 +783,7 @@ Ask me specifically about "placement health", "resume tips", "mock interviews", 
               </motion.div>
             ) : (
               <div className="text-center py-12 text-slate-400 font-bold text-xs">
-                Health audit not compiled. Ask the copilot **&quot;Am I ready for placements?&quot;** to view the metrics.
+                Ask the copilot **&quot;Am I ready for placements?&quot;** to evaluate score meters.
               </div>
             )}
           </AnimatePresence>
@@ -736,7 +796,7 @@ Ask me specifically about "placement health", "resume tips", "mock interviews", 
           <div className="space-y-2.5">
             {[
               { label: "Improve My Resume", action: "OPEN_ATS", desc: "Launches Resume OS ATS scan audits" },
-              { label: "Prepare For IBM", action: "OPEN_COMPANY", desc: "Opens targeted IBM prep questions" },
+              { label: "Prepare For Deloitte", action: "OPEN_COMPANY", desc: "Opens targeted Deloitte prep questions" },
               { label: "Schedule Mock Interview", action: "OPEN_INTERVIEW", desc: "Starts voice simulation prep" },
               { label: "Suggest Portfolios", action: "OPEN_PROJECTS", desc: "Opens recruiter-attraction ratings" }
             ].map((btn, idx) => (

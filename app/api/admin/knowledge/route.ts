@@ -19,7 +19,7 @@ export async function GET(request: Request) {
     const supabase = await createClient();
     const { data, error } = await supabase
       .from('knowledge_documents')
-      .select('id, title, category, content, metadata, created_at, updated_at')
+      .select('id, title, category, content, metadata, subcategory, company, role, difficulty, technology, confidence_score, verified_by, active, review_date, expiry_date, popularity, version, created_at, updated_at')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -48,7 +48,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json().catch(() => ({}));
-    const { title, category, content, metadata = {} } = body;
+    const { title, category, content, metadata = {}, subcategory, company, role, difficulty, technology, confidence_score } = body;
 
     if (!title || !category || !content) {
       return NextResponse.json(
@@ -78,8 +78,14 @@ export async function POST(request: Request) {
         content,
         metadata,
         embedding,
+        subcategory: subcategory || null,
+        company: company || 'General',
+        role: role || 'General',
+        difficulty: difficulty || 'General',
+        technology: technology || 'General',
+        confidence_score: confidence_score || 1.0
       })
-      .select('id, title, category, content, metadata, created_at, updated_at')
+      .select('id, title, category, content, metadata, subcategory, company, role, difficulty, technology, confidence_score, created_at, updated_at')
       .single();
 
     if (error) {

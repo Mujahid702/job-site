@@ -100,7 +100,7 @@ export async function POST(request: Request) {
         model = 'llama-3.1-8b-instant';
       } else if (process.env.OPENROUTER_API_KEY) {
         provider = 'openrouter';
-        model = 'meta-llama/llama-3.1-8b-instruct:free';
+        model = 'meta-llama/llama-3.3-70b-instruct:free';
       } else {
         // Fallback to Gemini if no keys configured for Llama
         provider = 'gemini';

@@ -97,18 +97,69 @@ export async function POST(request: Request) {
       .replace(/\n\s*\n+/g, "\n\n")
       .trim();
 
-    // 6. Limit character count to prevent overflowing model token windows on huge pages
-    if (cleanedText.length > 80000) {
-      cleanedText = cleanedText.substring(0, 80000) + "\n\n...[Truncated]";
+    // Try to extract meta description and page title to enrich or use as fallback
+    const ogDescriptionMatch = html.match(/<meta\s+[^>]*property=["']og:description["']\s+content=["']([^"']*)["']/i) ||
+                               html.match(/<meta\s+[^>]*name=["']description["']\s+content=["']([^"']*)["']/i) ||
+                               html.match(/<meta\s+[^>]*content=["']([^"']*)["']\s+[^>]*(?:property|name)=["']og:description["']/i) ||
+                               html.match(/<meta\s+[^>]*content=["']([^"']*)["']\s+[^>]*(?:property|name)=["']description["']/i);
+    const metaDesc = ogDescriptionMatch ? ogDescriptionMatch[1].trim() : "";
+
+    const ogTitleMatch = html.match(/<meta\s+[^>]*property=["']og:title["']\s+content=["']([^"']*)["']/i) ||
+                         html.match(/<meta\s+[^>]*name=["']title["']\s+content=["']([^"']*)["']/i) ||
+                         html.match(/<meta\s+[^>]*content=["']([^"']*)["']\s+[^>]*(?:property|name)=["']og:title["']/i);
+    const ogTitle = ogTitleMatch ? ogTitleMatch[1].trim() : "";
+
+    const pageTitleToUse = pageTitle && pageTitle !== "Job Posting" ? pageTitle : (ogTitle || "Job Posting");
+
+    let finalCleaned = cleanedText;
+
+    if (!finalCleaned || finalCleaned.length < 50) {
+      // Fallback 1: Try a less aggressive cleanup (retain header/footer/nav/etc)
+      let fallbackText = html;
+      fallbackText = fallbackText.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "");
+      fallbackText = fallbackText.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, "");
+      fallbackText = fallbackText.replace(/<noscript\b[^<]*(?:(?!<\/noscript>)<[^<]*)*<\/noscript>/gi, "");
+      fallbackText = fallbackText.replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, "");
+      fallbackText = fallbackText.replace(/<svg\b[^<]*(?:(?!<\/svg>)<[^<]*)*<\/svg>/gi, "");
+      
+      fallbackText = fallbackText.replace(/<\/p>|<\/div>|<br\s*\/?>|<\/li>|<\/tr>|<\/h[1-6]>/gi, "\n");
+      fallbackText = fallbackText.replace(/<[^>]+>/g, " ");
+      fallbackText = fallbackText
+        .replace(/&nbsp;/g, " ")
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&quot;/g, '"')
+        .replace(/\r/g, "")
+        .replace(/[ \t]+/g, " ")
+        .replace(/\n\s*\n+/g, "\n\n")
+        .trim();
+
+      if (fallbackText && fallbackText.length >= 50) {
+        finalCleaned = fallbackText;
+      }
     }
 
-    if (!cleanedText) {
-      throw new Error("The scraper retrieved empty text content from the URL.");
+    // Prepend metadata description if we got one and it's not already in the text
+    if (metaDesc && finalCleaned && !finalCleaned.includes(metaDesc)) {
+      finalCleaned = `Description: ${metaDesc}\n\n${finalCleaned}`;
+    } else if (metaDesc && !finalCleaned) {
+      finalCleaned = `Description: ${metaDesc}`;
+    }
+
+    // If still completely empty or too short to be a job posting
+    if (!finalCleaned || finalCleaned.trim().length < 20) {
+      finalCleaned = `[Automatic text extraction failed because this page requires JavaScript execution. Please copy and paste the job description text manually here.]`;
+    }
+
+    // 6. Limit character count to prevent overflowing model token windows on huge pages
+    if (finalCleaned.length > 80000) {
+      finalCleaned = finalCleaned.substring(0, 80000) + "\n\n...[Truncated]";
     }
 
     return NextResponse.json({
-      title: pageTitle,
-      text: cleanedText
+      title: pageTitleToUse,
+      text: finalCleaned
     });
   } catch (err: any) {
     console.error("Scraper API Error:", err);

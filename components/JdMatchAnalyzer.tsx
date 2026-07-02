@@ -149,6 +149,46 @@ export default function JdMatchAnalyzer({ onScoreUpdate, onTabChange, onMatchCom
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Cached resume metadata state
+  const [cachedResumeName, setCachedResumeName] = useState<string>("");
+  const [cachedResumeTimestamp, setCachedResumeTimestamp] = useState<string>("");
+  const [jdValidationError, setJdValidationError] = useState<string | null>(null);
+
+  // Synchronize resume scan cache
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      if (localStorage.getItem("last_analyzed_resume_text")) {
+        setResumeInputMode("saved");
+        setCachedResumeName(localStorage.getItem("last_analyzed_resume_name") || "Resume");
+        setCachedResumeTimestamp(localStorage.getItem("last_analyzed_resume_timestamp") || "");
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleResumeUpdate = () => {
+      setResult(null);
+      setOptimizeResult(null);
+      if (typeof window !== "undefined") {
+        const savedText = localStorage.getItem("last_analyzed_resume_text");
+        if (savedText) {
+          setResumeInputMode("saved");
+          setCachedResumeName(localStorage.getItem("last_analyzed_resume_name") || "Resume");
+          setCachedResumeTimestamp(localStorage.getItem("last_analyzed_resume_timestamp") || "");
+        } else {
+          setResumeInputMode("upload");
+          setCachedResumeName("");
+          setCachedResumeTimestamp("");
+        }
+      }
+    };
+
+    window.addEventListener("active_resume_updated", handleResumeUpdate);
+    return () => {
+      window.removeEventListener("active_resume_updated", handleResumeUpdate);
+    };
+  }, []);
+
   useEffect(() => {
     if (!activeTaskId) return;
 
@@ -407,9 +447,53 @@ export default function JdMatchAnalyzer({ onScoreUpdate, onTabChange, onMatchCom
     }
   };
 
+  // Job Description validation utility
+  const validateJobDescription = (text: string): { valid: boolean; message: string } => {
+    const trimmed = text.trim();
+
+    // Minimum content length check
+    if (trimmed.length < 50) {
+      return { valid: false, message: "The provided content is too short to be a valid job description. Please paste a complete job posting." };
+    }
+
+    const lowerText = trimmed.toLowerCase();
+    let matchedCategories = 0;
+
+    // Check for job title markers
+    const titleMarkers = ["role", "position", "title", "job", "opening", "hiring", "vacancy", "opportunity"];
+    if (titleMarkers.some(m => lowerText.includes(m))) matchedCategories++;
+
+    // Check for responsibility markers
+    const responsibilityMarkers = ["responsib", "duties", "tasks", "you will", "what you'll do", "what you will", "day-to-day", "key activities"];
+    if (responsibilityMarkers.some(m => lowerText.includes(m))) matchedCategories++;
+
+    // Check for requirements markers
+    const requirementMarkers = ["require", "qualif", "experience", "skill", "proficien", "must have", "nice to have", "minimum", "preferred", "essential", "competenc"];
+    if (requirementMarkers.some(m => lowerText.includes(m))) matchedCategories++;
+
+    // Check for education markers
+    const educationMarkers = ["degree", "bachelor", "master", "education", "certif", "diploma", "graduate"];
+    if (educationMarkers.some(m => lowerText.includes(m))) matchedCategories++;
+
+    // Check for compensation/application markers
+    const applicationMarkers = ["apply", "submit", "resume", "cover letter", "salary", "benefits", "compensation", "deadline", "equal opportunity"];
+    if (applicationMarkers.some(m => lowerText.includes(m))) matchedCategories++;
+
+    // Require at least 2 distinct categories of hiring markers
+    if (matchedCategories < 2) {
+      return {
+        valid: false,
+        message: "The provided content does not appear to be a valid job description. Please paste an authentic job posting containing role responsibilities, required skills, qualifications, or hiring requirements."
+      };
+    }
+
+    return { valid: true, message: "" };
+  };
+
   // Execute Matcher
   const handleRunMatch = async () => {
     setErrorMsg(null);
+    setJdValidationError(null);
     setResult(null);
     setOptimizeResult(null);
     
@@ -430,6 +514,13 @@ export default function JdMatchAnalyzer({ onScoreUpdate, onTabChange, onMatchCom
 
     if (!jdText.trim()) {
       setErrorMsg("Please select or paste a job description first.");
+      return;
+    }
+
+    // Validate job description content before analysis
+    const jdValidation = validateJobDescription(jdText);
+    if (!jdValidation.valid) {
+      setJdValidationError(jdValidation.message);
       return;
     }
 
@@ -616,14 +707,34 @@ export default function JdMatchAnalyzer({ onScoreUpdate, onTabChange, onMatchCom
                 )}
               </div>
             ) : (
-              <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl space-y-2">
+              <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl space-y-3">
                 <div className="flex items-center gap-2 text-indigo-600">
                   <Cpu className="w-4 h-4" />
-                  <span className="text-xs font-black uppercase tracking-wider">Last analyzed resume active</span>
+                  <span className="text-xs font-black uppercase tracking-wider">Active Resume Loaded</span>
                 </div>
-                <p className="text-[10px] text-slate-500 font-semibold leading-relaxed">
-                  The system will automatically compare against the text parsed during your last complete resume check on the platform.
-                </p>
+                {cachedResumeName ? (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-3.5 h-3.5 text-slate-400" />
+                      <span className="text-xs font-bold text-slate-700 truncate">{cachedResumeName}</span>
+                    </div>
+                    {cachedResumeTimestamp && (
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                        <span className="text-[10px] text-slate-500 font-semibold">
+                          Scanned: {new Date(cachedResumeTimestamp).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      </div>
+                    )}
+                    <p className="text-[10px] text-slate-400 font-semibold leading-relaxed mt-1">
+                      This resume will be used for JD comparison. Upload a new resume in ATS Analyzer to update.
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-amber-600 font-bold leading-relaxed">
+                    No resume has been scanned yet. Please complete a scan in the ATS Resume Analyzer first, or upload a file above.
+                  </p>
+                )}
               </div>
             )}
 
@@ -734,6 +845,16 @@ export default function JdMatchAnalyzer({ onScoreUpdate, onTabChange, onMatchCom
                 </>
               )}
             </button>
+
+            {jdValidationError && (
+              <div className="p-4 bg-amber-50 text-amber-800 rounded-2xl border border-amber-200 flex items-start gap-2.5 text-xs font-bold leading-relaxed">
+                <Info className="w-4 h-4 shrink-0 text-amber-500 mt-0.5" />
+                <div>
+                  <strong className="block mb-0.5">Invalid Job Description</strong>
+                  {jdValidationError}
+                </div>
+              </div>
+            )}
 
             {errorMsg && (
               <div className="p-4 bg-red-50 text-red-700 rounded-2xl border border-red-100 flex items-start gap-2.5 text-xs font-bold leading-relaxed">

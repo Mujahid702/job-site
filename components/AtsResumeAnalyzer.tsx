@@ -219,7 +219,17 @@ export default function AtsResumeAnalyzer({ onScoreUpdate, onTabChange, onAnalys
           const resData = updatedTask.result.data || updatedTask.result;
           setResult(resData);
           if (updatedTask.result.rawText) {
+            // Store resume text and rich metadata for cross-module synchronization
             localStorage.setItem("last_analyzed_resume_text", updatedTask.result.rawText);
+            localStorage.setItem("last_analyzed_resume_name", uploadedFile?.name || resumeText ? "Pasted Resume Text" : "Resume");
+            localStorage.setItem("last_analyzed_resume_timestamp", new Date().toISOString());
+            // Invalidate all stale cached analyses across Resume OS modules
+            localStorage.removeItem("jd_match_history");
+            localStorage.removeItem("resume_enhance_result");
+            localStorage.removeItem("resume_builder_cache");
+            if (typeof window !== "undefined") {
+              window.dispatchEvent(new Event("active_resume_updated"));
+            }
           }
           if (onAnalysisComplete && resData.atsScore) {
             onAnalysisComplete({
@@ -318,10 +328,11 @@ export default function AtsResumeAnalyzer({ onScoreUpdate, onTabChange, onAnalys
   };
 
   // Score indicator radial ring setup
-  const getScoreStrokeDash = (score: number) => {
+  const getScoreStrokeDash = (score: number | undefined | null) => {
     const radius = 54;
     const circumference = 2 * Math.PI * radius;
-    const offset = circumference - (score / 100) * circumference;
+    const validScore = typeof score === "number" && !isNaN(score) ? score : 0;
+    const offset = circumference - (validScore / 100) * circumference;
     return { circumference, offset };
   };
 
@@ -599,8 +610,8 @@ export default function AtsResumeAnalyzer({ onScoreUpdate, onTabChange, onAnalys
                     strokeWidth="10"
                     stroke="currentColor"
                     fill="transparent"
-                    strokeDasharray={getScoreStrokeDash(result.atsScore).circumference}
-                    strokeDashoffset={getScoreStrokeDash(result.atsScore).offset}
+                    strokeDasharray={getScoreStrokeDash(result?.atsScore).circumference}
+                    strokeDashoffset={getScoreStrokeDash(result?.atsScore).offset}
                     strokeLinecap="round"
                   />
                 </svg>
@@ -619,15 +630,15 @@ export default function AtsResumeAnalyzer({ onScoreUpdate, onTabChange, onAnalys
                     Target Role Match
                   </span>
                   <h4 className="text-xl font-black text-slate-900 font-display truncate max-w-[200px]">
-                    {result.roleMatch.targetRole}
+                    {result?.roleMatch?.targetRole || "N/A"}
                   </h4>
                 </div>
                 <span
                   className={`px-3 py-1 text-[9px] font-black uppercase tracking-widest rounded-lg border ${getStatusColor(
-                    result.roleMatch.status
+                    result?.roleMatch?.status || "Unknown"
                   )}`}
                 >
-                  {result.roleMatch.status}
+                  {result?.roleMatch?.status || "Unknown"}
                 </span>
               </div>
 
@@ -653,16 +664,16 @@ export default function AtsResumeAnalyzer({ onScoreUpdate, onTabChange, onAnalys
                       stroke="currentColor"
                       fill="transparent"
                       strokeDasharray={2 * Math.PI * 36}
-                      strokeDashoffset={2 * Math.PI * 36 * (1 - result.roleMatch.matchPercentage / 100)}
+                      strokeDashoffset={2 * Math.PI * 36 * (1 - (result?.roleMatch?.matchPercentage ?? 0) / 100)}
                       strokeLinecap="round"
                     />
                   </svg>
                   <span className="absolute text-lg font-black text-slate-800">
-                    {result.roleMatch.matchPercentage}%
+                    {result?.roleMatch?.matchPercentage ?? 0}%
                   </span>
                 </div>
                 <p className="text-xs font-semibold text-slate-500 leading-normal">
-                  {result.roleMatch.reasoning}
+                  {result?.roleMatch?.reasoning || "No reasoning details available."}
                 </p>
               </div>
 
@@ -673,9 +684,9 @@ export default function AtsResumeAnalyzer({ onScoreUpdate, onTabChange, onAnalys
                     ✓ Strong Areas
                   </span>
                   <div className="space-y-1.5">
-                    {result.roleMatch.strongAreas.slice(0, 3).map((item, idx) => (
+                    {(result?.roleMatch?.strongAreas || []).slice(0, 3).map((item, idx) => (
                       <p key={idx} className="text-[10px] font-bold text-slate-700 truncate">
-                        {item.replace(/^✓\s*/, "")}
+                        {item?.replace(/^✓\s*/, "")}
                       </p>
                     ))}
                   </div>
@@ -685,9 +696,9 @@ export default function AtsResumeAnalyzer({ onScoreUpdate, onTabChange, onAnalys
                     ✗ Weak Areas
                   </span>
                   <div className="space-y-1.5">
-                    {result.roleMatch.weakAreas.slice(0, 3).map((item, idx) => (
+                    {(result?.roleMatch?.weakAreas || []).slice(0, 3).map((item, idx) => (
                       <p key={idx} className="text-[10px] font-bold text-slate-700 truncate">
-                        {item.replace(/^✗\s*/, "")}
+                        {item?.replace(/^✗\s*/, "")}
                       </p>
                     ))}
                   </div>
@@ -708,7 +719,7 @@ export default function AtsResumeAnalyzer({ onScoreUpdate, onTabChange, onAnalys
               </div>
 
               <div className="divide-y divide-slate-100">
-                {Object.entries(result.categories).map(([key, cat]: [string, CategoryEvaluation]) => {
+                {Object.entries(result?.categories || {}).map(([key, cat]: [string, CategoryEvaluation]) => {
                   const title = key
                     .replace(/([A-Z])/g, " $1")
                     .trim()
@@ -728,7 +739,7 @@ export default function AtsResumeAnalyzer({ onScoreUpdate, onTabChange, onAnalys
                               {title}
                             </h4>
                             <span className="text-xs font-black text-slate-800">
-                              {cat.score} <span className="text-[10px] text-slate-400">/ {cat.maxScore}</span>
+                              {cat?.score ?? 0} <span className="text-[10px] text-slate-400">/ {cat?.maxScore ?? 0}</span>
                             </span>
                           </div>
 
@@ -736,7 +747,7 @@ export default function AtsResumeAnalyzer({ onScoreUpdate, onTabChange, onAnalys
                           <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
                             <div
                               className="bg-indigo-600 h-full rounded-full transition-all"
-                              style={{ width: `${(cat.score / cat.maxScore) * 100}%` }}
+                              style={{ width: `${((cat?.score ?? 0) / (cat?.maxScore ?? 1)) * 100}%` }}
                             ></div>
                           </div>
                         </div>
@@ -764,11 +775,11 @@ export default function AtsResumeAnalyzer({ onScoreUpdate, onTabChange, onAnalys
                                 Helping Your Resume
                               </h5>
                               <div className="space-y-2">
-                                {cat.reasons.length > 0 ? (
+                                {cat?.reasons && cat.reasons.length > 0 ? (
                                   cat.reasons.map((r, rIdx) => (
                                     <div key={rIdx} className="flex items-start gap-2 text-xs font-bold text-slate-600 leading-normal">
                                       <span className="text-emerald-500 font-black shrink-0">✓</span>
-                                      <span>{r.replace(/^✓\s*/, "")}</span>
+                                      <span>{r?.replace(/^✓\s*/, "")}</span>
                                     </div>
                                   ))
                                 ) : (
@@ -783,11 +794,11 @@ export default function AtsResumeAnalyzer({ onScoreUpdate, onTabChange, onAnalys
                                 Point Deductions
                               </h5>
                               <div className="space-y-2">
-                                {cat.deductions.length > 0 ? (
+                                {cat?.deductions && cat.deductions.length > 0 ? (
                                   cat.deductions.map((d, dIdx) => (
                                     <div key={dIdx} className="flex items-start gap-2 text-xs font-bold text-slate-600 leading-normal">
                                       <span className="text-red-500 font-black shrink-0">✗</span>
-                                      <span>{d.replace(/^✗\s*/, "")}</span>
+                                      <span>{d?.replace(/^✗\s*/, "")}</span>
                                     </div>
                                   ))
                                 ) : (
@@ -818,32 +829,32 @@ export default function AtsResumeAnalyzer({ onScoreUpdate, onTabChange, onAnalys
 
               {/* Roles matrix list */}
               <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
-                {result.roleFitBreakdown.map((item, idx) => (
+                {(result?.roleFitBreakdown || []).map((item, idx) => (
                   <div
                     key={idx}
                     className="p-3 bg-slate-50 border border-slate-200/60 rounded-2xl flex items-center justify-between gap-4 transition-all hover:bg-slate-100/50"
                   >
                     <div className="space-y-0.5 truncate flex-grow">
                       <span className="text-xs font-black text-slate-800 block truncate">
-                        {item.role}
+                        {item?.role || "Unknown Role"}
                       </span>
                       <div className="flex items-center gap-1.5">
                         <div className="w-24 bg-slate-200 h-1.5 rounded-full overflow-hidden">
                           <div
                             className="bg-indigo-600 h-full rounded-full"
-                            style={{ width: `${item.percentage}%` }}
+                            style={{ width: `${item?.percentage ?? 0}%` }}
                           ></div>
                         </div>
-                        <span className="text-[10px] font-black text-slate-400">{item.percentage}%</span>
+                        <span className="text-[10px] font-black text-slate-400">{item?.percentage ?? 0}%</span>
                       </div>
                     </div>
 
                     <span
                       className={`px-2 py-0.5 text-[8px] font-black uppercase tracking-wider rounded border ${getStatusColor(
-                        item.status
+                        item?.status || "Unknown"
                       )}`}
                     >
-                      {item.status.replace(/\s*match/i, "")}
+                      {(item?.status || "Unknown").replace(/\s*match/i, "")}
                     </span>
                   </div>
                 ))}
@@ -858,7 +869,7 @@ export default function AtsResumeAnalyzer({ onScoreUpdate, onTabChange, onAnalys
               <div className="space-y-1">
                 <h3 className="text-xl font-black text-slate-900 font-display">Skills Gap Detector</h3>
                 <p className="text-xs text-slate-400 font-medium">
-                  Comparing your resume skills against typical {result.roleMatch.targetRole} criteria.
+                  Comparing your resume skills against typical {result?.roleMatch?.targetRole || "target role"} criteria.
                 </p>
               </div>
 
@@ -870,7 +881,7 @@ export default function AtsResumeAnalyzer({ onScoreUpdate, onTabChange, onAnalys
                     Detected Skills
                   </span>
                   <div className="flex flex-wrap gap-2">
-                    {result.missingSkillsDetector.detected.length > 0 ? (
+                    {result?.missingSkillsDetector?.detected && result.missingSkillsDetector.detected.length > 0 ? (
                       result.missingSkillsDetector.detected.map((s, idx) => (
                         <span
                           key={idx}
@@ -891,7 +902,7 @@ export default function AtsResumeAnalyzer({ onScoreUpdate, onTabChange, onAnalys
                     Missing Target Skills
                   </span>
                   <div className="flex flex-wrap gap-2">
-                    {result.missingSkillsDetector.missing.length > 0 ? (
+                    {result?.missingSkillsDetector?.missing && result.missingSkillsDetector.missing.length > 0 ? (
                       result.missingSkillsDetector.missing.map((s, idx) => (
                         <span
                           key={idx}
@@ -914,7 +925,7 @@ export default function AtsResumeAnalyzer({ onScoreUpdate, onTabChange, onAnalys
                     AI Suggestions
                   </span>
                   <div className="space-y-1.5">
-                    {result.missingSkillsDetector.suggestions.map((s, idx) => (
+                    {(result?.missingSkillsDetector?.suggestions || []).map((s, idx) => (
                       <div key={idx} className="flex items-start gap-1.5 text-xs text-slate-600 font-semibold leading-relaxed">
                         <span className="text-indigo-500">•</span>
                         <span>{s}</span>
@@ -935,7 +946,7 @@ export default function AtsResumeAnalyzer({ onScoreUpdate, onTabChange, onAnalys
               </div>
 
               <div className="space-y-6 max-h-[450px] overflow-y-auto pr-1">
-                {result.projectsEvaluation.length > 0 ? (
+                {result?.projectsEvaluation && result.projectsEvaluation.length > 0 ? (
                   result.projectsEvaluation.map((proj, idx) => (
                     <div
                       key={idx}
@@ -945,24 +956,24 @@ export default function AtsResumeAnalyzer({ onScoreUpdate, onTabChange, onAnalys
                       <div className="flex justify-between items-start gap-4">
                         <div className="space-y-1 max-w-[70%]">
                           <h4 className="text-base font-black text-slate-900 leading-tight">
-                            {proj.title}
+                            {proj?.title || "Project"}
                           </h4>
                           <span
                             className={`px-2 py-0.5 text-[8px] font-black uppercase tracking-wider rounded ${getImpactColor(
-                              proj.recruiterImpact
+                              proj?.recruiterImpact || "Medium"
                             )}`}
                           >
-                            Recruiter Impact: {proj.recruiterImpact}
+                            Recruiter Impact: {proj?.recruiterImpact || "Medium"}
                           </span>
                         </div>
 
                         {/* Project Score pill */}
                         <div className="text-right shrink-0">
                           <span className="text-lg font-black text-slate-800">
-                            {proj.score}
+                            {proj?.score ?? 0}
                           </span>
                           <span className="text-[10px] font-black text-slate-400 block -mt-1">
-                            / {proj.maxScore}
+                            / {proj?.maxScore ?? 10}
                           </span>
                         </div>
                       </div>
@@ -975,10 +986,10 @@ export default function AtsResumeAnalyzer({ onScoreUpdate, onTabChange, onAnalys
                             ✓ Key Strengths
                           </span>
                           <div className="space-y-1.5">
-                            {proj.strengths.map((str, sIdx) => (
+                            {(proj?.strengths || []).map((str, sIdx) => (
                               <div key={sIdx} className="flex items-start gap-1.5 text-xs text-slate-600 font-semibold leading-snug">
                                 <span className="text-emerald-500 shrink-0">✓</span>
-                                <span>{str.replace(/^✓\s*/, "")}</span>
+                                <span>{str?.replace(/^✓\s*/, "")}</span>
                               </div>
                             ))}
                           </div>
@@ -990,10 +1001,10 @@ export default function AtsResumeAnalyzer({ onScoreUpdate, onTabChange, onAnalys
                             ✗ Areas to Improve
                           </span>
                           <div className="space-y-1.5">
-                            {proj.weaknesses.map((weak, wIdx) => (
+                            {(proj?.weaknesses || []).map((weak, wIdx) => (
                               <div key={wIdx} className="flex items-start gap-1.5 text-xs text-slate-600 font-semibold leading-snug">
                                 <span className="text-red-500 shrink-0">✗</span>
-                                <span>{weak.replace(/^✗\s*/, "")}</span>
+                                <span>{weak?.replace(/^✗\s*/, "")}</span>
                               </div>
                             ))}
                           </div>
@@ -1020,7 +1031,7 @@ export default function AtsResumeAnalyzer({ onScoreUpdate, onTabChange, onAnalys
               </div>
 
               <div className="space-y-4">
-                {result.atsRisks.length > 0 ? (
+                {result?.atsRisks && result.atsRisks.length > 0 ? (
                   result.atsRisks.map((risk, idx) => (
                     <div
                       key={idx}
@@ -1032,18 +1043,18 @@ export default function AtsResumeAnalyzer({ onScoreUpdate, onTabChange, onAnalys
                       <div className="space-y-1">
                         <div className="flex flex-wrap items-baseline gap-2">
                           <span className="text-xs font-black text-slate-800">
-                            {risk.risk}
+                            {risk?.risk || "Risk"}
                           </span>
                           <span
                             className={`px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider rounded ${getSeverityColor(
-                              risk.severity
+                              risk?.severity || "Medium"
                             )}`}
                           >
-                            {risk.severity} Severity
+                            {risk?.severity || "Medium"} Severity
                           </span>
                         </div>
                         <p className="text-[10px] text-slate-500 font-semibold leading-relaxed">
-                          {risk.explanation}
+                          {risk?.explanation}
                         </p>
                       </div>
                     </div>
@@ -1060,38 +1071,38 @@ export default function AtsResumeAnalyzer({ onScoreUpdate, onTabChange, onAnalys
             {/* Improvement Roadmap Card (Right) */}
             <div className="lg:col-span-7 bg-white p-8 rounded-[2.5rem] border border-slate-200/60 shadow-sm space-y-6">
               <div className="space-y-1">
-                <h3 className="text-xl font-black text-slate-900 font-display">Top 10 Actionable Improvements</h3>
+                <h3 className="text-xl font-black text-slate-900 font-display">Recommended Actionable Improvements</h3>
                 <p className="text-xs text-slate-400 font-medium">
                   Action steps ordered by impact to improve your score.
                 </p>
               </div>
 
               <div className="space-y-4 max-h-[500px] overflow-y-auto pr-1">
-                {result.improvementRoadmap.map((item) => (
+                {(result?.improvementRoadmap || []).map((item) => (
                   <div
-                    key={item.id}
+                    key={item?.id || Math.random()}
                     className="p-4 bg-slate-50 border border-slate-200/60 hover:border-slate-300 rounded-2xl flex items-start gap-4 transition-all"
                   >
                     {/* Circle rank number */}
                     <div className="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center font-black text-xs shrink-0 shadow-sm">
-                      {item.id}
+                      {item?.id || 1}
                     </div>
 
                     <div className="space-y-1 flex-grow">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <h4 className="text-xs font-black text-slate-800 leading-snug">
-                          {item.improvement}
+                          {item?.improvement || "Improvement"}
                         </h4>
                         <span
                           className={`px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider rounded ${getImpactColor(
-                            item.impact
+                            item?.impact || "Medium"
                           )}`}
                         >
-                          {item.impact} Impact
+                          {item?.impact || "Medium"} Impact
                         </span>
                       </div>
                       <p className="text-[10px] text-slate-500 font-semibold leading-relaxed">
-                        {item.explanation}
+                        {item?.explanation}
                       </p>
                     </div>
                   </div>

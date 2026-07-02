@@ -2,7 +2,7 @@ import { AIRequestOptions, AIResponse, AIProviderAdapter } from './types';
 import { estimateTokens } from './costTracker';
 
 export class GroqProviderAdapter implements AIProviderAdapter {
-  private fallbackModels = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'gemma2-9b-it'];
+  private fallbackModels = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'];
 
   async generate(options: AIRequestOptions): Promise<AIResponse> {
     const apiKey = options.apiKey || process.env.GROQ_API_KEY;
@@ -52,6 +52,18 @@ export class GroqProviderAdapter implements AIProviderAdapter {
         // If JSON output or specific response schema is requested, configure response format
         if (options.responseMimeType === 'application/json' || options.responseSchema) {
           payload.response_format = { type: 'json_object' };
+          
+          if (options.responseSchema && messages.length > 0) {
+            messages[messages.length - 1].content += `\n\nIMPORTANT: You MUST respond with a JSON object that conforms EXACTLY to this schema:\n${JSON.stringify(options.responseSchema, null, 2)}`;
+          } else {
+            // Groq requires that 'messages' must contain the word 'json' (case-insensitive) to use json_object format.
+            const hasJsonKeyword = messages.some(msg => 
+              msg.content.toLowerCase().includes('json')
+            );
+            if (!hasJsonKeyword && messages.length > 0) {
+              messages[messages.length - 1].content += '\n\nIMPORTANT: Output your response strictly as a JSON object.';
+            }
+          }
         }
 
         const endpoint = 'https://api.groq.com/openai/v1/chat/completions';

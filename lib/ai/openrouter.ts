@@ -3,9 +3,9 @@ import { estimateTokens } from './costTracker';
 
 export class OpenRouterProviderAdapter implements AIProviderAdapter {
   private fallbackModels = [
-    'meta-llama/llama-3.1-8b-instruct:free',
-    'google/gemma-2-9b-it:free',
-    'mistralai/mistral-7b-instruct:free'
+    'meta-llama/llama-3.3-70b-instruct:free',
+    'meta-llama/llama-3.2-3b-instruct:free',
+    'google/gemma-4-31b-it:free'
   ];
 
   async generate(options: AIRequestOptions): Promise<AIResponse> {
@@ -25,7 +25,7 @@ export class OpenRouterProviderAdapter implements AIProviderAdapter {
       : this.fallbackModels;
 
     let lastErrorMsg = 'Unknown error';
-    let lastModel = modelsToTry[0] || 'meta-llama/llama-3.1-8b-instruct:free';
+    let lastModel = modelsToTry[0] || 'meta-llama/llama-3.3-70b-instruct:free';
 
     for (const model of modelsToTry) {
       lastModel = model;
@@ -56,6 +56,10 @@ export class OpenRouterProviderAdapter implements AIProviderAdapter {
         // If JSON output or specific response schema is requested, configure response format
         if (options.responseMimeType === 'application/json' || options.responseSchema) {
           payload.response_format = { type: 'json_object' };
+          
+          if (options.responseSchema && messages.length > 0) {
+            messages[messages.length - 1].content += `\n\nIMPORTANT: You MUST respond with a JSON object that conforms EXACTLY to this schema:\n${JSON.stringify(options.responseSchema, null, 2)}`;
+          }
         }
 
         const endpoint = 'https://openrouter.ai/api/v1/chat/completions';

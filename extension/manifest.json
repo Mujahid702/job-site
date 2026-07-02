@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "Placement Tracker OS Connector",
+  "version": "1.0.0",
+  "description": "Automatically captures job applications from LinkedIn, Indeed, Naukri, Foundit, and Career Portals directly into your Placement CRM.",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "scripting",
+    "notifications"
+  ],
+  "host_permissions": [
+    "https://*.linkedin.com/*",
+    "https://*.naukri.com/*",
+    "https://*.foundit.in/*",
+    "https://*.indeed.com/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.linkedin.com/*",
+        "https://*.naukri.com/*",
+        "https://*.foundit.in/*",
+        "https://*.indeed.com/*",
+        "https://*.hackerrank.com/*",
+        "https://*.codesignal.com/*",
+        "https://*.codility.com/*",
+        "https://*.codility.net/*",
+        "https://*.shl.com/*",
+        "https://*.mettl.com/*",
+        "https://*.myamcat.com/*",
+        "https://*.elitmus.com/*",
+        "https://*.aspiringminds.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_end"
+    }
+  ]
+}

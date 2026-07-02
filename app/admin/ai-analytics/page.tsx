@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AiCostAnalytics } from "@/lib/db/ai-analytics";
+import { createClient } from "@/lib/supabase/client";
 
 export default function AdminAiCostAnalytics() {
   const [data, setData] = useState<AiCostAnalytics | null>(null);
@@ -37,6 +38,27 @@ export default function AdminAiCostAnalytics() {
 
   useEffect(() => {
     fetchAnalytics();
+
+    const supabase = createClient();
+    const channel = supabase
+      .channel("ai-usage-logs-realtime")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "ai_usage_logs"
+        },
+        (payload) => {
+          console.log("[Realtime] ai_usage_logs database update detected:", payload);
+          fetchAnalytics();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const handleRefresh = () => {
