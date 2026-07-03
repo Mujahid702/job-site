@@ -1,15 +1,12 @@
-import { PDFParse } from "pdf-parse";
-import { pathToFileURL } from "url";
-import path from "path";
+// @ts-ignore
+import pdf from "pdf-parse/lib/pdf-parse.js";
 // @ts-ignore
 import mammoth from "mammoth";
 
-
 export async function parsePdf(buffer: Buffer): Promise<string> {
   try {
-    const parser = new PDFParse({ data: buffer });
-    const result = await parser.getText();
-    return result.text || "";
+    const data = await pdf(buffer);
+    return data.text || "";
   } catch (error: any) {
     console.error("Error parsing PDF:", error);
     throw new Error(`Failed to parse PDF document: ${error?.message || error}`);
@@ -20,8 +17,8 @@ export async function parseDocx(buffer: Buffer): Promise<string> {
   try {
     const result = await mammoth.extractRawText({ buffer });
     return result.value || "";
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error parsing DOCX:", error);
-    throw new Error("Failed to parse Word document.");
+    throw new Error(`Failed to parse DOCX document: ${error?.message || error}`);
   }
 }
