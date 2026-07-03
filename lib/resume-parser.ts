@@ -4,9 +4,6 @@ import path from "path";
 // @ts-ignore
 import mammoth from "mammoth";
 
-// Configure PDF.js worker path to bypass Next.js chunk directory resolution issues.
-const workerPath = path.resolve("node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs");
-PDFParse.setWorker(pathToFileURL(workerPath).href);
 
 export async function parsePdf(buffer: Buffer): Promise<string> {
   try {
