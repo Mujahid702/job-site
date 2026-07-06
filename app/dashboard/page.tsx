@@ -14,6 +14,8 @@ import ProjectOS from "@/components/ProjectOS";
 import MentorshipOS from "@/components/MentorshipOS";
 import CommunityHubOS from "@/components/CommunityHubOS";
 import { COMPANY_PREP_LIST } from "@/lib/company-prep-data";
+import { isFeatureVisible } from "@/lib/featureFlags";
+import FeatureUnavailable from "@/components/FeatureUnavailable";
 import { 
   LayoutDashboard, 
   Heart, 
@@ -340,6 +342,7 @@ export default function DashboardPage() {
   const [liveReadinessScore, setLiveReadinessScore] = useState<number>(60);
   
   useEffect(() => {
+    if (!isFeatureVisible("placement-readiness", user)) return;
     if (user) {
       import("@/lib/db/placement-readiness").then(({ getPlacementReadiness }) => {
         getPlacementReadiness(user.id).then(res => {
@@ -518,7 +521,7 @@ export default function DashboardPage() {
           </div>
 
           <nav className="space-y-1.5">
-            {menuItems.map(item => {
+            {menuItems.filter(item => isFeatureVisible(item.id, user)).map(item => {
               if (item.adminOnly && !isPremium) return null; // Admin console unlocked dynamically
               return (
                 <button
@@ -827,7 +830,7 @@ export default function DashboardPage() {
                         { label: "Interactive Roadmap", action: "roadmap", icon: <Compass className="w-3.5 h-3.5" /> },
                         { label: "Community Hub", action: "community", icon: <Users className="w-3.5 h-3.5" /> },
                         { label: "Book 1-on-1 Mentor", action: "mentorship-os", icon: <CalendarIcon className="w-3.5 h-3.5" /> }
-                      ].map(btn => (
+                      ].filter(btn => isFeatureVisible(btn.action, user)).map(btn => (
                         <button
                           key={btn.label}
                           onClick={() => handleTabTransition(btn.action)}
@@ -851,12 +854,12 @@ export default function DashboardPage() {
                     
                     <div className="space-y-4">
                       {[
-                        { label: "Resume Readiness", score: 80, color: "from-indigo-500 to-indigo-600" },
-                        { label: "Project Readiness", score: 60, color: "from-blue-500 to-blue-600" },
-                        { label: "Interview Readiness", score: 40, color: "from-amber-500 to-amber-600" },
-                        { label: "Application Readiness", score: 20, color: "from-rose-500 to-rose-600" },
-                        { label: "Networking Readiness", score: 30, color: "from-emerald-500 to-emerald-600" }
-                      ].map(bar => (
+                        { label: "Resume Readiness", score: 80, color: "from-indigo-500 to-indigo-600", feature: "resume-os" },
+                        { label: "Project Readiness", score: 60, color: "from-blue-500 to-blue-600", feature: "projects-os" },
+                        { label: "Interview Readiness", score: 40, color: "from-amber-500 to-amber-600", feature: "interview-prep" },
+                        { label: "Application Readiness", score: 20, color: "from-rose-500 to-rose-600", feature: "placement-tracker" },
+                        { label: "Networking Readiness", score: 30, color: "from-emerald-500 to-emerald-600", feature: "linkedin-os" }
+                      ].filter(bar => isFeatureVisible(bar.feature, user)).map(bar => (
                         <div key={bar.label} className="space-y-1.5">
                           <div className="flex justify-between text-[10px] font-black text-slate-700">
                             <span>{bar.label}</span>
@@ -904,14 +907,18 @@ export default function DashboardPage() {
                           <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
                           <span className="group-hover:text-slate-900">ATS Optimizer Verified</span>
                         </li>
-                        <li className="flex items-center gap-2 group hover:translate-x-0.5 transition-all">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                          <span className="group-hover:text-slate-900">Portfolio Live URL Generated</span>
-                        </li>
-                        <li className="flex items-center gap-2 group hover:translate-x-0.5 transition-all">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                          <span className="group-hover:text-slate-900">First Interview Prep Session Scheduled</span>
-                        </li>
+                        {isFeatureVisible("portfolio-os", user) && (
+                          <li className="flex items-center gap-2 group hover:translate-x-0.5 transition-all">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                            <span className="group-hover:text-slate-900">Portfolio Live URL Generated</span>
+                          </li>
+                        )}
+                        {isFeatureVisible("interview-prep", user) && (
+                          <li className="flex items-center gap-2 group hover:translate-x-0.5 transition-all">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                            <span className="group-hover:text-slate-900">First Interview Prep Session Scheduled</span>
+                          </li>
+                        )}
                       </ul>
                     </div>
                   </div>
@@ -1025,7 +1032,11 @@ export default function DashboardPage() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -15 }}
             >
-              <PortfolioOS />
+              {isFeatureVisible("portfolio-os", user) ? (
+                <PortfolioOS />
+              ) : (
+                <FeatureUnavailable />
+              )}
             </motion.div>
           )}
 
@@ -1037,7 +1048,11 @@ export default function DashboardPage() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -15 }}
             >
-              <AiInterviewPrep />
+              {isFeatureVisible("interview-prep", user) ? (
+                <AiInterviewPrep />
+              ) : (
+                <FeatureUnavailable />
+              )}
             </motion.div>
           )}
 
@@ -1049,7 +1064,11 @@ export default function DashboardPage() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -15 }}
             >
-              <PlacementTrackerOS />
+              {isFeatureVisible("placement-tracker", user) ? (
+                <PlacementTrackerOS />
+              ) : (
+                <FeatureUnavailable />
+              )}
             </motion.div>
           )}
 
@@ -1061,13 +1080,17 @@ export default function DashboardPage() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -15 }}
             >
-              <PlacementCopilot
-                activeTab={activeTab}
-                setActiveTab={handleTabTransition}
-                setResumeSubTab={setResumeSubTab}
-                targetRole={targetRole}
-                techStack={techStack}
-              />
+              {isFeatureVisible("placement-copilot", user) ? (
+                <PlacementCopilot
+                  activeTab={activeTab}
+                  setActiveTab={handleTabTransition}
+                  setResumeSubTab={setResumeSubTab}
+                  targetRole={targetRole}
+                  techStack={techStack}
+                />
+              ) : (
+                <FeatureUnavailable />
+              )}
             </motion.div>
           )}
 
@@ -1079,7 +1102,11 @@ export default function DashboardPage() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -15 }}
             >
-              <CareerRoadmapNavigator targetRole={targetRole} onRoleChange={setTargetRole} />
+              {isFeatureVisible("roadmap", user) ? (
+                <CareerRoadmapNavigator targetRole={targetRole} onRoleChange={setTargetRole} />
+              ) : (
+                <FeatureUnavailable />
+              )}
             </motion.div>
           )}
 
@@ -1103,7 +1130,11 @@ export default function DashboardPage() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -15 }}
             >
-              <LinkedInOS />
+              {isFeatureVisible("linkedin-os", user) ? (
+                <LinkedInOS />
+              ) : (
+                <FeatureUnavailable />
+              )}
             </motion.div>
           )}
 
@@ -1128,7 +1159,9 @@ export default function DashboardPage() {
               exit={{ opacity: 0, y: -15 }}
               className="space-y-12"
             >
-              <div className="max-w-3xl space-y-4">
+              {isFeatureVisible("company", user) ? (
+                <>
+                  <div className="max-w-3xl space-y-4">
                 <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-[10px] font-black uppercase tracking-widest">
                   <Briefcase className="w-3.5 h-3.5 fill-indigo-100" />
                   MNC Placement Playbooks
@@ -1257,8 +1290,12 @@ export default function DashboardPage() {
                   );
                 })}
               </div>
-            </motion.div>
+            </>
+          ) : (
+            <FeatureUnavailable />
           )}
+        </motion.div>
+      )}
 
           {/* TAB 7: MENTORSHIP OS */}
           {activeTab === "mentorship-os" && (
@@ -1268,7 +1305,11 @@ export default function DashboardPage() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -15 }}
             >
-              <MentorshipOS />
+              {isFeatureVisible("mentorship-os", user) ? (
+                <MentorshipOS />
+              ) : (
+                <FeatureUnavailable />
+              )}
             </motion.div>
           )}
 
@@ -1295,7 +1336,9 @@ export default function DashboardPage() {
               exit={{ opacity: 0, y: -15 }}
               className="space-y-12 animate-fade-in"
             >
-              <div className="max-w-3xl space-y-4 text-center mx-auto">
+              {isFeatureVisible("membership", user) ? (
+                <>
+                  <div className="max-w-3xl space-y-4 text-center mx-auto">
                 <div className="inline-flex items-center gap-2 px-3 py-1 bg-rose-50 text-rose-600 rounded-full text-[10px] font-black uppercase tracking-widest">
                   <Award className="w-3.5 h-3.5 fill-rose-100" />
                   Premium Placement Suite
@@ -1405,8 +1448,12 @@ export default function DashboardPage() {
                   </button>
                 </div>
               </div>
-            </motion.div>
+            </>
+          ) : (
+            <FeatureUnavailable />
           )}
+        </motion.div>
+      )}
 
           {/* TAB 9: ADMIN CONTROL PANEL (Locked to Pro Premium members for simulated verification) */}
           {activeTab === "admin" && isPremium && (

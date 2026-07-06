@@ -53,6 +53,8 @@ import {
   calculateOpportunityScore,
   classifyOpportunityLevel
 } from "@/lib/db/recruiters";
+import { isFeatureVisible } from "@/lib/featureFlags";
+import FeatureUnavailable from "@/components/FeatureUnavailable";
 import { getApplications } from "@/lib/db/applications";
 
 const PIPELINE_STAGES = [
@@ -107,6 +109,7 @@ export default function RecruitersCRMPage() {
 
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [visible, setVisible] = useState<boolean>(true);
   const [recruiters, setRecruiters] = useState<any[]>([]);
   const [followups, setFollowups] = useState<RecruiterFollowup[]>([]);
   const [templates, setTemplates] = useState<RecruiterTemplate[]>([]);
@@ -377,8 +380,14 @@ export default function RecruitersCRMPage() {
     async function init() {
       const { data: { user } } = await supabase.auth.getUser();
       setUser(user);
-      if (user) {
-        await loadData(user.id);
+      const isVisible = isFeatureVisible("recruiters", user);
+      setVisible(isVisible);
+      if (isVisible) {
+        if (user) {
+          await loadData(user.id);
+        } else {
+          setLoading(false);
+        }
       } else {
         setLoading(false);
       }
@@ -1147,6 +1156,10 @@ export default function RecruitersCRMPage() {
 
   const uniqueCompanies = Array.from(new Set(recruiters.map(r => r.company))).filter(Boolean);
   const silentRecs = getSilentRecruiters();
+
+  if (!visible) {
+    return <FeatureUnavailable />;
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 pb-24 font-sans text-left">

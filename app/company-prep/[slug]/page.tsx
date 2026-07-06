@@ -4,6 +4,8 @@ import { COMPANY_PREP_LIST } from "@/lib/company-prep-data";
 import CompanyPrepDashboard from "@/components/CompanyPrepDashboard";
 import { getCompanyPrepBySlug, incrementCompanyPrepView } from "@/lib/db/company-prep";
 import { createClient } from "@/lib/supabase/server";
+import { isFeatureVisible } from "@/lib/featureFlags";
+import FeatureUnavailable from "@/components/FeatureUnavailable";
 
 export const dynamic = 'force-dynamic';
 
@@ -53,6 +55,11 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 export default async function Page({ params }: PageProps) {
   const { slug } = await params;
   const supabase = await createClient();
+  
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!isFeatureVisible("company", user)) {
+    return <FeatureUnavailable />;
+  }
   
   let company = await getCompanyPrepBySlug(slug, supabase);
   let isFallback = false;

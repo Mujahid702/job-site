@@ -46,6 +46,8 @@ import { cn } from "@/lib/utils";
 import { getPlacementReadiness, calculatePRIScore, PlacementReadiness } from "@/lib/db/placement-readiness";
 import { getStudentProjects, getProjectCompanies, saveCompany, CompanyProfile } from "@/lib/db/projects";
 import { getApplications } from "@/lib/db/applications";
+import { isFeatureVisible } from "@/lib/featureFlags";
+import FeatureUnavailable from "@/components/FeatureUnavailable";
 
 export default function PlacementCommandCenterPage() {
   const router = useRouter();
@@ -82,9 +84,13 @@ export default function PlacementCommandCenterPage() {
   const loadData = async (uid: string) => {
     setLoading(true);
     try {
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      
       // 1. Fetch PRI score details
-      const readiness = await getPlacementReadiness(uid);
-      setPriData(readiness);
+      if (isFeatureVisible("placement-readiness", currentUser)) {
+        const readiness = await getPlacementReadiness(uid);
+        setPriData(readiness);
+      }
 
       // 2. Fetch Projects count
       const projects = await getStudentProjects(uid);
@@ -203,7 +209,7 @@ export default function PlacementCommandCenterPage() {
   const getHighestImpactTask = () => {
     const priScore = priData?.pri_score || 60;
     
-    if (atsVal < 80) {
+    if (atsVal < 80 && isFeatureVisible("resume-os", user)) {
       return {
         title: "Complete ATS Scan",
         gain: "+6 PRI",
@@ -218,7 +224,7 @@ export default function PlacementCommandCenterPage() {
     
     // Check if portfolio has deployed URLs
     const hasPortfolio = priData?.portfolio_score && priData.portfolio_score >= 8;
-    if (!hasPortfolio) {
+    if (!hasPortfolio && isFeatureVisible("portfolio-os", user)) {
       return {
         title: "Optimize Portfolio OS",
         gain: "+5 PRI",
@@ -231,7 +237,7 @@ export default function PlacementCommandCenterPage() {
       };
     }
 
-    if (projectsCount < 2) {
+    if (projectsCount < 2 && isFeatureVisible("projects-os", user)) {
       return {
         title: "Build Recruiter-Aligned Project Blueprint",
         gain: "+5 PRI",
@@ -244,7 +250,7 @@ export default function PlacementCommandCenterPage() {
       };
     }
 
-    if (mockInterviewsCount === 0) {
+    if (mockInterviewsCount === 0 && isFeatureVisible("interview-prep", user)) {
       return {
         title: "Complete Technical Mock Interview",
         gain: "+4 PRI",
@@ -257,7 +263,7 @@ export default function PlacementCommandCenterPage() {
       };
     }
 
-    if (applicationsCount < 5) {
+    if (applicationsCount < 5 && isFeatureVisible("placement-tracker", user)) {
       return {
         title: "Track New Applications in CRM",
         gain: "+5 PRI",
@@ -271,7 +277,7 @@ export default function PlacementCommandCenterPage() {
     }
 
     const hasCompanyPrep = priData?.company_prep_score && priData.company_prep_score >= 5;
-    if (!hasCompanyPrep) {
+    if (!hasCompanyPrep && isFeatureVisible("placement-copilot", user)) {
       return {
         title: "Prepare for target company prep OS",
         gain: "+3 PRI",
@@ -284,16 +290,29 @@ export default function PlacementCommandCenterPage() {
       };
     }
 
-    // Default roadmap milestone
+    if (isFeatureVisible("roadmap", user)) {
+      return {
+        title: "Complete Career Roadmap Milestones",
+        gain: "+4 PRI",
+        reward: "+75 XP",
+        time: "45 Minutes",
+        priority: "MEDIUM",
+        reason: "You have unfinished skills and milestones in your chosen roadmap track.",
+        buttonText: "Take Action",
+        tab: "roadmap"
+      };
+    }
+
+    // Default fallback: Apply to Recommended Jobs (visible)
     return {
-      title: "Complete Career Roadmap Milestones",
-      gain: "+4 PRI",
-      reward: "+75 XP",
-      time: "45 Minutes",
+      title: "Apply to Recommended Jobs",
+      gain: "+5 PRI",
+      reward: "+30 XP",
+      time: "15 Minutes",
       priority: "MEDIUM",
-      reason: "You have unfinished skills and milestones in your chosen roadmap track.",
+      reason: "Optimize your application rate by submitting to top matching recruiter posts.",
       buttonText: "Take Action",
-      tab: "roadmap"
+      tab: "recommended"
     };
   };
 
@@ -304,7 +323,7 @@ export default function PlacementCommandCenterPage() {
   // ----------------------------------------------------
   const getPlacementBlockers = () => {
     const blockers = [];
-    if (atsVal < 80) {
+    if (atsVal < 80 && isFeatureVisible("resume-os", user)) {
       blockers.push({
         id: "ats",
         title: "Resume ATS below 80",
@@ -313,7 +332,7 @@ export default function PlacementCommandCenterPage() {
         tab: "resume"
       });
     }
-    if (projectsCount === 0) {
+    if (projectsCount === 0 && isFeatureVisible("projects-os", user)) {
       blockers.push({
         id: "projects",
         title: "No deployed projects",
@@ -322,7 +341,7 @@ export default function PlacementCommandCenterPage() {
         tab: "projects-os"
       });
     }
-    if (mockInterviewsCount === 0) {
+    if (mockInterviewsCount === 0 && isFeatureVisible("interview-prep", user)) {
       blockers.push({
         id: "mock",
         title: "No technical mock history",
@@ -331,7 +350,7 @@ export default function PlacementCommandCenterPage() {
         tab: "interview-prep"
       });
     }
-    if (applicationsCount < 5) {
+    if (applicationsCount < 5 && isFeatureVisible("placement-tracker", user)) {
       blockers.push({
         id: "crm",
         title: "CRM Tracker applications below 5",
@@ -630,16 +649,16 @@ export default function PlacementCommandCenterPage() {
   // SECTION 10: AI COACH ADVICE ENGINE
   // ----------------------------------------------------
   const getCoachAdvice = () => {
-    if (atsVal < 80) {
+    if (atsVal < 80 && isFeatureVisible("resume-os", user)) {
       return "Your applications are active but ATS score is low. Improve your resume first in Resume OS before applying further.";
     }
-    if (projectsCount < 2) {
+    if (projectsCount < 2 && isFeatureVisible("projects-os", user)) {
       return "Your resume score is good, but you have few project blueprints. Head to Project Advisor OS to build recruiter-aligned projects.";
     }
-    if (mockInterviewsCount === 0) {
+    if (mockInterviewsCount === 0 && isFeatureVisible("interview-prep", user)) {
       return "You have strong projects and resume. Begin mock interviews in AI Interview Prep to practice speaking and build communication confidence.";
     }
-    if (applicationsCount < 5) {
+    if (applicationsCount < 5 && isFeatureVisible("placement-tracker", user)) {
       return "Your interview scores are strong. Start applying aggressively in Placement Tracker OS to boost your offer pipeline.";
     }
     return "Your placement readiness indexes are all trending high! Maintain consistency and keep applying to unlock your target roles.";
@@ -695,6 +714,10 @@ export default function PlacementCommandCenterPage() {
       setIsSubmittingCompany(false);
     }
   };
+
+  if (!isFeatureVisible("actions", user)) {
+    return <FeatureUnavailable />;
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 pb-24 font-sans text-left text-slate-800">

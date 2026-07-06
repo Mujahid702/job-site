@@ -212,6 +212,60 @@ export async function logAnalyticsEvent(eventType: string, userId?: string, meta
   try {
     const { createClient } = await import("@/lib/supabase/server");
     const supabase = await createClient();
+
+    // Resolve associated feature
+    const lowerType = eventType.toLowerCase();
+    let associatedFeature: string | null = null;
+    
+    if (lowerType.includes("pri") || lowerType.includes("readiness")) {
+      associatedFeature = "placement-readiness";
+    } else if (lowerType.includes("roadmap")) {
+      associatedFeature = "roadmap";
+    } else if (lowerType.includes("company") || lowerType.includes("playbook")) {
+      associatedFeature = "company";
+    } else if (lowerType.includes("crm") || lowerType.includes("tracker") || lowerType.includes("application")) {
+      associatedFeature = "placement-tracker";
+    } else if (lowerType.includes("recruiter")) {
+      associatedFeature = "recruiters";
+    } else if (lowerType.includes("portfolio")) {
+      associatedFeature = "portfolio-os";
+    } else if (lowerType.includes("linkedin")) {
+      associatedFeature = "linkedin-os";
+    } else if (lowerType.includes("copilot")) {
+      associatedFeature = "placement-copilot";
+    } else if (lowerType.includes("interview") || lowerType.includes("mock")) {
+      associatedFeature = "interview-prep";
+    } else if (lowerType.includes("mentor")) {
+      associatedFeature = "mentorship-os";
+    } else if (lowerType.includes("membership") || lowerType.includes("premium") || lowerType.includes("billing")) {
+      associatedFeature = "membership";
+    }
+
+    if (associatedFeature && process.env.NODE_ENV === "production") {
+      let isAdminUser = false;
+      if (userId && userId !== "guest-user") {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const email = user.email || "";
+          const role = user.user_metadata?.role || "";
+          isAdminUser = 
+            email === "admin@example.com" ||
+            email === "buggedbrain2026@gmail.com" ||
+            email === "mujjumujahid1992@gmail.com" ||
+            role === "admin" ||
+            role === "super_admin";
+        }
+      }
+      
+      if (!isAdminUser) {
+        const { FEATURE_FLAGS } = await import("@/lib/featureFlags");
+        const flag = FEATURE_FLAGS[associatedFeature];
+        if (flag && !flag.productionVisible) {
+          return { success: true, message: "Telemetry skipped for gated feature" };
+        }
+      }
+    }
+
     const { error } = await supabase.from("analytics_events").insert({
       event_type: eventType,
       user_id: userId || null,

@@ -27,6 +27,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { calculatePRIScore, getPlacementReadiness, getAdminPRIStats, PlacementReadiness } from "@/lib/db/placement-readiness";
+import { isFeatureVisible } from "@/lib/featureFlags";
+import FeatureUnavailable from "@/components/FeatureUnavailable";
 
 export default function PlacementReadinessPage() {
   const router = useRouter();
@@ -34,6 +36,7 @@ export default function PlacementReadinessPage() {
 
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [visible, setVisible] = useState<boolean>(true);
   const [priData, setPriData] = useState<PlacementReadiness | null>(null);
   
   // Custom Slider Overrides (Mocking Engine for interactive testing)
@@ -110,7 +113,13 @@ export default function PlacementReadinessPage() {
     async function initUser() {
       const { data: { user } } = await supabase.auth.getUser();
       setUser(user);
-      await loadPRIData(user ? user.id : null);
+      const isVisible = isFeatureVisible("placement-readiness", user);
+      setVisible(isVisible);
+      if (isVisible) {
+        await loadPRIData(user ? user.id : null);
+      } else {
+        setLoading(false);
+      }
     }
     initUser();
   }, []);
@@ -389,6 +398,10 @@ export default function PlacementReadinessPage() {
 
     return { path: pathD, area: areaD, dots: points };
   }, [scoresObj.total]);
+
+  if (!visible) {
+    return <FeatureUnavailable />;
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 pb-24 font-sans text-left">
