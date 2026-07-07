@@ -15,7 +15,8 @@ async function ensureAdmin() {
 export async function GET() {
   try {
     await ensureAdmin();
-    const result = await getAmbassadorList();
+    const supabase = await createClient();
+    const result = await getAmbassadorList(supabase);
     if (!result.success) {
       return NextResponse.json({ success: false, message: result.error || "Failed to fetch ambassador list." }, { status: 500 });
     }
@@ -30,6 +31,7 @@ export async function GET() {
 export async function PUT(request: Request) {
   try {
     await ensureAdmin();
+    const supabase = await createClient();
 
     const body = await request.json().catch(() => ({}));
     const { id, status } = body; // status: "Approved" | "Rejected"
@@ -38,7 +40,7 @@ export async function PUT(request: Request) {
       return NextResponse.json({ success: false, message: "id and status are required." }, { status: 400 });
     }
 
-    const result = await updateAmbassadorStatus(id, status);
+    const result = await updateAmbassadorStatus(id, status, supabase);
     if (!result.success) {
       return NextResponse.json({ success: false, message: result.error || "Failed to update status." }, { status: 500 });
     }

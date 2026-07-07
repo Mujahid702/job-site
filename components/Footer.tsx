@@ -27,8 +27,6 @@ export default function Footer() {
           <div>
             <h3 className="text-sm font-black text-slate-400 uppercase tracking-[0.2em] mb-8">Resources</h3>
             <ul className="space-y-4 text-sm font-bold text-slate-300">
-              <li><Link href="/prep-hub" className="hover:text-blue-400 transition-colors">Preparation Hub</Link></li>
-              <li><Link href="/salary-insights" className="hover:text-blue-400 transition-colors">Salary Insights</Link></li>
               <li><Link href="/latest-jobs" className="hover:text-blue-400 transition-colors">Latest Openings</Link></li>
               <li><Link href="/software-jobs" className="hover:text-blue-400 transition-colors">Software Jobs</Link></li>
             </ul>

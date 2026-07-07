@@ -13,7 +13,7 @@ export async function GET() {
       return NextResponse.json({ success: false, message: "Unauthorized." }, { status: 401 });
     }
 
-    const result = await getCommunityEvents(user.id);
+    const result = await getCommunityEvents(user.id, supabase);
     if (!result.success) {
       return NextResponse.json({ success: false, message: result.error || "Failed to fetch events." }, { status: 500 });
     }
@@ -41,7 +41,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, message: "eventId and status are required." }, { status: 400 });
     }
 
-    const result = await registerForEvent(user.id, eventId, status);
+    const result = await registerForEvent(user.id, eventId, status, supabase);
     if (!result.success) {
       return NextResponse.json({ success: false, message: result.error || "Failed to update registration." }, { status: 400 });
     }

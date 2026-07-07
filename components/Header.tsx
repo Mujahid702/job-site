@@ -42,9 +42,7 @@ export default function Header() {
   const navLinks = [
     { href: "/", label: "Home" },
     { href: "/dashboard", label: "My Dashboard" },
-    { href: "/prep-hub", label: "Prep Hub" },
     { href: "/latest-jobs", label: "Latest Jobs" },
-    { href: "/salary-insights", label: "Salary" },
   ];
 
   return (

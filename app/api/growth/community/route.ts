@@ -13,7 +13,7 @@ export async function GET() {
       return NextResponse.json({ success: false, message: "Unauthorized." }, { status: 401 });
     }
 
-    const result = await getCommunityGroups(user.id);
+    const result = await getCommunityGroups(user.id, supabase);
     if (!result.success) {
       return NextResponse.json({ success: false, message: result.message || "Failed to load groups." }, { status: 500 });
     }
@@ -41,7 +41,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, message: "groupId is required." }, { status: 400 });
     }
 
-    const result = await joinCommunityGroup(user.id, groupId);
+    const result = await joinCommunityGroup(user.id, groupId, supabase);
     if (!result.success) {
       return NextResponse.json({ success: false, message: result.error || "Failed to join group." }, { status: 400 });
     }
@@ -69,7 +69,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ success: false, message: "groupId is required." }, { status: 400 });
     }
 
-    const result = await leaveCommunityGroup(user.id, groupId);
+    const result = await leaveCommunityGroup(user.id, groupId, supabase);
     if (!result.success) {
       return NextResponse.json({ success: false, message: result.error || "Failed to leave group." }, { status: 400 });
     }
@@ -97,7 +97,7 @@ export async function PUT(request: Request) {
       return NextResponse.json({ success: false, message: "groupId and status are required." }, { status: 400 });
     }
 
-    const result = await saveCommunityGroup(user.id, groupId, status);
+    const result = await saveCommunityGroup(user.id, groupId, status, supabase);
     if (!result.success) {
       return NextResponse.json({ success: false, message: result.error || "Failed to update save status." }, { status: 400 });
     }

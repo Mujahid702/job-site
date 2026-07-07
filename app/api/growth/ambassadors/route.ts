@@ -13,7 +13,7 @@ export async function GET() {
       return NextResponse.json({ success: false, message: "Unauthorized." }, { status: 401 });
     }
 
-    const result = await getAmbassadorStatus(user.id);
+    const result = await getAmbassadorStatus(user.id, supabase);
     if (!result.success) {
       return NextResponse.json({ success: false, message: result.error || "Failed to load ambassador status" }, { status: 500 });
     }
@@ -34,7 +34,7 @@ export async function POST() {
       return NextResponse.json({ success: false, message: "Unauthorized." }, { status: 401 });
     }
 
-    const result = await applyAmbassador(user.id);
+    const result = await applyAmbassador(user.id, supabase);
     if (!result.success) {
       return NextResponse.json({ success: false, message: result.error || "Failed to apply." }, { status: 400 });
     }

@@ -99,30 +99,8 @@ export default async function Home() {
       {/* High-Value Tools Section */}
       <section className="pb-24">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <Link href="/prep-hub" className="group p-10 bg-white rounded-[2.5rem] border border-slate-100 shadow-xl shadow-slate-200/50 hover:shadow-2xl hover:shadow-blue-500/10 transition-all">
-              <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mb-8 group-hover:rotate-6 transition-transform">
-                <Sparkles className="w-8 h-8" />
-              </div>
-              <h3 className="text-2xl font-black text-slate-900 mb-3 tracking-tight">Preparation Hub</h3>
-              <p className="text-slate-500 font-medium leading-relaxed mb-6">Expert roadmaps and interview questions to ace top tech rounds.</p>
-              <div className="text-blue-600 font-black text-xs uppercase tracking-widest flex items-center gap-2 group-hover:translate-x-1 transition-transform">
-                Get Started <ChevronRight className="w-4 h-4" />
-              </div>
-            </Link>
-
-            <Link href="/salary-insights" className="group p-10 bg-slate-900 rounded-[2.5rem] text-white shadow-2xl shadow-slate-200 hover:shadow-blue-500/20 transition-all">
-              <div className="w-14 h-14 bg-white/10 text-blue-400 rounded-2xl flex items-center justify-center mb-8 group-hover:-rotate-6 transition-transform">
-                <Zap className="w-8 h-8 fill-blue-400" />
-              </div>
-              <h3 className="text-2xl font-black mb-3 tracking-tight">Salary Insights</h3>
-              <p className="text-slate-400 font-medium leading-relaxed mb-6">Real-time salary data and trends for 2026 graduates in India.</p>
-              <div className="text-blue-400 font-black text-xs uppercase tracking-widest flex items-center gap-2 group-hover:translate-x-1 transition-transform">
-                Check Salaries <ChevronRight className="w-4 h-4" />
-              </div>
-            </Link>
-
-            <Link href="/latest-jobs" className="group p-10 bg-white rounded-[2.5rem] border border-slate-100 shadow-xl shadow-slate-200/50 hover:shadow-2xl hover:shadow-emerald-500/10 transition-all">
+          <div className="flex justify-center">
+            <Link href="/latest-jobs" className="max-w-md w-full group p-10 bg-white rounded-[2.5rem] border border-slate-100 shadow-xl shadow-slate-200/50 hover:shadow-2xl hover:shadow-emerald-500/10 transition-all">
               <div className="w-14 h-14 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center mb-8 group-hover:rotate-6 transition-transform">
                 <Sparkles className="w-8 h-8 fill-emerald-600" />
               </div>

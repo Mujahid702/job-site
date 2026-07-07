@@ -92,6 +92,8 @@ export default function AdminCommunityManagerPage() {
   const [groupBanner, setGroupBanner] = useState("");
   
   const [saving, setSaving] = useState(false);
+  const [alertMsg, setAlertMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const loadData = async () => {
     setLoading(true);
@@ -144,24 +146,56 @@ export default function AdminCommunityManagerPage() {
     setGroupImage("");
     setGroupBanner("");
     setEditingGroup(null);
+    setErrorMsg(null);
   };
 
   const handleCreateGroup = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!groupName.trim() || !groupLink.trim()) return;
+    setErrorMsg(null);
+    setAlertMsg(null);
+
+    // Frontend validations
+    if (!groupName.trim()) {
+      setErrorMsg("Group Name is required.");
+      return;
+    }
+    if (!groupLink.trim()) {
+      setErrorMsg("Invite Link URL is required.");
+      return;
+    }
+
+    try {
+      new URL(groupLink);
+    } catch {
+      setErrorMsg("Invalid URL: Invite Link URL must be a valid, fully formed URL (e.g. https://...).");
+      return;
+    }
+
+    const isDuplicateLink = groups.some(g => g.group_link === groupLink);
+    if (isDuplicateLink) {
+      setErrorMsg("Duplicate Link: A community group with this invite link already exists.");
+      return;
+    }
+
+    const isDuplicateName = groups.some(g => g.group_name.toLowerCase() === groupName.trim().toLowerCase());
+    if (isDuplicateName) {
+      const proceed = confirm("Warning: A community group with this name already exists. Do you still want to proceed?");
+      if (!proceed) return;
+    }
+
     setSaving(true);
     try {
       const res = await fetch("/api/admin/community", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          groupName,
-          groupDescription,
+          groupName: groupName.trim(),
+          groupDescription: groupDescription.trim(),
           groupCategory,
           platformType,
-          groupLink,
-          groupImage,
-          groupBanner,
+          groupLink: groupLink.trim(),
+          groupImage: groupImage.trim(),
+          groupBanner: groupBanner.trim(),
           groupStatus,
           visibility,
           featured,
@@ -174,16 +208,18 @@ export default function AdminCommunityManagerPage() {
         })
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          setShowAddForm(false);
-          resetForm();
-          await loadData();
-        }
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setShowAddForm(false);
+        resetForm();
+        setAlertMsg({ text: "Community group created successfully!", type: "success" });
+        await loadData();
+      } else {
+        setErrorMsg(data.message || "Failed to create group.");
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      setErrorMsg(err.message || "Failed to create group.");
     } finally {
       setSaving(false);
     }
@@ -212,6 +248,38 @@ export default function AdminCommunityManagerPage() {
   const handleUpdateGroup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingGroup || !editingGroup.id) return;
+    setErrorMsg(null);
+    setAlertMsg(null);
+
+    // Frontend validations
+    if (!groupName.trim()) {
+      setErrorMsg("Group Name is required.");
+      return;
+    }
+    if (!groupLink.trim()) {
+      setErrorMsg("Invite Link URL is required.");
+      return;
+    }
+
+    try {
+      new URL(groupLink);
+    } catch {
+      setErrorMsg("Invalid URL: Invite Link URL must be a valid, fully formed URL (e.g. https://...).");
+      return;
+    }
+
+    const isDuplicateLink = groups.some(g => g.group_link === groupLink && g.id !== editingGroup.id);
+    if (isDuplicateLink) {
+      setErrorMsg("Duplicate Link: A community group with this invite link already exists.");
+      return;
+    }
+
+    const isDuplicateName = groups.some(g => g.group_name.toLowerCase() === groupName.trim().toLowerCase() && g.id !== editingGroup.id);
+    if (isDuplicateName) {
+      const proceed = confirm("Warning: Another community group with this name already exists. Do you still want to proceed?");
+      if (!proceed) return;
+    }
+
     setSaving(true);
     try {
       const res = await fetch("/api/admin/community", {
@@ -219,13 +287,13 @@ export default function AdminCommunityManagerPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id: editingGroup.id,
-          groupName,
-          groupDescription,
+          groupName: groupName.trim(),
+          groupDescription: groupDescription.trim(),
           groupCategory,
           platformType,
-          groupLink,
-          groupImage,
-          groupBanner,
+          groupLink: groupLink.trim(),
+          groupImage: groupImage.trim(),
+          groupBanner: groupBanner.trim(),
           groupStatus,
           visibility,
           featured,
@@ -237,16 +305,18 @@ export default function AdminCommunityManagerPage() {
         })
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          setShowAddForm(false);
-          resetForm();
-          await loadData();
-        }
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setShowAddForm(false);
+        resetForm();
+        setAlertMsg({ text: "Community group updated successfully!", type: "success" });
+        await loadData();
+      } else {
+        setErrorMsg(data.message || "Failed to update group.");
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      setErrorMsg(err.message || "Failed to update group.");
     } finally {
       setSaving(false);
     }
@@ -254,18 +324,21 @@ export default function AdminCommunityManagerPage() {
 
   const handleDeleteGroup = async (id: string) => {
     if (!confirm("Are you sure you want to delete this community group?")) return;
+    setAlertMsg(null);
     try {
       const res = await fetch(`/api/admin/community?id=${id}`, {
         method: "DELETE"
       });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          await loadData();
-        }
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setAlertMsg({ text: "Community group deleted successfully.", type: "success" });
+        await loadData();
+      } else {
+        setAlertMsg({ text: data.message || "Failed to delete community group.", type: "error" });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      setAlertMsg({ text: err.message || "Failed to delete community group.", type: "error" });
     }
   };
 
@@ -401,6 +474,30 @@ export default function AdminCommunityManagerPage() {
             ))}
           </div>
         </div>
+
+        {/* Alerts banner */}
+        {alertMsg && (
+          <div className={cn(
+            "p-4 rounded-2xl border text-xs font-bold flex items-center justify-between shadow-sm animate-fade-in",
+            alertMsg.type === "success" 
+              ? "bg-emerald-50 border-emerald-200 text-emerald-700" 
+              : "bg-rose-50 border-rose-150 text-rose-600"
+          )}>
+            <div className="flex items-center gap-2">
+              <span className={cn(
+                "h-2 w-2 rounded-full",
+                alertMsg.type === "success" ? "bg-emerald-500" : "bg-rose-500"
+              )}></span>
+              <span>{alertMsg.text}</span>
+            </div>
+            <button 
+              onClick={() => setAlertMsg(null)} 
+              className="text-slate-400 hover:text-slate-700 font-black text-sm cursor-pointer border-0 bg-transparent"
+            >
+              ×
+            </button>
+          </div>
+        )}
 
         {/* TABS CONTAINER */}
         <AnimatePresence mode="wait">
@@ -728,7 +825,13 @@ export default function AdminCommunityManagerPage() {
                   </button>
                 </div>
 
-                <form onSubmit={editingGroup ? handleUpdateGroup : handleCreateGroup} className="space-y-4 text-xs font-bold text-slate-850">
+                <form onSubmit={editingGroup ? handleUpdateGroup : handleCreateGroup} className="space-y-4 text-xs font-bold text-slate-855">
+                  {errorMsg && (
+                    <div className="bg-rose-50 border border-rose-200 text-rose-700 p-4 rounded-2xl flex items-center justify-between font-bold text-xs">
+                      <span>{errorMsg}</span>
+                      <button type="button" onClick={() => setErrorMsg(null)} className="text-rose-450 hover:text-rose-700 font-black border-0 bg-transparent text-sm cursor-pointer">×</button>
+                    </div>
+                  )}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <label className="text-slate-500 uppercase tracking-widest text-[9px]">Group Name *</label>

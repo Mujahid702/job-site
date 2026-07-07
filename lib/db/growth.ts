@@ -3,6 +3,19 @@ import { executeWrite } from "./sync";
 import { calculatePRIScore } from "./placement-readiness";
 import { logAnalyticsEvent } from "./admin-analytics";
 
+async function getDb(supabaseClient?: any) {
+  if (supabaseClient) return supabaseClient;
+  if (typeof window !== "undefined") {
+    try {
+      const { createClient } = await import("@/lib/supabase/client");
+      return createClient();
+    } catch {
+      return supabase;
+    }
+  }
+  return supabase;
+}
+
 export interface ReferralStats {
   referralCode: string;
   referralLink: string;
@@ -31,10 +44,11 @@ export interface LeaderboardUser {
 }
 
 // 1. Referral Link and Stats Helpers
-export async function getUserReferralStats(userId: string): Promise<ReferralStats> {
+export async function getUserReferralStats(userId: string, supabaseClient?: any): Promise<ReferralStats> {
   try {
+    const db = await getDb(supabaseClient);
     // Get profile to check/generate referral code
-    const { data: profile } = await supabase
+    const { data: profile } = await db
       .from("profiles")
       .select("referral_code, full_name, email")
       .eq("user_id", userId)
@@ -42,20 +56,20 @@ export async function getUserReferralStats(userId: string): Promise<ReferralStat
 
     let code = profile?.referral_code;
     if (!code) {
-      code = await generateUserReferralCode(userId, profile?.full_name || profile?.email || "USER");
+      code = await generateUserReferralCode(userId, profile?.full_name || profile?.email || "USER", db);
     }
 
-    const { data: refs } = await supabase
+    const { data: refs } = await db
       .from("referrals")
       .select("*")
       .eq("referrer_user_id", userId);
 
     const refList = refs || [];
     
-    const clicksCount = refList.filter(r => r.status === "Invite Opened").length;
-    const joinedCount = refList.filter(r => !["Invited", "Invite Sent", "Invite Opened"].includes(r.status)).length;
-    const activatedCount = refList.filter(r => ["Activated", "Activated User", "Converted", "Premium Conversion", "Applications Submitted"].includes(r.status)).length;
-    const convertedCount = refList.filter(r => ["Converted", "Premium Conversion", "Applications Submitted"].includes(r.status)).length;
+    const clicksCount = refList.filter((r: any) => r.status === "Invite Opened").length;
+    const joinedCount = refList.filter((r: any) => !["Invited", "Invite Sent", "Invite Opened"].includes(r.status)).length;
+    const activatedCount = refList.filter((r: any) => ["Activated", "Activated User", "Converted", "Premium Conversion", "Applications Submitted"].includes(r.status)).length;
+    const convertedCount = refList.filter((r: any) => ["Converted", "Premium Conversion", "Applications Submitted"].includes(r.status)).length;
     
     // Total invites sent (clicks + joined)
     const invitesSent = refList.length;
@@ -81,7 +95,7 @@ export async function getUserReferralStats(userId: string): Promise<ReferralStat
       const dateStr = d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
       
       // Filter joins by date
-      const count = refList.filter(r => {
+      const count = refList.filter((r: any) => {
         if (!r.joined_at) return false;
         const joinedDate = new Date(r.joined_at);
         return joinedDate.toDateString() === d.toDateString();
@@ -128,7 +142,8 @@ export async function getUserReferralStats(userId: string): Promise<ReferralStat
   }
 }
 
-export async function generateUserReferralCode(userId: string, nameSeed: string): Promise<string> {
+export async function generateUserReferralCode(userId: string, nameSeed: string, supabaseClient?: any): Promise<string> {
+  const db = await getDb(supabaseClient);
   const prefix = nameSeed
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, "")
@@ -142,7 +157,7 @@ export async function generateUserReferralCode(userId: string, nameSeed: string)
     finalCode = `${prefix}${randomSuffix}`;
 
     // Verify uniqueness
-    const { data } = await supabase
+    const { data } = await db
       .from("profiles")
       .select("user_id")
       .eq("referral_code", finalCode)
@@ -150,7 +165,7 @@ export async function generateUserReferralCode(userId: string, nameSeed: string)
 
     if (!data) {
       // Unused code, save it
-      await executeWrite("profiles", "update", { referral_code: finalCode }, { user_id: userId });
+      await executeWrite("profiles", "update", { referral_code: finalCode }, { user_id: userId }, db);
       
       const { invalidateUserCache, invalidateGrowthCache } = await import("@/lib/redis");
       invalidateUserCache(userId).catch(console.error);
@@ -163,18 +178,20 @@ export async function generateUserReferralCode(userId: string, nameSeed: string)
   
   // Final fallback
   finalCode = `${prefix}${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
-  await executeWrite("profiles", "update", { referral_code: finalCode }, { user_id: userId });
+  await executeWrite("profiles", "update", { referral_code: finalCode }, { user_id: userId }, db);
   return finalCode;
 }
 
 // 2. Referral Conversion Lifecycle hooks
 export async function processReferralClick(
   referralCode: string, 
-  options?: { ip?: string; userAgent?: string; deviceFingerprint?: string }
+  options?: { ip?: string; userAgent?: string; deviceFingerprint?: string },
+  supabaseClient?: any
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    const db = await getDb(supabaseClient);
     // 1. Locate referrer
-    const { data: referrer } = await supabase
+    const { data: referrer } = await db
       .from("profiles")
       .select("user_id")
       .eq("referral_code", referralCode)
@@ -198,7 +215,7 @@ export async function processReferralClick(
       updated_at: new Date().toISOString()
     };
 
-    const res = await executeWrite("referrals", "insert", clickPayload);
+    const res = await executeWrite("referrals", "insert", clickPayload, undefined, db);
     if (!res.success) throw res.error;
 
     return { success: true };
@@ -211,11 +228,13 @@ export async function processReferralClick(
 export async function processReferralJoin(
   referredUserId: string, 
   referralCode: string,
-  options?: { ip?: string; userAgent?: string; deviceFingerprint?: string }
+  options?: { ip?: string; userAgent?: string; deviceFingerprint?: string },
+  supabaseClient?: any
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    const db = await getDb(supabaseClient);
     // 1. Verify if code is valid and locate referrer
-    const { data: referrer } = await supabase
+    const { data: referrer } = await db
       .from("profiles")
       .select("user_id")
       .eq("referral_code", referralCode)
@@ -226,7 +245,7 @@ export async function processReferralJoin(
     }
 
     // 2. Check if this referred user already has a referrer relation
-    const { data: existing } = await supabase
+    const { data: existing } = await db
       .from("referrals")
       .select("id, status")
       .eq("referred_user_id", referredUserId)
@@ -239,7 +258,7 @@ export async function processReferralJoin(
     // 3. Find if there was a recent click from the same fingerprint/IP
     let existingClickId: string | null = null;
     if (options?.deviceFingerprint || options?.ip) {
-      const query = supabase
+      const query = db
         .from("referrals")
         .select("id")
         .eq("referrer_user_id", referrer.user_id)
@@ -264,7 +283,7 @@ export async function processReferralJoin(
 
     // Self-referral logic or device duplication check
     if (options?.deviceFingerprint) {
-      const { data: referrerLogs } = await supabase
+      const { data: referrerLogs } = await db
         .from("referrals")
         .select("id")
         .eq("referrer_user_id", referrer.user_id)
@@ -280,7 +299,7 @@ export async function processReferralJoin(
     // Rate limit check: count account registrations from same IP in last 24h
     if (options?.ip) {
       const oneDayAgo = new Date(Date.now() - 86400000).toISOString();
-      const { count } = await supabase
+      const { count } = await db
         .from("referrals")
         .select("id", { count: "exact", head: true })
         .eq("ip_address", options.ip)
@@ -309,16 +328,16 @@ export async function processReferralJoin(
 
     let referralRecordId = "";
     if (existingClickId) {
-      const updateRes = await executeWrite("referrals", "update", refPayload, { id: existingClickId });
+      const updateRes = await executeWrite("referrals", "update", refPayload, { id: existingClickId }, db);
       if (!updateRes.success) throw updateRes.error;
       referralRecordId = existingClickId;
     } else {
       const insertRes = await executeWrite("referrals", "insert", {
         ...refPayload,
         created_at: new Date().toISOString()
-      });
+      }, undefined, db);
       if (!insertRes.success) throw insertRes.error;
-      const { data: newlyCreated } = await supabase
+      const { data: newlyCreated } = await db
         .from("referrals")
         .select("id")
         .eq("referred_user_id", referredUserId)
@@ -333,12 +352,12 @@ export async function processReferralJoin(
         reason: flagReason,
         severity: "Fraud",
         created_at: new Date().toISOString()
-      });
+      }, undefined, db);
     }
 
     // 7. Reward Referrer if NOT flagged: fetch from reward rules
     if (!isFlagged) {
-      const { data: rule } = await supabase
+      const { data: rule } = await db
         .from("referral_reward_rules")
         .select("reward_xp")
         .eq("action", "Registration")
@@ -346,7 +365,7 @@ export async function processReferralJoin(
         .maybeSingle();
 
       const xpReward = rule?.reward_xp ?? 10;
-      await addXpToUser(referrer.user_id, xpReward);
+      await addXpToUser(referrer.user_id, xpReward, db);
       
       // Track Growth event log
       await logAnalyticsEvent("referral_joined", referrer.user_id, {
@@ -1033,9 +1052,10 @@ function calculateProfileCompletion(profile: any): number {
 }
 
 // 7. Community Group Helpers
-export async function getCommunityGroups(userId: string) {
+export async function getCommunityGroups(userId: string, supabaseClient?: any) {
   try {
-    const { data: groups, error: gError } = await supabase
+    const db = await getDb(supabaseClient);
+    const { data: groups, error: gError } = await db
       .from("community_groups")
       .select("*")
       .order("display_order", { ascending: true });
@@ -1043,27 +1063,27 @@ export async function getCommunityGroups(userId: string) {
     if (gError) throw gError;
 
     // Fetch joined status
-    const { data: joined } = await supabase
+    const { data: joined } = await db
       .from("community_group_members")
       .select("group_id")
       .eq("user_id", userId);
-    const joinedIds = new Set((joined || []).map(j => j.group_id));
+    const joinedIds = new Set((joined || []).map((j: any) => j.group_id));
 
     // Fetch saved status
-    const { data: saved } = await supabase
+    const { data: saved } = await db
       .from("community_group_saves")
       .select("group_id")
       .eq("user_id", userId);
-    const savedIds = new Set((saved || []).map(s => s.group_id));
+    const savedIds = new Set((saved || []).map((s: any) => s.group_id));
 
     // Fetch profile and resume scan context for locks
-    const { data: profile } = await supabase
+    const { data: profile } = await db
       .from("profiles")
       .select("*")
       .eq("user_id", userId)
       .maybeSingle();
 
-    const { data: scans } = await supabase
+    const { data: scans } = await db
       .from("resume_scans")
       .select("ats_score")
       .eq("user_id", userId)
@@ -1077,7 +1097,7 @@ export async function getCommunityGroups(userId: string) {
     const isOnboardingCompleted = profile?.onboarding_completed || false;
 
     // Map lock statuses
-    const mapped = (groups || []).map(group => {
+    const mapped = (groups || []).map((group: any) => {
       let isLocked = false;
       const requirements = [];
 
@@ -1122,10 +1142,11 @@ export async function getCommunityGroups(userId: string) {
   }
 }
 
-export async function joinCommunityGroup(userId: string, groupId: string) {
+export async function joinCommunityGroup(userId: string, groupId: string, supabaseClient?: any) {
   try {
+    const db = await getDb(supabaseClient);
     // 1. Fetch group to check if locked
-    const { data: group } = await supabase
+    const { data: group } = await db
       .from("community_groups")
       .select("*")
       .eq("id", groupId)
@@ -1134,9 +1155,9 @@ export async function joinCommunityGroup(userId: string, groupId: string) {
     if (!group) throw new Error("Group not found.");
 
     // Check lock requirements
-    const groupsRes = await getCommunityGroups(userId);
+    const groupsRes = await getCommunityGroups(userId, db);
     if (groupsRes.success) {
-      const g = groupsRes.groups?.find(x => x.id === groupId);
+      const g = groupsRes.groups?.find((x: any) => x.id === groupId);
       if (g && g.isLocked) {
         return { success: false, error: "This group is locked. Meet the requirements to unlock access." };
       }
@@ -1149,7 +1170,7 @@ export async function joinCommunityGroup(userId: string, groupId: string) {
       created_at: new Date().toISOString()
     };
 
-    const res = await executeWrite("community_group_members", "insert", payload);
+    const res = await executeWrite("community_group_members", "insert", payload, undefined, db);
     if (!res.success) {
       if (res.error?.code === "23505") { // Unique constraint
         return { success: true, message: "Already a member." };
@@ -1159,10 +1180,10 @@ export async function joinCommunityGroup(userId: string, groupId: string) {
 
     // 3. Increment member count
     const nextCount = (group.member_count || 0) + 1;
-    await executeWrite("community_groups", "update", { member_count: nextCount }, { id: groupId });
+    await executeWrite("community_groups", "update", { member_count: nextCount }, { id: groupId }, db);
 
     // Reward XP for Joining community (5 XP)
-    await addXpToUser(userId, 5);
+    await addXpToUser(userId, 5, db);
 
     return { success: true, nextCount };
   } catch (err: any) {
@@ -1171,9 +1192,10 @@ export async function joinCommunityGroup(userId: string, groupId: string) {
   }
 }
 
-export async function leaveCommunityGroup(userId: string, groupId: string) {
+export async function leaveCommunityGroup(userId: string, groupId: string, supabaseClient?: any) {
   try {
-    const { data: group } = await supabase
+    const db = await getDb(supabaseClient);
+    const { data: group } = await db
       .from("community_groups")
       .select("member_count")
       .eq("id", groupId)
@@ -1185,13 +1207,14 @@ export async function leaveCommunityGroup(userId: string, groupId: string) {
       "community_group_members",
       "delete",
       null,
-      { user_id: userId, group_id: groupId }
+      { user_id: userId, group_id: groupId },
+      db
     );
     if (!res.success) throw res.error;
 
     // Decrement member count
     const nextCount = Math.max(0, (group.member_count || 0) - 1);
-    await executeWrite("community_groups", "update", { member_count: nextCount }, { id: groupId });
+    await executeWrite("community_groups", "update", { member_count: nextCount }, { id: groupId }, db);
 
     return { success: true, nextCount };
   } catch (err: any) {
@@ -1200,21 +1223,23 @@ export async function leaveCommunityGroup(userId: string, groupId: string) {
   }
 }
 
-export async function saveCommunityGroup(userId: string, groupId: string, status: boolean) {
+export async function saveCommunityGroup(userId: string, groupId: string, status: boolean, supabaseClient?: any) {
   try {
+    const db = await getDb(supabaseClient);
     if (status) {
       const res = await executeWrite("community_group_saves", "insert", {
         group_id: groupId,
         user_id: userId,
         created_at: new Date().toISOString()
-      });
+      }, undefined, db);
       if (!res.success && res.error?.code !== "23505") throw res.error;
     } else {
       const res = await executeWrite(
         "community_group_saves",
         "delete",
         null,
-        { user_id: userId, group_id: groupId }
+        { user_id: userId, group_id: groupId },
+        db
       );
       if (!res.success) throw res.error;
     }
@@ -1226,9 +1251,10 @@ export async function saveCommunityGroup(userId: string, groupId: string, status
 }
 
 // 8. Community Event Helpers
-export async function getCommunityEvents(userId: string) {
+export async function getCommunityEvents(userId: string, supabaseClient?: any) {
   try {
-    const { data: events, error } = await supabase
+    const db = await getDb(supabaseClient);
+    const { data: events, error } = await db
       .from("community_events")
       .select("*")
       .order("event_date", { ascending: true });
@@ -1236,14 +1262,14 @@ export async function getCommunityEvents(userId: string) {
     if (error) throw error;
 
     // Fetch user registrations
-    const { data: regs } = await supabase
+    const { data: regs } = await db
       .from("community_event_registrations")
       .select("event_id, status")
       .eq("user_id", userId);
     
-    const regMap = new Map((regs || []).map(r => [r.event_id, r.status]));
+    const regMap = new Map((regs || []).map((r: any) => [r.event_id, r.status]));
 
-    const mapped = (events || []).map(event => ({
+    const mapped = (events || []).map((event: any) => ({
       ...event,
       isRegistered: regMap.get(event.id) === "Registered",
       isBookmarked: regMap.get(event.id) === "Bookmarked"
@@ -1256,14 +1282,16 @@ export async function getCommunityEvents(userId: string) {
   }
 }
 
-export async function registerForEvent(userId: string, eventId: string, status: "Registered" | "Bookmarked" | "Unregistered") {
+export async function registerForEvent(userId: string, eventId: string, status: "Registered" | "Bookmarked" | "Unregistered", supabaseClient?: any) {
   try {
+    const db = await getDb(supabaseClient);
     if (status === "Unregistered") {
       const res = await executeWrite(
         "community_event_registrations",
         "delete",
         null,
-        { user_id: userId, event_id: eventId }
+        { user_id: userId, event_id: eventId },
+        db
       );
       if (!res.success) throw res.error;
     } else {
@@ -1276,13 +1304,14 @@ export async function registerForEvent(userId: string, eventId: string, status: 
           status,
           created_at: new Date().toISOString()
         },
-        { user_id: userId, event_id: eventId }
+        { user_id: userId, event_id: eventId },
+        db
       );
       if (!res.success) throw res.error;
 
       // Small XP bump for registering (5 XP)
       if (status === "Registered") {
-        await addXpToUser(userId, 5);
+        await addXpToUser(userId, 5, db);
       }
     }
     return { success: true };
@@ -1293,8 +1322,9 @@ export async function registerForEvent(userId: string, eventId: string, status: 
 }
 
 // 9. Ambassador Program Helpers
-export async function applyAmbassador(userId: string) {
+export async function applyAmbassador(userId: string, supabaseClient?: any) {
   try {
+    const db = await getDb(supabaseClient);
     const payload = {
       user_id: userId,
       status: "Pending",
@@ -1304,7 +1334,7 @@ export async function applyAmbassador(userId: string) {
       updated_at: new Date().toISOString()
     };
 
-    const res = await executeWrite("placement_ambassadors", "insert", payload);
+    const res = await executeWrite("placement_ambassadors", "insert", payload, undefined, db);
     if (!res.success) {
       if (res.error?.code === "23505") {
         return { success: false, error: "Application already exists." };
@@ -1319,9 +1349,10 @@ export async function applyAmbassador(userId: string) {
   }
 }
 
-export async function getAmbassadorStatus(userId: string) {
+export async function getAmbassadorStatus(userId: string, supabaseClient?: any) {
   try {
-    const { data, error } = await supabase
+    const db = await getDb(supabaseClient);
+    const { data, error } = await db
       .from("placement_ambassadors")
       .select("*")
       .eq("user_id", userId)
@@ -1335,9 +1366,10 @@ export async function getAmbassadorStatus(userId: string) {
   }
 }
 
-export async function getAmbassadorList() {
+export async function getAmbassadorList(supabaseClient?: any) {
   try {
-    const { data, error } = await supabase
+    const db = await getDb(supabaseClient);
+    const { data, error } = await db
       .from("placement_ambassadors")
       .select("*, profiles(full_name, college, email)")
       .order("created_at", { ascending: false });
@@ -1350,13 +1382,15 @@ export async function getAmbassadorList() {
   }
 }
 
-export async function updateAmbassadorStatus(id: string, status: "Approved" | "Rejected") {
+export async function updateAmbassadorStatus(id: string, status: "Approved" | "Rejected", supabaseClient?: any) {
   try {
+    const db = await getDb(supabaseClient);
     const res = await executeWrite(
       "placement_ambassadors",
       "update",
       { status, updated_at: new Date().toISOString() },
-      { id }
+      { id },
+      db
     );
     if (!res.success) throw res.error;
 

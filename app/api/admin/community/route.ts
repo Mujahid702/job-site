@@ -62,6 +62,22 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, message: "Missing required group details." }, { status: 400 });
     }
 
+    try {
+      new URL(groupLink);
+    } catch {
+      return NextResponse.json({ success: false, message: "Invalid invite link URL format." }, { status: 400 });
+    }
+
+    const { data: duplicateLink } = await supabase
+      .from("community_groups")
+      .select("id")
+      .eq("group_link", groupLink)
+      .maybeSingle();
+
+    if (duplicateLink) {
+      return NextResponse.json({ success: false, message: "A community group with this invite link already exists." }, { status: 400 });
+    }
+
     const payload = {
       group_name: groupName,
       group_description: groupDescription || "",
@@ -85,7 +101,7 @@ export async function POST(request: Request) {
       updated_at: new Date().toISOString()
     };
 
-    const res = await executeWrite("community_groups", "insert", payload);
+    const res = await executeWrite("community_groups", "insert", payload, undefined, supabase);
     if (!res.success) throw res.error;
 
     // Invalidate Cache
@@ -138,7 +154,25 @@ export async function PUT(request: Request) {
     if (groupDescription !== undefined) payload.group_description = groupDescription;
     if (groupCategory !== undefined) payload.group_category = groupCategory;
     if (platformType !== undefined) payload.platform_type = platformType;
-    if (groupLink !== undefined) payload.group_link = groupLink;
+    if (groupLink !== undefined) {
+      try {
+        new URL(groupLink);
+      } catch {
+        return NextResponse.json({ success: false, message: "Invalid invite link URL format." }, { status: 400 });
+      }
+
+      const { data: duplicateLink } = await supabase
+        .from("community_groups")
+        .select("id")
+        .eq("group_link", groupLink)
+        .neq("id", id)
+        .maybeSingle();
+
+      if (duplicateLink) {
+        return NextResponse.json({ success: false, message: "A community group with this invite link already exists." }, { status: 400 });
+      }
+      payload.group_link = groupLink;
+    }
     if (groupImage !== undefined) payload.group_image = groupImage;
     if (groupBanner !== undefined) payload.group_banner = groupBanner;
     if (groupStatus !== undefined) payload.group_status = groupStatus;
@@ -152,7 +186,7 @@ export async function PUT(request: Request) {
     if (unlockOnboardingCompleted !== undefined) payload.unlock_onboarding_completed = unlockOnboardingCompleted;
     if (memberCount !== undefined) payload.member_count = memberCount;
 
-    const res = await executeWrite("community_groups", "update", payload, { id });
+    const res = await executeWrite("community_groups", "update", payload, { id }, supabase);
     if (!res.success) throw res.error;
 
     // Invalidate Cache
@@ -178,7 +212,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ success: false, message: "id parameter is required." }, { status: 400 });
     }
 
-    const res = await executeWrite("community_groups", "delete", null, { id });
+    const res = await executeWrite("community_groups", "delete", null, { id }, supabase);
     if (!res.success) throw res.error;
 
     // Invalidate Cache

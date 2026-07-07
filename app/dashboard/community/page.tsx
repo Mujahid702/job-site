@@ -572,13 +572,19 @@ export default function CommunityHubPage() {
                     </div>
                   ))}
 
-                  {filteredGroups.length === 0 && (
+                  {groups.length === 0 ? (
+                    <div className="col-span-full py-16 text-center bg-white border border-slate-200 rounded-[2rem] shadow-sm space-y-2">
+                      <Users className="w-8 h-8 text-slate-450 mx-auto" />
+                      <h3 className="text-base font-black text-slate-900">No Groups Available</h3>
+                      <p className="text-slate-550 text-xs font-semibold">No community groups are available at the moment. Please check back later.</p>
+                    </div>
+                  ) : filteredGroups.length === 0 ? (
                     <div className="col-span-full py-16 text-center bg-white border border-slate-200 rounded-[2rem] shadow-sm space-y-2">
                       <SlidersHorizontal className="w-8 h-8 text-slate-400 mx-auto" />
                       <h3 className="text-base font-black text-slate-900">No communities match filters</h3>
-                      <p className="text-slate-500 text-xs font-semibold">Reset platform/category filters or modify search terms to view active networks.</p>
+                      <p className="text-slate-550 text-xs font-semibold">Reset platform/category filters or modify search terms to view active networks.</p>
                     </div>
-                  )}
+                  ) : null}
                 </div>
               </div>
             )}

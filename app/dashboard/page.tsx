@@ -84,6 +84,13 @@ interface AdminRequestItem {
   status: string;
 }
 
+function formatGreetingName(name: string | null | undefined): string {
+  if (!name || !name.trim()) return "";
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "";
+  return parts.map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()).join(" ");
+}
+
 export default function DashboardPage() {
   const { savedJobs } = useSavedJobs();
   const [user, setUser] = useState<User | null>(null);
@@ -113,7 +120,7 @@ export default function DashboardPage() {
   const [resumeSubTab, setResumeSubTab] = useState<string>("overview");
 
   // Command Center statistics states
-  const [profileName, setProfileName] = useState<string>("Mujahid");
+  const [profileName, setProfileName] = useState<string>("");
   const [totalXp, setTotalXp] = useState<number>(885);
   const [currentLevel, setCurrentLevel] = useState<number>(4);
   const [completedMissions, setCompletedMissions] = useState<number>(6);
@@ -388,8 +395,6 @@ export default function DashboardPage() {
       router.push("/dashboard/leaderboard");
     } else if (tabId === "digest") {
       router.push("/dashboard/digest");
-    } else if (tabId === "whatsapp-admin") {
-      router.push("/admin/whatsapp");
     } else {
       setActiveTab(tabId);
     }
@@ -485,9 +490,7 @@ export default function DashboardPage() {
     { id: "interview-prep", label: "AI Interview Prep", icon: <MessageSquare className="w-5 h-5 text-indigo-500" /> },
     { id: "mentorship-os", label: "Mentorship OS", icon: <CalendarIcon className="w-5 h-5 text-pink-500" /> },
     { id: "community-hub", label: "Community Hub OS", icon: <Users className="w-5 h-5 text-indigo-500" /> },
-    { id: "membership", label: "Premium Plans", icon: <Award className="w-5 h-5 text-rose-500" /> },
-    { id: "whatsapp-admin", label: "WhatsApp Campaigns", icon: <Send className="w-5 h-5 text-slate-500" />, adminOnly: true },
-    { id: "admin", label: "Admin Console", icon: <ShieldCheck className="w-5 h-5 text-slate-500" />, adminOnly: true }
+    { id: "membership", label: "Premium Plans", icon: <Award className="w-5 h-5 text-rose-500" /> }
   ];
 
   if (!mounted) {
@@ -522,7 +525,6 @@ export default function DashboardPage() {
 
           <nav className="space-y-1.5">
             {menuItems.filter(item => isFeatureVisible(item.id, user)).map(item => {
-              if (item.adminOnly && !isPremium) return null; // Admin console unlocked dynamically
               return (
                 <button
                   key={item.id}
@@ -595,7 +597,7 @@ export default function DashboardPage() {
                       <h2 className="text-[10px] font-black uppercase tracking-widest text-indigo-400 font-mono">CAREER OS // COMMAND DECK</h2>
                     </div>
                     <h1 className="text-3xl md:text-5xl font-black tracking-tight mt-2 bg-gradient-to-r from-white via-slate-100 to-slate-200 bg-clip-text text-transparent font-display">
-                      Welcome Back, {user?.user_metadata?.full_name || user?.email?.split('@')[0]}
+                      {profileName ? `Welcome Back, ${formatGreetingName(profileName)}! 👋` : "Welcome Back! 👋"}
                     </h1>
                   </div>
                   <div className="flex gap-2">
@@ -1450,162 +1452,7 @@ export default function DashboardPage() {
               </div>
             </>
           ) : (
-            <FeatureUnavailable />
-          )}
-        </motion.div>
-      )}
-
-          {/* TAB 9: ADMIN CONTROL PANEL (Locked to Pro Premium members for simulated verification) */}
-          {activeTab === "admin" && isPremium && (
-            <motion.div
-              key="admin"
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -15 }}
-              className="space-y-12"
-            >
-              <div className="max-w-3xl space-y-4">
-                <div className="inline-flex items-center gap-2 px-3 py-1 bg-slate-100 text-slate-700 rounded-full text-[10px] font-black uppercase tracking-widest">
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  Developer Admin console
-                </div>
-                <h1 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tighter leading-tight font-display">
-                  Placement Administration
-                </h1>
-                <p className="text-slate-500 font-medium text-base max-w-xl">
-                  Manage student placement requests, verify mock interview bookings, and override system features.
-                </p>
-              </div>
-
-              {/* Stats row */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                {[
-                  { label: "Active Student Profiles", value: "1,240" },
-                  { label: "Mock Review Requests", value: adminRequests.filter(r => r.status === "Pending").length, highlight: true },
-                  { label: "Booked Mentorship Hours", value: "48 Hrs" },
-                  { label: "Premium Pro Users", value: "215" }
-                ].map((stat, i) => (
-                  <div key={i} className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-1">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{stat.label}</p>
-                    <p className={cn("text-3xl font-black", stat.highlight ? "text-indigo-600" : "text-slate-800")}>{stat.value}</p>
-                  </div>
-                ))}
-              </div>
-
-              {/* Student mentorship approval list */}
-              <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200/60 shadow-sm space-y-6">
-                <h3 className="text-xl font-black text-slate-900 font-display">Active Mentorship Requests</h3>
-                
-                <div className="overflow-hidden rounded-2xl border border-slate-200">
-                  <table className="w-full text-left">
-                    <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">
-                      <tr>
-                        <th className="px-6 py-4">Student</th>
-                        <th className="px-6 py-4">Request Topic</th>
-                        <th className="px-6 py-4">Approval Status</th>
-                        <th className="px-6 py-4 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 text-sm font-bold text-slate-700">
-                      {adminRequests.map(req => (
-                        <tr key={req.id}>
-                          <td className="px-6 py-4">{req.student}</td>
-                          <td className="px-6 py-4">{req.type}</td>
-                          <td className="px-6 py-4">
-                            <span className={cn(
-                              "px-2 py-0.5 text-[9px] font-black uppercase tracking-widest rounded",
-                              req.status === "Approved" ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600"
-                            )}>
-                              {req.status}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-right flex justify-end gap-2">
-                            {req.status === "Pending" && (
-                              <button 
-                                onClick={() => approveAdminRequest(req.id)}
-                                className="px-3 py-1.5 bg-emerald-500 text-white font-black text-[9px] uppercase tracking-widest rounded-lg hover:bg-emerald-600 transition-all cursor-pointer"
-                              >
-                                Approve
-                              </button>
-                            )}
-                            <button 
-                              onClick={() => deleteAdminRequest(req.id)}
-                              className="px-3 py-1.5 bg-slate-100 text-slate-500 font-black text-[9px] uppercase tracking-widest rounded-lg hover:bg-red-50 hover:text-red-500 transition-all cursor-pointer"
-                            >
-                              Reject
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* BuggedBrain Placement CRM Global Aggregates (Admin Console) */}
-              {adminStats && (
-                <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200/60 shadow-sm space-y-6 text-left">
-                  <div className="space-y-1">
-                    <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest block font-mono">📊 CRM Aggregates Console</span>
-                    <h3 className="text-xl font-black text-slate-900 font-display">System-wide Analytics Dashboard</h3>
-                    <p className="text-slate-500 font-semibold text-xs">Anonymized statistics aggregated across all active student application cards.</p>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="bg-slate-50 p-6 border border-slate-150 rounded-3xl text-center">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Total Applications Tracked</span>
-                      <strong className="text-4xl font-black text-slate-800 block mt-2">{adminStats.totalApplications}</strong>
-                      <span className="text-[9px] text-slate-400 font-bold block mt-1">Global submissions</span>
-                    </div>
-
-                    <div className="bg-slate-50 p-6 border border-slate-150 rounded-3xl text-center">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Total Active Users</span>
-                      <strong className="text-4xl font-black text-indigo-650 block mt-2">{adminStats.totalActiveUsers}</strong>
-                      <span className="text-[9px] text-slate-400 font-bold block mt-1">Unique candidate pipes</span>
-                    </div>
-
-                    <div className="bg-slate-50 p-6 border border-slate-150 rounded-3xl text-center">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Average Offer Rate</span>
-                      <strong className="text-4xl font-black text-emerald-600 block mt-2">{adminStats.averageOfferRate}%</strong>
-                      <span className="text-[9px] text-slate-400 font-bold block mt-1">Aggregate conversion rate</span>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4">
-                    {/* Top Companies */}
-                    <div className="space-y-3">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Most Applied Companies</span>
-                      <div className="bg-slate-50 border border-slate-150 rounded-2xl p-4 divide-y divide-slate-100 font-semibold text-xs text-slate-650">
-                        {adminStats.mostAppliedCompanies.map((c, idx) => (
-                          <div key={idx} className="flex justify-between py-2.5 first:pt-0 last:pb-0">
-                            <span className="text-slate-800">{idx + 1}. {c.company}</span>
-                            <span className="text-slate-500">{c.count} applications</span>
-                          </div>
-                        ))}
-                        {adminStats.mostAppliedCompanies.length === 0 && (
-                          <div className="py-2 text-slate-400 font-bold text-center">No companies logged yet.</div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Top Roles */}
-                    <div className="space-y-3">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Most Popular Roles</span>
-                      <div className="bg-slate-50 border border-slate-150 rounded-2xl p-4 divide-y divide-slate-100 font-semibold text-xs text-slate-650">
-                        {adminStats.mostPopularRoles.map((r, idx) => (
-                          <div key={idx} className="flex justify-between py-2.5 first:pt-0 last:pb-0">
-                            <span className="text-slate-800">{idx + 1}. {r.role}</span>
-                            <span className="text-slate-500">{r.count} students</span>
-                          </div>
-                        ))}
-                        {adminStats.mostPopularRoles.length === 0 && (
-                          <div className="py-2 text-slate-400 font-bold text-center">No roles logged yet.</div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
+            <FeatureUnavailable />           )}
             </motion.div>
           )}
 

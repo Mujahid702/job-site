@@ -20,7 +20,7 @@ export async function GET() {
       return NextResponse.json({ success: true, ...cached });
     }
 
-    const stats = await getUserReferralStats(user.id);
+    const stats = await getUserReferralStats(user.id, supabase);
     await setCache(cacheKey, stats, 60); // 1-minute TTL for active growth tracking
 
     return NextResponse.json({ success: true, ...stats });
@@ -56,7 +56,7 @@ export async function POST(request: Request) {
       ip,
       userAgent,
       deviceFingerprint
-    });
+    }, supabase);
 
     if (result.success) {
       return NextResponse.json({ success: true, message: "Referral code applied successfully." });
