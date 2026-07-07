@@ -157,7 +157,7 @@ export async function executeWrite(
   key?: { [key: string]: any },
   supabaseClient?: any
 ): Promise<{ success: boolean; error?: any }> {
-  const isOnline = typeof navigator !== "undefined" ? navigator.onLine : true;
+  const isOnline = typeof window !== "undefined" ? navigator.onLine : true;
 
   if (!isOnline) {
     // Enqueue
