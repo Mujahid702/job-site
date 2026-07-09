@@ -50,6 +50,15 @@ export interface AssessmentQuestion {
   options?: AssessmentOption[];
   topic_name?: string;
   category_slug?: string;
+
+  // Sandbox Coding & SQL properties
+  type?: "MCQ" | "Coding" | "SQL";
+  constraints?: string;
+  input_format?: string;
+  output_format?: string;
+  sample_test_cases?: { input: string; expected_output: string; explanation?: string }[];
+  sql_schema_seed?: string;
+  starter_codes?: Record<string, string>;
 }
 
 export interface AssessmentSection {
@@ -210,23 +219,47 @@ export const PRESET_QUESTIONS: AssessmentQuestion[] = [
   {
     id: "q3",
     topic_id: "t6",
-    question_text: "Given an integer array nums, return true if any value appears at least twice, and false if every element is distinct.",
-    correct_answer_text: "Use a Hash Set to track visited items (O(N) Time)",
-    explanation: "A Hash Set allows O(1) average lookup. Scanning elements yields O(N) overall time and O(N) space.",
+    question_text: "Given an integer array nums and a target integer, return indices of the two numbers such that they add up to target. You may assume that each input would have exactly one solution, and you may not use the same element twice.",
+    correct_answer_text: "twoSum solution",
+    explanation: "Using a Hash Map allows us to find the complement in O(N) time complexity.",
     difficulty: "Easy",
     expected_time_seconds: 120,
     marks: 4,
     negative_marks: 1,
     company_tags: ["Amazon", "Google", "Microsoft"],
     role_tags: ["SDE"],
-    options: [
-      { option_text: "Nested double loop comparisons (O(N^2))", is_correct: false },
-      { option_text: "Sorting the array and scanning neighbors (O(N log N))", is_correct: false },
-      { option_text: "Use a Hash Set to track visited items (O(N) Time)", is_correct: true },
-      { option_text: "None of the above", is_correct: false }
+    type: "Coding",
+    constraints: "-10^9 <= nums[i] <= 10^9\n2 <= nums.length <= 10^4",
+    input_format: "Target on first line. Space-separated array values on second line.",
+    output_format: "Space-separated index pair.",
+    sample_test_cases: [
+      { input: "9\n2 7 11 15", expected_output: "0 1", explanation: "nums[0] + nums[1] = 2 + 7 = 9" },
+      { input: "6\n3 2 4", expected_output: "1 2" }
     ],
+    starter_codes: {
+      javascript: "function twoSum(nums, target) {\n    // Write your code here\n}\n\n// Boilerplate execution logic\nconst fs = require('fs');\nconst input = fs.readFileSync(0, 'utf8').trim().split('\\n');\nif (input.length >= 2) {\n    const target = parseInt(input[0]);\n    const nums = input[1].split(' ').map(Number);\n    const result = twoSum(nums, target);\n    console.log(result.join(' '));\n}",
+      python: "def twoSum(nums, target):\n    # Write your code here\n    pass\n\nimport sys\nlines = sys.stdin.read().splitlines()\nif len(lines) >= 2:\n    target = int(lines[0])\n    nums = list(map(int, lines[1].split()))\n    result = twoSum(nums, target)\n    print(\" \".join(map(str, result)))",
+      cpp: "#include <iostream>\n#include <vector>\nusing namespace std;\nvector<int> twoSum(vector<int>& nums, int target) {\n    for(int i=0; i<nums.size(); i++) {\n        for(int j=i+1; j<nums.size(); j++) {\n            if(nums[i] + nums[j] == target) return {i, j};\n        }\n    }\n    return {};\n}\nint main() {\n    int target, val;\n    if (cin >> target) {\n        vector<int> nums;\n        while (cin >> val) nums.push_back(val);\n        vector<int> r = twoSum(nums, target);\n        if(r.size() == 2) cout << r[0] << \" \" << r[1];\n    }\n    return 0;\n}"
+    },
     topic_name: "Arrays",
     category_slug: "coding"
+  },
+  {
+    id: "q4",
+    topic_id: "t5",
+    question_text: "Write an SQL query to find employees who have the highest salary in each of the departments.",
+    correct_answer_text: "SELECT d.Name AS Department, e.Name AS Employee, e.Salary FROM Employee e JOIN Department d ON e.DepartmentId = d.Id WHERE e.Salary = (SELECT MAX(Salary) FROM Employee WHERE DepartmentId = d.Id);",
+    explanation: "A correlated subquery compares each employee's salary with the max salary in their respective department.",
+    difficulty: "Medium",
+    expected_time_seconds: 180,
+    marks: 4,
+    negative_marks: 1,
+    company_tags: ["Google", "Amazon", "Deloitte"],
+    role_tags: ["Data Analyst", "SDE"],
+    type: "SQL",
+    sql_schema_seed: "CREATE TABLE Department (Id INT, Name VARCHAR(50));\nCREATE TABLE Employee (Id INT, Name VARCHAR(50), Salary INT, DepartmentId INT);\nINSERT INTO Department VALUES (1, 'IT'), (2, 'Sales');\nINSERT INTO Employee VALUES (1, 'Joe', 85000, 1), (2, 'Henry', 80000, 2), (3, 'Sam', 60000, 2), (4, 'Max', 90000, 1);",
+    topic_name: "Window Functions",
+    category_slug: "sql"
   }
 ];
 
