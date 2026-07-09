@@ -431,12 +431,13 @@ export async function createAttempt(
   supabaseClient?: any
 ): Promise<AssessmentAttempt> {
   const isGuest = !userId || userId === "guest-user";
-  const id = `att-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const isTemplateUuid = details.templateId && UUID_REGEX.test(details.templateId);
 
   const payload: AssessmentAttempt = {
-    id,
+    id: `att-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
     user_id: userId || "guest-user",
-    template_id: details.templateId || null,
+    template_id: isTemplateUuid ? details.templateId : null,
     test_type: testType,
     mode: details.mode,
     started_at: new Date().toISOString(),
@@ -480,17 +481,24 @@ export async function submitAnswer(
   supabaseClient?: any
 ): Promise<void> {
   const isGuest = !userId || userId === "guest-user";
+  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const isQuestionUuid = UUID_REGEX.test(questionId);
+  const cleanOptionId = answerDetails.selectedOptionId && UUID_REGEX.test(answerDetails.selectedOptionId)
+    ? answerDetails.selectedOptionId
+    : null;
+
   const payload: AssessmentAnswer = {
     attempt_id: attemptId,
     question_id: questionId,
-    selected_option_id: answerDetails.selectedOptionId || null,
+    selected_option_id: cleanOptionId,
     answer_text: answerDetails.answerText || null,
     is_correct: answerDetails.isCorrect,
     time_spent_seconds: answerDetails.timeSpentSeconds,
     marked_for_review: answerDetails.markedForReview || false
   };
 
-  if (isGuest) {
+  // If the question is a static preset (non-UUID), cache it locally and skip Supabase insert
+  if (isGuest || !isQuestionUuid) {
     const list = getLocalData<AssessmentAnswer[]>("bb_answers", []);
     list.push(payload);
     saveLocalData("bb_answers", list);

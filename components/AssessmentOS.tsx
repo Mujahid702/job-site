@@ -17,6 +17,7 @@ import {
   Bot,
   User,
   Send,
+  Play,
   RefreshCw,
   Plus,
   Clock,
@@ -34,6 +35,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
+import Editor from "@monaco-editor/react";
 import { 
   getCategories, 
   getTopics,
@@ -88,6 +90,18 @@ export default function AssessmentOS() {
   const [practiceAttemptId, setPracticeAttemptId] = useState<string>("");
   const [practiceStartTime, setPracticeStartTime] = useState<number>(0);
   const [showPracticeHint, setShowPracticeHint] = useState<boolean>(false);
+
+  // Advanced sandboxed compiler states
+  const [practiceLanguage, setPracticeLanguage] = useState<string>("python");
+  const [practiceCode, setPracticeCode] = useState<string>("");
+  const [practiceRunResults, setPracticeRunResults] = useState<any>(null);
+  const [practiceSubmitResults, setPracticeSubmitResults] = useState<any>(null);
+  const [practiceRunning, setPracticeRunning] = useState<boolean>(false);
+
+  const [examLanguage, setExamLanguage] = useState<string>("python");
+  const [examCode, setExamCode] = useState<string>("");
+  const [examRunResults, setExamRunResults] = useState<any>(null);
+  const [examRunning, setExamRunning] = useState<boolean>(false);
 
   // Timed Exam Simulator States
   const [examActive, setExamActive] = useState<boolean>(false);
@@ -203,6 +217,33 @@ export default function AssessmentOS() {
     return () => clearInterval(interval);
   }, [examActive, examTimer]);
 
+  // Sync practice question starter code
+  useEffect(() => {
+    if (practiceQuestions.length > 0 && currentPracticeIdx < practiceQuestions.length) {
+      const q = practiceQuestions[currentPracticeIdx];
+      if (q.category_slug === "sql") {
+        setPracticeCode(q.starter_codes?.sql || "SELECT * FROM Employee;");
+      } else {
+        setPracticeCode(q.starter_codes?.[practiceLanguage] || "# Write code here");
+      }
+      setPracticeRunResults(null);
+      setPracticeSubmitResults(null);
+    }
+  }, [currentPracticeIdx, practiceQuestions, practiceLanguage]);
+
+  // Sync exam question code
+  useEffect(() => {
+    if (examQuestions.length > 0 && currentExamIdx < examQuestions.length) {
+      const q = examQuestions[currentExamIdx];
+      if (q.category_slug === "sql") {
+        setExamCode(examAnswers[q.id]?.text || q.starter_codes?.sql || "SELECT * FROM Employee;");
+      } else {
+        setExamCode(examAnswers[q.id]?.text || q.starter_codes?.[examLanguage] || "# Write code here");
+      }
+      setExamRunResults(null);
+    }
+  }, [currentExamIdx, examQuestions, examLanguage]);
+
   const formatTime = (secs: number) => {
     const m = Math.floor(secs / 60);
     const s = secs % 60;
@@ -286,6 +327,105 @@ export default function AssessmentOS() {
     );
 
     setPracticeAnswered(true);
+  };
+
+  const handleRunPracticeCode = async () => {
+    const q = practiceQuestions[currentPracticeIdx];
+    setPracticeRunning(true);
+    setPracticeRunResults(null);
+    try {
+      const endpoint = q.category_slug === "sql" ? "/api/assessment/sql/run" : "/api/assessment/compiler/run";
+      const payload = q.category_slug === "sql"
+        ? { questionId: q.id, query: practiceCode }
+        : { questionId: q.id, language: practiceLanguage, code: practiceCode };
+
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      setPracticeRunResults(data);
+    } catch (err: any) {
+      setPracticeRunResults({ success: false, error: err.message });
+    } finally {
+      setPracticeRunning(false);
+    }
+  };
+
+  const handleSubmitPracticeCode = async () => {
+    const q = practiceQuestions[currentPracticeIdx];
+    setPracticeRunning(true);
+    setPracticeSubmitResults(null);
+    try {
+      const endpoint = q.category_slug === "sql" ? "/api/assessment/sql/run" : "/api/assessment/compiler/submit";
+      const payload = q.category_slug === "sql"
+        ? { questionId: q.id, query: practiceCode }
+        : { questionId: q.id, language: practiceLanguage, code: practiceCode };
+
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      setPracticeSubmitResults(data);
+
+      const isCorrect = q.category_slug === "sql" ? data.match : data.status === "Accepted";
+      if (isCorrect) setPracticeCorrectCount(prev => prev + 1);
+
+      const timeSpent = Math.round((Date.now() - practiceStartTime) / 1000);
+      await submitAnswer(
+        practiceAttemptId,
+        q.id,
+        {
+          selectedOptionId: null,
+          answerText: practiceCode,
+          isCorrect,
+          timeSpentSeconds: timeSpent
+        },
+        userId
+      );
+
+      setPracticeAnswered(true);
+    } catch (err: any) {
+      setPracticeSubmitResults({ success: false, error: err.message });
+    } finally {
+      setPracticeRunning(false);
+    }
+  };
+
+  const handleRunExamCode = async () => {
+    const q = examQuestions[currentExamIdx];
+    setExamRunning(true);
+    setExamRunResults(null);
+    try {
+      const endpoint = q.category_slug === "sql" ? "/api/assessment/sql/run" : "/api/assessment/compiler/run";
+      const payload = q.category_slug === "sql"
+        ? { questionId: q.id, query: examCode }
+        : { questionId: q.id, language: examLanguage, code: examCode };
+
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      setExamRunResults(data);
+    } catch (err: any) {
+      setExamRunResults({ success: false, error: err.message });
+    } finally {
+      setExamRunning(false);
+    }
+  };
+
+  const handleTypeExamCode = (code: string) => {
+    const q = examQuestions[currentExamIdx];
+    setExamCode(code);
+    setExamAnswers(prev => ({
+      ...prev,
+      [q.id]: { text: code, isCorrect: prev[q.id]?.isCorrect || false }
+    }));
   };
 
   const handleNextPracticeQuestion = async () => {
@@ -590,25 +730,73 @@ export default function AssessmentOS() {
 
                 {/* Execution Sandbox for Coding & SQL */}
                 {["sql", "coding"].includes(examQuestions[currentExamIdx].category_slug || "") ? (
-                  <div className="space-y-4 pt-4">
-                    <div className="flex items-center gap-2 text-indigo-400 text-[10px] font-mono font-black uppercase">
-                      <Terminal className="w-4 h-4" />
-                      <span>Sandbox Code Terminal</span>
+                  <div className="space-y-4 pt-4 text-left">
+                    <div className="flex justify-between items-center bg-slate-950 px-4 py-2 border border-slate-850 rounded-xl">
+                      <div className="flex items-center gap-2 text-indigo-400 text-[10px] font-mono font-black uppercase">
+                        <Terminal className="w-4 h-4" />
+                        <span>Sandbox Code Terminal</span>
+                      </div>
+                      
+                      {examQuestions[currentExamIdx].category_slug !== "sql" && (
+                        <select
+                          value={examLanguage}
+                          onChange={(e) => setExamLanguage(e.target.value)}
+                          className="bg-slate-900 border border-slate-800 text-white rounded px-2 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider focus:outline-none"
+                        >
+                          <option value="python">Python</option>
+                          <option value="javascript">JavaScript</option>
+                          <option value="cpp">C++</option>
+                        </select>
+                      )}
                     </div>
-                    <textarea
-                      rows={6}
-                      value={examAnswers[examQuestions[currentExamIdx].id]?.text || ""}
-                      onChange={(e) => handleTypeExamText(e.target.value)}
-                      placeholder="Type your relational SQL query or algorithm class signature here..."
-                      className="w-full p-4 bg-slate-950 border border-slate-850 rounded-2xl font-mono text-xs text-emerald-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                    />
+
+                    <div className="border border-slate-850 rounded-2xl overflow-hidden min-h-[250px] bg-slate-950">
+                      <Editor
+                        height="250px"
+                        language={examQuestions[currentExamIdx].category_slug === "sql" ? "sql" : examLanguage}
+                        theme="vs-dark"
+                        value={examCode}
+                        onChange={(val) => handleTypeExamCode(val || "")}
+                        options={{ fontSize: 12, minimap: { enabled: false } }}
+                      />
+                    </div>
+
+                    {examRunResults && (
+                      <div className="p-4 bg-slate-950 border border-slate-850 rounded-2xl text-[10px] font-mono text-slate-300 max-h-40 overflow-y-auto space-y-2">
+                        <div className="flex justify-between border-b border-slate-900 pb-1 text-slate-500 font-bold uppercase">
+                          <span>Compiler Run Output:</span>
+                          <span className={examRunResults.results?.every((r: any) => r.status === "Accepted") ? "text-emerald-500" : "text-rose-500"}>
+                            {examRunResults.results?.every((r: any) => r.status === "Accepted") ? "ACCEPTED" : "WRONG ANSWER"}
+                          </span>
+                        </div>
+                        {examRunResults.results?.map((res: any, rIdx: number) => (
+                          <div key={rIdx} className="space-y-0.5 border-b border-slate-900/60 pb-1 last:border-0">
+                            <p className="text-slate-400 font-bold">Case {rIdx + 1} ({res.status}):</p>
+                            <p className="text-slate-500">Expected: {res.expected} | Actual: {res.actual}</p>
+                            {res.error && <p className="text-rose-400">Error: {res.error}</p>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
                     <div className="flex justify-between items-center text-[10px] font-mono text-slate-500">
-                      <span>Expected return text: <strong className="text-slate-300">"{examQuestions[currentExamIdx].correct_answer_text}"</strong></span>
+                      <span>Verification: Sandbox compiler ready.</span>
                       <button 
-                        onClick={() => alert("Syntax diagnostics successfully generated. Code structure is valid.")}
-                        className="px-3 py-1 bg-slate-850 text-slate-300 rounded hover:bg-slate-800 transition-all font-black uppercase tracking-wider"
+                        onClick={handleRunExamCode}
+                        disabled={examRunning}
+                        className="px-4 py-2 bg-indigo-650 text-white rounded-xl hover:bg-indigo-750 transition-all font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                       >
-                        Run Sample Cases
+                        {examRunning ? (
+                          <>
+                            <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            <span>Running...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Play className="w-3.5 h-3.5 fill-current" />
+                            <span>Run Test Cases</span>
+                          </>
+                        )}
                       </button>
                     </div>
                   </div>
@@ -976,15 +1164,89 @@ export default function AssessmentOS() {
 
                     {/* Check if coding/SQL execution box is needed */}
                     {["coding", "sql"].includes(practiceQuestions[currentPracticeIdx].category_slug || "") ? (
-                      <div className="space-y-4 pt-4">
-                        <textarea
-                          rows={5}
-                          value={typedCodeAnswer}
-                          onChange={(e) => setTypedCodeAnswer(e.target.value)}
-                          placeholder="Type query or code answer logic..."
-                          className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl font-mono text-xs focus:outline-none"
-                        />
-                        <p className="text-[10px] font-mono text-slate-400">Expected text validation: "{practiceQuestions[currentPracticeIdx].correct_answer_text}"</p>
+                      <div className="space-y-4 pt-4 text-left">
+                        <div className="flex justify-between items-center bg-slate-900 px-4 py-2 border border-slate-800 rounded-xl text-xs">
+                          <span className="font-mono text-indigo-400 font-bold uppercase">Sandbox execution panel</span>
+                          
+                          {practiceQuestions[currentPracticeIdx].category_slug !== "sql" && (
+                            <select
+                              value={practiceLanguage}
+                              onChange={(e) => setPracticeLanguage(e.target.value)}
+                              className="bg-slate-800 border border-slate-700 text-white rounded px-2.5 py-1 focus:outline-none font-mono text-[9px] font-black uppercase tracking-wider"
+                            >
+                              <option value="python">Python</option>
+                              <option value="javascript">JavaScript</option>
+                              <option value="cpp">C++</option>
+                            </select>
+                          )}
+                        </div>
+
+                        <div className="border border-slate-200 rounded-2xl overflow-hidden min-h-[250px] bg-slate-950">
+                          <Editor
+                            height="250px"
+                            language={practiceQuestions[currentPracticeIdx].category_slug === "sql" ? "sql" : practiceLanguage}
+                            theme="vs-dark"
+                            value={practiceCode}
+                            onChange={(val) => setPracticeCode(val || "")}
+                            options={{ fontSize: 12, minimap: { enabled: false } }}
+                          />
+                        </div>
+
+                        {/* Compiler output panels */}
+                        {practiceRunResults && (
+                          <div className="p-4 bg-slate-900 border border-slate-800 rounded-xl text-[10px] font-mono text-slate-300 max-h-36 overflow-y-auto space-y-2">
+                            <div className="flex justify-between border-b border-slate-800 pb-1 text-slate-500 font-bold uppercase">
+                              <span>Run output:</span>
+                              <span className={practiceRunResults.results?.every((r: any) => r.status === "Accepted") ? "text-emerald-450" : "text-rose-450"}>
+                                {practiceRunResults.results?.every((r: any) => r.status === "Accepted") ? "ACCEPTED" : "WRONG ANSWER"}
+                              </span>
+                            </div>
+                            {practiceRunResults.results?.map((res: any, rIdx: number) => (
+                              <div key={rIdx} className="space-y-0.5 border-b border-slate-800 pb-1 last:border-0">
+                                <p className="text-slate-400 font-bold">Case {rIdx + 1} ({res.status}):</p>
+                                <p className="text-slate-500">Expected: {res.expected} | Actual: {res.actual}</p>
+                                {res.error && <p className="text-rose-450">Error: {res.error}</p>}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {practiceSubmitResults && (
+                          <div className="p-4 bg-slate-900 border border-slate-800 rounded-xl text-[10px] font-mono text-slate-350 max-h-36 overflow-y-auto space-y-2">
+                            <div className="flex justify-between border-b border-slate-800 pb-1 text-slate-500 font-bold uppercase">
+                              <span>Submission Output:</span>
+                              <span className={practiceSubmitResults.status === "Accepted" ? "text-emerald-450" : "text-rose-450"}>
+                                {practiceSubmitResults.status}
+                              </span>
+                            </div>
+                            <p className="text-white">Passed cases: {practiceSubmitResults.passedCount} / {practiceSubmitResults.totalCount} (Max execution: {practiceSubmitResults.maxTimeMs} ms)</p>
+                            {practiceSubmitResults.results?.map((res: any, rIdx: number) => (
+                              <div key={rIdx} className="flex justify-between border-b border-slate-850 pb-0.5 last:border-0">
+                                <span className="text-slate-550">Case {rIdx + 1}:</span>
+                                <span className={res.passed ? "text-emerald-450" : "text-rose-450"}>{res.status}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="flex gap-3 justify-end items-center text-[10px]">
+                          <button
+                            onClick={handleRunPracticeCode}
+                            disabled={practiceRunning}
+                            className="px-4 py-2 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-xl transition-all font-black uppercase tracking-wider flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                          >
+                            <Play className="w-3.5 h-3.5 fill-current" />
+                            <span>Run Code</span>
+                          </button>
+                          <button
+                            onClick={handleSubmitPracticeCode}
+                            disabled={practiceRunning}
+                            className="px-4 py-2 bg-indigo-650 text-white hover:bg-indigo-750 rounded-xl transition-all font-black uppercase tracking-wider flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                          >
+                            <Send className="w-3.5 h-3.5" />
+                            <span>Submit Solution</span>
+                          </button>
+                        </div>
                       </div>
                     ) : (
                       // MCQ choice selection list
