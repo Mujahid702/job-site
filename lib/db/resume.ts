@@ -75,10 +75,30 @@ export async function addResumeScan(userId: string, scan: Omit<ResumeScan, "user
   const result = await executeWrite("resume_scans", "insert", payload, undefined, db);
   if (result.success) {
     // Trigger mission progress for resume scans
-    // Passing scan.ats_score as rawValue for career milestones
     triggerMissionProgress(userId, "resume", 1, scan.ats_score, db).catch(e => {
       console.error("Failed to trigger mission progress for scan:", e);
     });
+
+    // Award activity XP & update Placement Readiness
+    import("./missions").then(async ({ awardActivityXP }) => {
+      const { data: existingScans } = await db
+        .from("resume_scans")
+        .select("id")
+        .eq("user_id", userId);
+      
+      if (!existingScans || existingScans.length <= 1) {
+        await awardActivityXP(userId, "resume_uploaded", db);
+      }
+      
+      await awardActivityXP(userId, "resume_ats_scan", db);
+      
+      if (scan.ats_score >= 80) {
+        await awardActivityXP(userId, "resume_score_above_80", db);
+      }
+      
+      const { calculatePRIScore } = await import("./placement-readiness");
+      await calculatePRIScore(userId, undefined, db);
+    }).catch(e => console.error("XP triggering failed:", e));
   }
   return result;
 }
@@ -110,7 +130,16 @@ export async function addJdMatch(userId: string, match: Omit<JdMatch, "user_id">
     user_id: userId,
     created_at: new Date().toISOString()
   };
-  return executeWrite("jd_matches", "insert", payload, undefined, db);
+  const result = await executeWrite("jd_matches", "insert", payload, undefined, db);
+  if (result.success) {
+    import("./missions").then(async ({ awardActivityXP }) => {
+      await awardActivityXP(userId, "jd_match", db);
+      
+      const { calculatePRIScore } = await import("./placement-readiness");
+      await calculatePRIScore(userId, undefined, db);
+    }).catch(e => console.error("JD Match XP award failed:", e));
+  }
+  return result;
 }
 
 export async function getPlacementScores(userId: string, supabaseClient?: any): Promise<PlacementScores | null> {

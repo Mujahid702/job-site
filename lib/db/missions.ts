@@ -1262,3 +1262,129 @@ export async function calculateConsistencyPercentages(userId: string, supabaseCl
     return { weekly: 50, monthly: 40 };
   }
 }
+
+// Awards XP and handles calendar-day streaks dynamically based strictly on verified user activity
+export async function awardActivityXP(
+  userId: string,
+  activityType: 'resume_uploaded' | 'resume_ats_scan' | 'resume_score_above_80' | 'jd_match' | 'assessment_completed' | 'project_completed' | 'interview_completed' | 'community_joined' | 'daily_login',
+  supabaseClient?: any
+): Promise<{ success: boolean; xpGained: number; levelUp: boolean; newLevel: number; streakDays: number }> {
+  const isGuest = !userId || userId === "guest-user";
+
+  const xpMap: Record<string, number> = {
+    resume_uploaded: 20,
+    resume_ats_scan: 10,
+    resume_score_above_80: 15,
+    jd_match: 15,
+    assessment_completed: 20,
+    project_completed: 30,
+    interview_completed: 30,
+    community_joined: 5,
+    daily_login: 2
+  };
+
+  const xpGained = xpMap[activityType] || 0;
+  if (xpGained === 0) {
+    return { success: false, xpGained: 0, levelUp: false, newLevel: 1, streakDays: 0 };
+  }
+
+  const todayStr = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+
+  if (isGuest) {
+    const xp = getLocalData<UserXP>("buggedbrain_guest_xp", {
+      id: "guest-xp-id",
+      user_id: "guest-user",
+      total_xp: 0,
+      current_level: 1,
+      streak_days: 0,
+      longest_streak: 0,
+      last_activity_date: null,
+      updated_at: new Date().toISOString()
+    });
+
+    const lastActive = xp.last_activity_date;
+    const oldLevel = xp.current_level;
+
+    // Evaluate Streak
+    let newStreak = xp.streak_days;
+    if (lastActive !== todayStr) {
+      if (lastActive) {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStr = yesterday.toISOString().split("T")[0];
+        if (lastActive === yesterdayStr) {
+          newStreak = xp.streak_days + 1;
+        } else {
+          newStreak = 1;
+        }
+      } else {
+        newStreak = 1;
+      }
+    }
+
+    xp.streak_days = newStreak;
+    xp.longest_streak = Math.max(xp.longest_streak, newStreak);
+    xp.last_activity_date = todayStr;
+    xp.total_xp += xpGained;
+    xp.current_level = calculateLevel(xp.total_xp);
+    xp.updated_at = new Date().toISOString();
+
+    saveLocalData("buggedbrain_guest_xp", xp);
+
+    return {
+      success: true,
+      xpGained,
+      levelUp: xp.current_level > oldLevel,
+      newLevel: xp.current_level,
+      streakDays: xp.streak_days
+    };
+  }
+
+  const db = await getDb(supabaseClient);
+  try {
+    const xp = await getUserXP(userId, db);
+    const lastActive = xp.last_activity_date;
+    const oldLevel = xp.current_level;
+
+    // Evaluate Streak
+    let newStreak = xp.streak_days;
+    if (lastActive !== todayStr) {
+      if (lastActive) {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStr = yesterday.toISOString().split("T")[0];
+        if (lastActive === yesterdayStr) {
+          newStreak = xp.streak_days + 1;
+        } else {
+          newStreak = 1;
+        }
+      } else {
+        newStreak = 1;
+      }
+    }
+
+    const longest = Math.max(xp.longest_streak, newStreak);
+    const newXpTotal = xp.total_xp + xpGained;
+    const newLevel = calculateLevel(newXpTotal);
+
+    await executeWrite("user_xp", "update", {
+      total_xp: newXpTotal,
+      current_level: newLevel,
+      streak_days: newStreak,
+      longest_streak: longest,
+      last_activity_date: todayStr,
+      updated_at: new Date().toISOString()
+    }, { user_id: userId }, db);
+
+    return {
+      success: true,
+      xpGained,
+      levelUp: newLevel > oldLevel,
+      newLevel,
+      streakDays: newStreak
+    };
+  } catch (err) {
+    console.error("Failed to award activity XP:", err);
+    return { success: false, xpGained: 0, levelUp: false, newLevel: 1, streakDays: 0 };
+  }
+}

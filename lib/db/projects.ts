@@ -120,6 +120,17 @@ export async function saveStudentProject(
     if (project.id) {
       result = await executeWrite("student_projects", "update", payload, { id: project.id }, db);
       if (result.success) {
+        // Check if project is completed (all checklist items are true)
+        const checklist = project.readiness_checklist || {};
+        const keys = Object.keys(checklist);
+        const isCompleted = keys.length > 0 && keys.every(k => checklist[k] === true);
+        if (isCompleted) {
+          import("./missions").then(async ({ awardActivityXP }) => {
+            await awardActivityXP(userId, "project_completed", db);
+            const { calculatePRIScore } = await import("./placement-readiness");
+            await calculatePRIScore(userId, undefined, db);
+          }).catch(e => console.error("Project completion XP trigger failed:", e));
+        }
         return { success: true, data: payload };
       }
     } else {
@@ -127,6 +138,17 @@ export async function saveStudentProject(
       const fullPayload = { ...payload, id: newId, created_at: new Date().toISOString() };
       result = await executeWrite("student_projects", "insert", fullPayload, undefined, db);
       if (result.success) {
+        // Check if project is completed (all checklist items are true)
+        const checklist = project.readiness_checklist || {};
+        const keys = Object.keys(checklist);
+        const isCompleted = keys.length > 0 && keys.every(k => checklist[k] === true);
+        if (isCompleted) {
+          import("./missions").then(async ({ awardActivityXP }) => {
+            await awardActivityXP(userId, "project_completed", db);
+            const { calculatePRIScore } = await import("./placement-readiness");
+            await calculatePRIScore(userId, undefined, db);
+          }).catch(e => console.error("Project completion XP trigger failed:", e));
+        }
         return { success: true, data: fullPayload };
       }
     }

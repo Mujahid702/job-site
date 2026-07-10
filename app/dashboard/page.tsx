@@ -41,7 +41,8 @@ import {
   Trophy,
   BookOpen,
   Send,
-  Plus
+  Plus,
+  Clock
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -84,6 +85,8 @@ interface AdminRequestItem {
   status: string;
 }
 
+const LEVEL_THRESHOLDS = [0, 100, 250, 500, 1000, 2000, 3500, 5500, 8000, 12000, 17000, 25000, 35000, 50000, 75000];
+
 function formatGreetingName(name: string | null | undefined): string {
   if (!name || !name.trim()) return "";
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -97,6 +100,19 @@ export default function DashboardPage() {
   const supabase = createClient();
 
   const [mounted, setMounted] = useState(false);
+
+  const getXpProgress = () => {
+    const currentThreshold = LEVEL_THRESHOLDS[currentLevel - 1] || 0;
+    const nextThreshold = LEVEL_THRESHOLDS[currentLevel] || 75000;
+    const range = nextThreshold - currentThreshold;
+    const progress = totalXp - currentThreshold;
+    return Math.min(Math.max((progress / range) * 100, 0), 100);
+  };
+  
+  const getXpToNextLevel = () => {
+    const nextThreshold = LEVEL_THRESHOLDS[currentLevel] || 75000;
+    return Math.max(nextThreshold - totalXp, 0);
+  };
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -112,7 +128,7 @@ export default function DashboardPage() {
   const [techStack, setTechStack] = useState<string>("React, Node.js, TypeScript");
   
   // Streak counter (Simulated & Persisted)
-  const [streakCount, setStreakCount] = useState<number>(3);
+  const [streakCount, setStreakCount] = useState<number>(0);
   const [streakClaimed, setStreakClaimed] = useState<boolean>(false);
 
   // Resume Analyzer States
@@ -121,10 +137,18 @@ export default function DashboardPage() {
 
   // Command Center statistics states
   const [profileName, setProfileName] = useState<string>("");
-  const [totalXp, setTotalXp] = useState<number>(885);
-  const [currentLevel, setCurrentLevel] = useState<number>(4);
-  const [completedMissions, setCompletedMissions] = useState<number>(6);
-  const [totalBadges, setTotalBadges] = useState<number>(4);
+  const [totalXp, setTotalXp] = useState<number>(0);
+  const [currentLevel, setCurrentLevel] = useState<number>(1);
+  const [completedMissions, setCompletedMissions] = useState<number>(0);
+  const [totalBadges, setTotalBadges] = useState<number>(0);
+
+  // Onboarding wizard popup states
+  const [showWelcomeModal, setShowWelcomeModal] = useState<boolean>(false);
+  const [onboardingCompleted, setOnboardingCompleted] = useState<boolean>(true);
+  const [priRecord, setPriRecord] = useState<any>(null);
+  const [weeklyConsistency, setWeeklyConsistency] = useState<number>(0);
+  const [monthlyConsistency, setMonthlyConsistency] = useState<number>(0);
+  const [recentBadges, setRecentBadges] = useState<string[]>([]);
 
   // Load client-only preferences on mount to prevent SSR hydration mismatches
   useEffect(() => {
@@ -227,45 +251,55 @@ export default function DashboardPage() {
           .select("*")
           .eq("user_id", user.id)
           .maybeSingle();
-        if (!profile || !profile.onboarding_completed) {
-          router.push("/onboarding");
-        } else {
+
+        const isCompleted = !!(profile && profile.onboarding_completed);
+        setOnboardingCompleted(isCompleted);
+
+        if (!isCompleted) {
+          const onboardingSkipped = localStorage.getItem(`onboarding_skipped_${user.id}`) === "true";
+          if (!onboardingSkipped) {
+            setShowWelcomeModal(true);
+          }
+        }
+
+        if (profile) {
           if (profile.full_name) setProfileName(profile.full_name);
           if (profile.target_role) setTargetRole(profile.target_role);
           if (profile.skills) setTechStack(profile.skills.join(", "));
-          
-          // Fetch gamified stats
-          try {
-            const { data: xpData } = await supabase
-              .from("user_xp")
-              .select("total_xp, current_level, streak_days")
-              .eq("user_id", user.id)
-              .maybeSingle();
-            if (xpData) {
-              setTotalXp(xpData.total_xp || 885);
-              setCurrentLevel(xpData.current_level || 4);
-              if (xpData.streak_days) setStreakCount(xpData.streak_days);
-            }
-
-            // Get completed missions count
-            const { count: mCount } = await supabase
-              .from("user_missions")
-              .select("id", { count: "exact", head: true })
-              .eq("user_id", user.id)
-              .eq("completed", true);
-            if (mCount !== null) {
-              setCompletedMissions(mCount);
-            }
-
-            // Get badges count
-            if (profile.badges) {
-              setTotalBadges(profile.badges.length);
-            }
-          } catch (e) {
-            console.error("Error fetching stats: ", e);
+          if (profile.badges) {
+            setTotalBadges(profile.badges.length);
+            setRecentBadges(profile.badges.slice(-3));
           }
-          
-          // Load onboarding action tasks
+        }
+
+        // Fetch gamified stats
+        try {
+          const { data: xpData } = await supabase
+            .from("user_xp")
+            .select("total_xp, current_level, streak_days")
+            .eq("user_id", user.id)
+            .maybeSingle();
+          if (xpData) {
+            setTotalXp(xpData.total_xp || 0);
+            setCurrentLevel(xpData.current_level || 1);
+            setStreakCount(xpData.streak_days || 0);
+          }
+
+          // Get completed missions count
+          const { count: mCount } = await supabase
+            .from("user_missions")
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", user.id)
+            .eq("completed", true);
+          if (mCount !== null) {
+            setCompletedMissions(mCount);
+          }
+        } catch (e) {
+          console.error("Error fetching stats: ", e);
+        }
+        
+        // Load onboarding action tasks
+        if (profile) {
           const raw = profile.raw_profile_data || {};
           if (raw.actionPlanTasks && Array.isArray(raw.actionPlanTasks)) {
             setOnboardingTasks(raw.actionPlanTasks);
@@ -346,20 +380,31 @@ export default function DashboardPage() {
     return Math.min(score, 100);
   })();
 
-  const [liveReadinessScore, setLiveReadinessScore] = useState<number>(60);
+  const [liveReadinessScore, setLiveReadinessScore] = useState<number>(0);
   
   useEffect(() => {
     if (!isFeatureVisible("placement-readiness", user)) return;
     if (user) {
       import("@/lib/db/placement-readiness").then(({ getPlacementReadiness }) => {
         getPlacementReadiness(user.id).then(res => {
-          if (res) setLiveReadinessScore(res.pri_score);
+          if (res) {
+            setLiveReadinessScore(res.pri_score);
+            setPriRecord(res);
+          }
+        });
+      });
+      import("@/lib/db/missions").then(({ calculateConsistencyPercentages }) => {
+        calculateConsistencyPercentages(user.id).then(res => {
+          if (res) {
+            setWeeklyConsistency(res.weekly);
+            setMonthlyConsistency(res.monthly);
+          }
         });
       });
     } else {
       const stored = localStorage.getItem("placement_readiness_score");
       if (stored) {
-        setLiveReadinessScore(parseInt(stored, 10) || 60);
+        setLiveReadinessScore(parseInt(stored, 10) || 0);
       }
     }
   }, [user]);
@@ -584,421 +629,460 @@ export default function DashboardPage() {
               exit={{ opacity: 0, y: -15 }}
               className="space-y-8"
             >
-              {/* SECTION 1: HERO SECTION (Career Command Center HUD - Dark Slate Theme) */}
-              <div className="bg-slate-900 p-8 md:p-10 rounded-[2.5rem] text-white space-y-6 shadow-xl relative overflow-hidden border border-slate-800">
-                {/* Soft top-right blur circle and left glow */}
-                <div className="absolute top-0 right-0 w-80 h-80 bg-indigo-500/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none"></div>
-                <div className="absolute top-1/2 left-10 w-72 h-72 bg-purple-505/5 rounded-full blur-3xl pointer-events-none"></div>
-                
-                <div className="flex justify-between items-start flex-wrap gap-4 relative z-10">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="h-2 w-2 rounded-full bg-indigo-500 animate-ping"></span>
-                      <h2 className="text-[10px] font-black uppercase tracking-widest text-indigo-400 font-mono">CAREER OS // COMMAND DECK</h2>
+              {!onboardingCompleted ? (
+                <div className="space-y-8 animate-fade-in">
+                  {/* Premium Welcoming Hero Banner */}
+                  <div className="bg-slate-900 p-8 md:p-10 rounded-[2.5rem] text-white space-y-6 shadow-xl relative overflow-hidden border border-slate-800 text-center">
+                    <div className="absolute top-0 right-0 w-80 h-80 bg-indigo-500/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none"></div>
+                    <div className="w-16 h-16 bg-white/5 border border-white/10 rounded-[2rem] flex items-center justify-center mx-auto shadow-md">
+                      <Sparkles className="w-8 h-8 text-indigo-400" />
                     </div>
-                    <h1 className="text-3xl md:text-5xl font-black tracking-tight mt-2 bg-gradient-to-r from-white via-slate-100 to-slate-200 bg-clip-text text-transparent font-display">
-                      {profileName ? `Welcome Back, ${formatGreetingName(profileName)}! 👋` : "Welcome Back! 👋"}
-                    </h1>
+                    <div className="space-y-3 max-w-md mx-auto">
+                      <h1 className="text-3xl font-black tracking-tight leading-tight">Your placement journey starts here</h1>
+                      <p className="text-slate-400 text-xs font-semibold leading-relaxed">
+                        Complete your profile setup assistant to baseline your Placement Readiness Index (PRI), generate custom roadmaps, and track mock interview metrics.
+                      </p>
+                    </div>
+                    <div className="pt-2">
+                      <button
+                        onClick={() => router.push("/onboarding")}
+                        className="px-8 py-4 bg-indigo-650 hover:bg-indigo-750 text-white font-black text-xs uppercase tracking-widest rounded-2xl transition-all shadow-lg hover:scale-105"
+                      >
+                        Start Profile Setup
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={handleClaimStreak}
-                      disabled={streakClaimed}
-                      className={cn(
-                        "px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all duration-300 font-mono",
-                        streakClaimed
-                          ? "bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed"
-                          : "bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 hover:from-amber-600 hover:to-yellow-600 shadow-md shadow-amber-250 cursor-pointer hover:scale-105 active:scale-95"
-                      )}
-                    >
-                      {streakClaimed ? "Streak Claimed ✓" : "Claim Streak"}
-                    </button>
+
+                  {/* Empty state analytics prompt */}
+                  <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm text-center py-16 space-y-4">
+                    <div className="w-14 h-14 bg-slate-50 text-slate-455 border border-slate-200 rounded-full flex items-center justify-center mx-auto">
+                      <Compass className="w-6 h-6 animate-pulse" />
+                    </div>
+                    <div className="space-y-2">
+                      <h3 className="text-lg font-black text-slate-900 font-display font-black text-indigo-650">Placement Readiness Index</h3>
+                      <p className="text-slate-500 font-semibold text-xs max-w-sm mx-auto leading-relaxed">
+                        Start completing tasks to calculate your Placement Readiness Index (PRI) and unlock milestone badges.
+                      </p>
+                    </div>
                   </div>
                 </div>
-
-                {/* Level Up progress indicators */}
-                <div className="relative z-10 bg-white/5 border border-white/10 p-5 rounded-3xl space-y-3 backdrop-blur-md">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="font-mono text-slate-400 font-bold tracking-wider">LEVEL PROGRESSION</span>
-                    <span className="font-mono text-indigo-400 font-black">Lvl {currentLevel} &rarr; Lvl {currentLevel + 1}</span>
-                  </div>
-                  <div className="w-full bg-slate-950 h-3.5 rounded-full overflow-hidden border border-white/10 p-[2px]">
-                    <div 
-                      className="h-full rounded-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 shadow-[0_0_8px_rgba(139,92,246,0.5)] transition-all duration-1000"
-                      style={{ width: `${Math.min((totalXp % 1000) / 10, 100)}%` }}
-                    ></div>
-                  </div>
-                  <div className="flex justify-between items-center text-[10px] text-slate-400 font-semibold font-mono">
-                    <span>{totalXp % 1000} / 1000 XP</span>
-                    <span className="text-indigo-400">{1000 - (totalXp % 1000)} XP to Next Level</span>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-6 pt-6 border-t border-white/10 relative z-10 font-mono">
-                  <div className="space-y-1">
-                    <span className="text-[9px] font-black uppercase text-slate-450 tracking-wider">Target Role</span>
-                    <strong className="text-sm font-black text-slate-200 block truncate">{targetRole}</strong>
-                  </div>
-                  <div className="space-y-1">
-                    <span className="text-[9px] font-black uppercase text-slate-455 tracking-wider">Placement Rank</span>
-                    <strong className="text-sm font-black text-slate-200 block">
-                      {liveReadinessScore < 25 ? "Beginner" : liveReadinessScore < 45 ? "Apprentice" : liveReadinessScore < 60 ? "Architect" : liveReadinessScore < 75 ? "Expert" : "Ready"}
-                    </strong>
-                  </div>
-                  <div className="space-y-1">
-                    <span className="text-[9px] font-black uppercase text-slate-455 tracking-wider">Readiness Index</span>
-                    <strong className="text-sm font-black text-emerald-400 block">{liveReadinessScore}% PRI</strong>
-                  </div>
-                  <div className="space-y-1">
-                    <span className="text-[9px] font-black uppercase text-slate-455 tracking-wider">Total XP</span>
-                    <strong className="text-sm font-black text-slate-200 block">{totalXp} XP</strong>
-                  </div>
-                  <div className="space-y-1 col-span-2 md:col-span-1">
-                    <span className="text-[9px] font-black uppercase text-slate-455 tracking-wider">Streak Count</span>
-                    <strong className="text-sm font-black text-amber-500 block">🔥 {streakCount} Days</strong>
-                  </div>
-                </div>
-
-                {/* Dynamic motivational quote banner */}
-                <div className="p-4 bg-white/5 border border-white/10 rounded-2xl text-xs font-bold text-slate-350 relative z-10 flex items-center gap-3 backdrop-blur-md">
-                  <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
-                  <span className="leading-relaxed">
-                    {(() => {
-                      const motivationalMessages = [
-                        `You are scoring higher than 82% of other candidates targeting ${targetRole} positions.`,
-                        "Complete the daily DSA drill to boost your readiness metrics and unlock badge milestones.",
-                        "Maintain your streak consistency rate to multiply mission rewards and level bonuses."
-                      ];
-                      return motivationalMessages[liveReadinessScore % motivationalMessages.length];
-                    })()}
-                  </span>
-                </div>
-              </div>
-
-              {/* Main Command Center Grid */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-                
-                {/* LEFT COLUMN: Actions & Journey */}
-                <div className="lg:col-span-8 space-y-8">
-                  
-                  {/* SECTION 2: TODAY'S FOCUS (Curated Interactive Cards) */}
-                  <div className="bg-white p-6 md:p-8 rounded-[2.5rem] border border-slate-200 shadow-sm space-y-6">
-                    <div className="space-y-1">
-                      <h3 className="text-lg font-black text-slate-900 font-display">🎯 Today's Placement Focus</h3>
-                      <p className="text-slate-405 text-xs font-bold font-semibold">Perform high-priority sprints to gain points and build momentum.</p>
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-4">
-                      {/* Item 1: ATS */}
-                      <div className="group p-5 bg-gradient-to-br from-slate-50 to-slate-100/50 hover:from-white hover:to-white rounded-3xl border border-slate-200/60 hover:border-indigo-350 hover:shadow-md transition-all duration-300 flex items-center justify-between flex-wrap gap-4">
-                        <div className="flex items-center gap-4">
-                          <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-650 flex items-center justify-center text-lg font-black">
-                            📝
-                          </div>
-                          <div>
-                            <strong className="text-xs font-black text-slate-800 block group-hover:text-indigo-650 transition-colors">Improve ATS Score</strong>
-                            <span className="text-[10px] text-indigo-500 font-bold block mt-0.5 font-mono">Potential PRI Gain: +5 PRI</span>
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => handleTabTransition("resume-os")}
-                          className="px-4 py-2.5 bg-slate-900 hover:bg-indigo-650 text-white text-[9px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer shadow-sm hover:scale-105 active:scale-95 font-mono"
-                        >
-                          Run ATS Scan
-                        </button>
-                      </div>
-
-                      {/* Item 2: DSA */}
-                      <div className="group p-5 bg-gradient-to-br from-slate-50 to-slate-100/50 hover:from-white hover:to-white rounded-3xl border border-slate-200/60 hover:border-amber-350 hover:shadow-md transition-all duration-300 flex items-center justify-between flex-wrap gap-4">
-                        <div className="flex items-center gap-4">
-                          <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center text-lg font-black">
-                            💻
-                          </div>
-                          <div>
-                            <strong className="text-xs font-black text-slate-800 block group-hover:text-amber-600 transition-colors">Complete 1 DSA Challenge</strong>
-                            <span className="text-[10px] text-amber-600 font-bold block mt-0.5 font-mono">Potential XP Gain: +15 XP</span>
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => handleTabTransition("assessment-os")}
-                          className="px-4 py-2.5 bg-slate-900 hover:bg-amber-650 text-white text-[9px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer shadow-sm hover:scale-105 active:scale-95 font-mono"
-                        >
-                          Practice
-                        </button>
-                      </div>
-
-                      {/* Item 3: Jobs */}
-                      <div className="group p-5 bg-gradient-to-br from-slate-50 to-slate-100/50 hover:from-white hover:to-white rounded-3xl border border-slate-200/60 hover:border-emerald-350 hover:shadow-md transition-all duration-300 flex items-center justify-between flex-wrap gap-4">
-                        <div className="flex items-center gap-4">
-                          <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-lg font-black">
-                            💼
-                          </div>
-                          <div>
-                            <strong className="text-xs font-black text-slate-800 block group-hover:text-emerald-600 transition-colors">Apply to 2 Relevant Jobs</strong>
-                            <span className="text-[10px] text-emerald-600 font-bold block mt-0.5 font-mono">Potential XP Gain: +20 XP</span>
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => handleTabTransition("recommended")}
-                          className="px-4 py-2.5 bg-slate-900 hover:bg-emerald-650 text-white text-[9px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer shadow-sm hover:scale-105 active:scale-95 font-mono"
-                        >
-                          Apply Now
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* SECTION 4: CAREER JOURNEY (Connected Timeline Map) */}
-                  <div className="bg-white p-6 md:p-8 rounded-[2.5rem] border border-slate-200 shadow-sm space-y-6">
-                    <div className="space-y-1">
-                      <h3 className="text-lg font-black text-slate-900 font-display">🗺️ Career Journey Timeline</h3>
-                      <p className="text-slate-400 text-xs font-bold font-semibold">Your dynamic pipeline status. Highlight active stage and map connectors.</p>
-                    </div>
-
-                    <div className="relative mt-4">
-                      {/* Connected timeline progress pipe line background */}
-                      <div className="absolute top-1/2 left-0 right-0 h-1 bg-slate-100 -translate-y-1/2 z-0 hidden md:block" />
-
-                      <div className="grid grid-cols-1 md:grid-cols-8 gap-6 md:gap-4 relative z-10">
-                        {(() => {
-                          const journeyStages = [
-                            { name: "Beginner", score: 0 },
-                            { name: "Resume Ready", score: 15 },
-                            { name: "Portfolio Ready", score: 30 },
-                            { name: "Project Ready", score: 45 },
-                            { name: "Interview Ready", score: 60 },
-                            { name: "Recruiter Ready", score: 75 },
-                            { name: "Offer Ready", score: 90 },
-                            { name: "Placed", score: 100 }
-                          ];
-                          const activeStageIndex = Math.min(Math.floor(liveReadinessScore / 13), journeyStages.length - 1);
-
-                          return journeyStages.map((stage, i) => {
-                            const isCompleted = i < activeStageIndex;
-                            const isActive = i === activeStageIndex;
-                            return (
-                              <div
-                                key={stage.name}
-                                className="flex md:flex-col items-center gap-4 md:gap-0 text-left md:text-center group"
-                              >
-                                <div
-                                  className={cn(
-                                    "w-9 h-9 rounded-full flex items-center justify-center border-2 transition-all duration-500 md:mb-3 hover:scale-110",
-                                    isActive
-                                      ? "bg-indigo-650 border-indigo-700 text-white shadow-lg shadow-indigo-600/30 ring-4 ring-indigo-50 animate-pulse"
-                                      : isCompleted
-                                      ? "bg-emerald-500 border-emerald-600 text-white"
-                                      : "bg-white border-slate-200 text-slate-350"
-                                  )}
-                                >
-                                  {isCompleted ? (
-                                    <span className="text-xs font-black">✓</span>
-                                  ) : (
-                                    <span className="text-[10px] font-mono font-black">{i + 1}</span>
-                                  )}
-                                </div>
-                                <div className="flex flex-col md:items-center">
-                                  <span className={cn(
-                                    "text-[9px] font-black uppercase tracking-wide",
-                                    isActive
-                                      ? "text-indigo-655 font-black"
-                                      : isCompleted
-                                      ? "text-emerald-600 font-black"
-                                      : "text-slate-400 font-bold"
-                                  )}>
-                                    {stage.name}
-                                  </span>
-                                  <span className="text-[8px] font-mono text-slate-450 uppercase tracking-widest mt-0.5">
-                                    {stage.score}% PRI
-                                  </span>
-                                </div>
-                              </div>
-                            );
-                          });
-                        })()}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* SECTION 7: QUICK ACTION BAR (Floating Dock) */}
-                  <div className="bg-white p-6 md:p-8 rounded-[2.5rem] border border-slate-200 shadow-sm space-y-4">
-                    <strong className="text-xs font-black text-slate-455 uppercase tracking-widest block font-mono">WORKSPACE COMMAND SHORTCUTS</strong>
-                    <div className="flex flex-wrap gap-2.5">
-                      {[
-                        { label: "Run ATS Scan", action: "resume-os", icon: <FileCheck className="w-3.5 h-3.5" /> },
-                        { label: "Open CRM Pipeline", action: "placement-tracker", icon: <Layers className="w-3.5 h-3.5" /> },
-                        { label: "Launch Mock Interview", action: "interview-prep", icon: <MessageSquare className="w-3.5 h-3.5" /> },
-                        { label: "Open Project Advisor", action: "projects-os", icon: <Sparkles className="w-3.5 h-3.5" /> },
-                        { label: "Interactive Roadmap", action: "roadmap", icon: <Compass className="w-3.5 h-3.5" /> },
-                        { label: "Community Hub", action: "community", icon: <Users className="w-3.5 h-3.5" /> },
-                        { label: "Book 1-on-1 Mentor", action: "mentorship-os", icon: <CalendarIcon className="w-3.5 h-3.5" /> }
-                      ].filter(btn => isFeatureVisible(btn.action, user)).map(btn => (
-                        <button
-                          key={btn.label}
-                          onClick={() => handleTabTransition(btn.action)}
-                          className="flex items-center gap-2 px-4.5 py-2.5 bg-slate-900 hover:bg-indigo-650 text-white text-[10px] font-black uppercase tracking-wider rounded-xl transition-all duration-200 cursor-pointer shadow-sm hover:-translate-y-0.5 active:translate-y-0"
-                        >
-                          {btn.icon}
-                          <span>{btn.label}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                </div>
-
-                {/* RIGHT COLUMN: Snapshots & Achievements Vault */}
-                <div className="lg:col-span-4 space-y-8">
-                  
-                  {/* SECTION 3: PROGRESS SNAPSHOT (Graphical Double Track SVG Meters) */}
-                  <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm space-y-6">
-                    <h3 className="text-xs font-black text-slate-455 uppercase tracking-widest leading-none font-mono">Progress Snapshot</h3>
+              ) : (
+                <>
+                  {/* SECTION 1: HERO SECTION (Career Command Center HUD - Dark Slate Theme) */}
+                  <div className="bg-slate-900 p-8 md:p-10 rounded-[2.5rem] text-white space-y-6 shadow-xl relative overflow-hidden border border-slate-800">
+                    {/* Soft top-right blur circle and left glow */}
+                    <div className="absolute top-0 right-0 w-80 h-80 bg-indigo-500/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none"></div>
+                    <div className="absolute top-1/2 left-10 w-72 h-72 bg-purple-505/5 rounded-full blur-3xl pointer-events-none"></div>
                     
-                    <div className="space-y-4">
-                      {[
-                        { label: "Resume Readiness", score: 80, color: "from-indigo-500 to-indigo-600", feature: "resume-os" },
-                        { label: "Project Readiness", score: 60, color: "from-blue-500 to-blue-600", feature: "projects-os" },
-                        { label: "Interview Readiness", score: 40, color: "from-amber-500 to-amber-600", feature: "interview-prep" },
-                        { label: "Application Readiness", score: 20, color: "from-rose-500 to-rose-600", feature: "placement-tracker" },
-                        { label: "Networking Readiness", score: 30, color: "from-emerald-500 to-emerald-600", feature: "linkedin-os" }
-                      ].filter(bar => isFeatureVisible(bar.feature, user)).map(bar => (
-                        <div key={bar.label} className="space-y-1.5">
-                          <div className="flex justify-between text-[10px] font-black text-slate-700">
-                            <span>{bar.label}</span>
-                            <span className="font-mono text-slate-455">{bar.score}%</span>
-                          </div>
-                          {/* Premium rounded gradient track */}
-                          <div className="relative w-full h-3 bg-slate-100 rounded-full overflow-hidden p-[2px] border border-slate-200/50">
-                            <div 
-                              className={cn("h-full rounded-full bg-gradient-to-r transition-all duration-1000", bar.color)} 
-                              style={{ width: `${bar.score}%` }} 
-                            />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* SECTION 5: STREAKS & ACHIEVEMENTS (Glassmorphic Vault) */}
-                  <div className="bg-white/90 backdrop-blur-md p-6 rounded-[2rem] border border-slate-200 shadow-sm space-y-6">
-                    <h3 className="text-xs font-black text-slate-455 uppercase tracking-widest leading-none font-mono">Career Achievement Vault</h3>
-                    
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="bg-slate-50/70 border border-slate-100 p-3 rounded-2xl hover:border-indigo-150 transition-all hover:-translate-y-0.5 group">
-                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider block font-mono">Streak</span>
-                        <strong className="text-sm font-black text-slate-800 group-hover:text-indigo-650 transition-colors">🔥 {streakCount} Days</strong>
-                      </div>
-                      <div className="bg-slate-50/70 border border-slate-100 p-3 rounded-2xl hover:border-indigo-150 transition-all hover:-translate-y-0.5 group">
-                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider block font-mono">Missions</span>
-                        <strong className="text-sm font-black text-slate-800 group-hover:text-indigo-650 transition-colors">🏆 {completedMissions} Done</strong>
-                      </div>
-                      <div className="bg-slate-50/70 border border-slate-100 p-3 rounded-2xl hover:border-indigo-150 transition-all hover:-translate-y-0.5 group">
-                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider block font-mono">Badges</span>
-                        <strong className="text-sm font-black text-slate-800 group-hover:text-indigo-650 transition-colors">🎖 {totalBadges} Earned</strong>
-                      </div>
-                      <div className="bg-slate-50/70 border border-slate-100 p-3 rounded-2xl hover:border-indigo-150 transition-all hover:-translate-y-0.5 group">
-                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider block font-mono">XP Multiplier</span>
-                        <strong className="text-sm font-black text-slate-800 group-hover:text-indigo-650 transition-colors">⚡ {(1.0 + (streakCount * 0.1)).toFixed(1)}x</strong>
-                      </div>
-                    </div>
-
-                    <div className="space-y-3 pt-4 border-t border-slate-100">
-                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block font-mono">Recent Milestone Badges</span>
-                      <ul className="space-y-2 text-xs font-semibold text-slate-655">
-                        <li className="flex items-center gap-2 group hover:translate-x-0.5 transition-all">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                          <span className="group-hover:text-slate-900">ATS Optimizer Verified</span>
-                        </li>
-                        {isFeatureVisible("portfolio-os", user) && (
-                          <li className="flex items-center gap-2 group hover:translate-x-0.5 transition-all">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                            <span className="group-hover:text-slate-900">Portfolio Live URL Generated</span>
-                          </li>
-                        )}
-                        {isFeatureVisible("interview-prep", user) && (
-                          <li className="flex items-center gap-2 group hover:translate-x-0.5 transition-all">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                            <span className="group-hover:text-slate-900">First Interview Prep Session Scheduled</span>
-                          </li>
-                        )}
-                      </ul>
-                    </div>
-                  </div>
-
-                  {/* SECTION 6: PLACEMENT MOMENTUM (LEDs & Sparklines) */}
-                  <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm space-y-6">
-                    <h3 className="text-xs font-black text-slate-455 uppercase tracking-widest leading-none font-mono">Placement Momentum</h3>
-                    
-                    <div className="space-y-4">
+                    <div className="flex justify-between items-start flex-wrap gap-4 relative z-10">
                       <div>
-                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-2 font-mono">7-DAY ACTIVITY MATRIX</span>
-                        <div className="flex justify-between items-center gap-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className="h-2 w-2 rounded-full bg-indigo-500 animate-ping"></span>
+                          <h2 className="text-[10px] font-black uppercase tracking-widest text-indigo-400 font-mono">CAREER OS // COMMAND DECK</h2>
+                        </div>
+                        <h1 className="text-3xl md:text-5xl font-black tracking-tight mt-2 bg-gradient-to-r from-white via-slate-100 to-slate-200 bg-clip-text text-transparent font-display">
+                          {profileName ? `Welcome Back, ${formatGreetingName(profileName)}! 👋` : "Welcome Back! 👋"}
+                        </h1>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={handleClaimStreak}
+                          disabled={streakClaimed}
+                          className={cn(
+                            "px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all duration-300 font-mono",
+                            streakClaimed
+                              ? "bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed"
+                              : "bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 hover:from-amber-600 hover:to-yellow-600 shadow-md shadow-amber-250 cursor-pointer hover:scale-105 active:scale-95"
+                          )}
+                        >
+                          {streakClaimed ? "Streak Claimed ✓" : "Claim Streak"}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Level Up progress indicators */}
+                    <div className="relative z-10 bg-white/5 border border-white/10 p-5 rounded-3xl space-y-3 backdrop-blur-md">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="font-mono text-slate-400 font-bold tracking-wider">LEVEL PROGRESSION</span>
+                        <span className="font-mono text-indigo-400 font-black">Lvl {currentLevel} &rarr; Lvl {currentLevel + 1}</span>
+                      </div>
+                      <div className="w-full bg-slate-950 h-3.5 rounded-full overflow-hidden border border-white/10 p-[2px]">
+                        <div 
+                          className="h-full rounded-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 shadow-[0_0_8px_rgba(139,92,246,0.5)] transition-all duration-1000"
+                          style={{ width: `${getXpProgress()}%` }}
+                        ></div>
+                      </div>
+                      <div className="flex justify-between items-center text-[10px] text-slate-400 font-semibold font-mono">
+                        <span>{totalXp} XP</span>
+                        <span className="text-indigo-400">{getXpToNextLevel()} XP to Next Level</span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-6 pt-6 border-t border-white/10 relative z-10 font-mono">
+                      <div className="space-y-1">
+                        <span className="text-[9px] font-black uppercase text-slate-455 tracking-wider">Target Role</span>
+                        <strong className="text-sm font-black text-slate-200 block truncate">{targetRole}</strong>
+                      </div>
+                      <div className="space-y-1">
+                        <span className="text-[9px] font-black uppercase text-slate-455 tracking-wider">Placement Rank</span>
+                        <strong className="text-sm font-black text-slate-200 block">
+                          {totalXp >= 4500 ? "Placement Expert" :
+                           totalXp >= 3000 ? "Placement Pro" :
+                           totalXp >= 2000 ? "Interview Ready" :
+                           totalXp >= 1400 ? "Advanced Builder" :
+                           totalXp >= 900 ? "Builder" :
+                           totalXp >= 500 ? "Practitioner" :
+                           totalXp >= 250 ? "Learner" :
+                           totalXp >= 100 ? "Explorer" : "Beginner"}
+                        </strong>
+                      </div>
+                      <div className="space-y-1">
+                        <span className="text-[9px] font-black uppercase text-slate-455 tracking-wider">Readiness Index</span>
+                        <strong className="text-sm font-black text-emerald-400 block">{liveReadinessScore}% PRI</strong>
+                      </div>
+                      <div className="space-y-1">
+                        <span className="text-[9px] font-black uppercase text-slate-455 tracking-wider">Total XP</span>
+                        <strong className="text-sm font-black text-slate-200 block">{totalXp} XP</strong>
+                      </div>
+                      <div className="space-y-1 col-span-2 md:col-span-1">
+                        <span className="text-[9px] font-black uppercase text-slate-455 tracking-wider">Streak Count</span>
+                        <strong className="text-sm font-black text-amber-500 block">🔥 {streakCount} Days</strong>
+                      </div>
+                    </div>
+
+                    {/* Dynamic motivational quote banner */}
+                    <div className="p-4 bg-white/5 border border-white/10 rounded-2xl text-xs font-bold text-slate-350 relative z-10 flex items-center gap-3 backdrop-blur-md">
+                      <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+                      <span className="leading-relaxed">
+                        {(() => {
+                          const motivationalMessages = [
+                            `You are scoring higher than 82% of other candidates targeting ${targetRole} positions.`,
+                            "Complete the daily DSA drill to boost your readiness metrics and unlock badge milestones.",
+                            "Maintain your streak consistency rate to multiply mission rewards and level bonuses."
+                          ];
+                          return motivationalMessages[liveReadinessScore % motivationalMessages.length];
+                        })()}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Main Command Center Grid */}
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                    
+                    {/* LEFT COLUMN: Actions & Journey */}
+                    <div className="lg:col-span-8 space-y-8">
+                      
+                      {/* SECTION 2: TODAY'S FOCUS (Curated Interactive Cards) */}
+                      <div className="bg-white p-6 md:p-8 rounded-[2.5rem] border border-slate-200 shadow-sm space-y-6">
+                        <div className="space-y-1">
+                          <h3 className="text-lg font-black text-slate-900 font-display">🎯 Today's Placement Focus</h3>
+                          <p className="text-slate-405 text-xs font-bold font-semibold">Perform high-priority sprints to gain points and build momentum.</p>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-4">
+                          {/* Item 1: ATS */}
+                          <div className="group p-5 bg-gradient-to-br from-slate-50 to-slate-100/50 hover:from-white hover:to-white rounded-3xl border border-slate-200/60 hover:border-indigo-350 hover:shadow-md transition-all duration-300 flex items-center justify-between flex-wrap gap-4">
+                            <div className="flex items-center gap-4">
+                              <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-655 flex items-center justify-center text-lg font-black">
+                                📝
+                              </div>
+                              <div>
+                                <strong className="text-xs font-black text-slate-800 block group-hover:text-indigo-650 transition-colors">Improve ATS Score</strong>
+                                <span className="text-[10px] text-indigo-500 font-bold block mt-0.5 font-mono">Potential PRI Gain: +10 PRI</span>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => handleTabTransition("resume-os")}
+                              className="px-4 py-2.5 bg-slate-900 hover:bg-indigo-650 text-white text-[9px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer shadow-sm hover:scale-105 active:scale-95 font-mono"
+                            >
+                              Run ATS Scan
+                            </button>
+                          </div>
+
+                          {/* Item 2: DSA */}
+                          <div className="group p-5 bg-gradient-to-br from-slate-50 to-slate-100/50 hover:from-white hover:to-white rounded-3xl border border-slate-200/60 hover:border-amber-350 hover:shadow-md transition-all duration-300 flex items-center justify-between flex-wrap gap-4">
+                            <div className="flex items-center gap-4">
+                              <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center text-lg font-black">
+                                💻
+                              </div>
+                              <div>
+                                <strong className="text-xs font-black text-slate-800 block group-hover:text-amber-600 transition-colors">Complete 1 DSA Challenge</strong>
+                                <span className="text-[10px] text-amber-600 font-bold block mt-0.5 font-mono">Potential XP Gain: +20 XP</span>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => handleTabTransition("assessment-os")}
+                              className="px-4 py-2.5 bg-slate-900 hover:bg-amber-650 text-white text-[9px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer shadow-sm hover:scale-105 active:scale-95 font-mono"
+                            >
+                              Practice
+                            </button>
+                          </div>
+
+                          {/* Item 3: Jobs */}
+                          <div className="group p-5 bg-gradient-to-br from-slate-50 to-slate-100/50 hover:from-white hover:to-white rounded-3xl border border-slate-200/60 hover:border-emerald-350 hover:shadow-md transition-all duration-300 flex items-center justify-between flex-wrap gap-4">
+                            <div className="flex items-center gap-4">
+                              <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-lg font-black">
+                                💼
+                              </div>
+                              <div>
+                                <strong className="text-xs font-black text-slate-800 block group-hover:text-emerald-600 transition-colors">Apply to 2 Relevant Jobs</strong>
+                                <span className="text-[10px] text-emerald-600 font-bold block mt-0.5 font-mono">Potential XP Gain: +10 XP</span>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => handleTabTransition("recommended")}
+                              className="px-4 py-2.5 bg-slate-900 hover:bg-emerald-650 text-white text-[9px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer shadow-sm hover:scale-105 active:scale-95 font-mono"
+                            >
+                              Apply Now
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* SECTION 4: CAREER JOURNEY (Connected Timeline Map) */}
+                      <div className="bg-white p-6 md:p-8 rounded-[2.5rem] border border-slate-200 shadow-sm space-y-6">
+                        <div className="space-y-1">
+                          <h3 className="text-lg font-black text-slate-900 font-display">🗺️ Career Journey Timeline</h3>
+                          <p className="text-slate-400 text-xs font-bold font-semibold">Your dynamic pipeline status. Highlight active stage and map connectors.</p>
+                        </div>
+
+                        <div className="relative mt-4">
+                          {/* Connected timeline progress pipe line background */}
+                          <div className="absolute top-1/2 left-0 right-0 h-1 bg-slate-100 -translate-y-1/2 z-0 hidden md:block" />
+
+                          <div className="grid grid-cols-1 md:grid-cols-8 gap-6 md:gap-4 relative z-10">
+                            {(() => {
+                              const journeyStages = [
+                                { name: "Beginner", score: 0 },
+                                { name: "Resume Ready", score: 15 },
+                                { name: "Portfolio Ready", score: 30 },
+                                { name: "Project Ready", score: 45 },
+                                { name: "Interview Ready", score: 60 },
+                                { name: "Recruiter Ready", score: 75 },
+                                { name: "Offer Ready", score: 90 },
+                                { name: "Placed", score: 100 }
+                              ];
+                              const activeStageIndex = Math.min(Math.floor(liveReadinessScore / 13), journeyStages.length - 1);
+
+                              return journeyStages.map((stage, i) => {
+                                const isCompleted = i < activeStageIndex;
+                                const isActive = i === activeStageIndex;
+                                return (
+                                  <div
+                                    key={stage.name}
+                                    className="flex md:flex-col items-center gap-4 md:gap-0 text-left md:text-center group"
+                                  >
+                                    <div
+                                      className={cn(
+                                        "w-9 h-9 rounded-full flex items-center justify-center border-2 transition-all duration-500 md:mb-3 hover:scale-110",
+                                        isActive
+                                          ? "bg-indigo-650 border-indigo-700 text-white shadow-lg shadow-indigo-600/30 ring-4 ring-indigo-50 animate-pulse"
+                                          : isCompleted
+                                          ? "bg-emerald-500 border-emerald-600 text-white"
+                                          : "bg-white border-slate-200 text-slate-350"
+                                      )}
+                                    >
+                                      {isCompleted ? (
+                                        <span className="text-xs font-black">✓</span>
+                                      ) : (
+                                        <span className="text-[10px] font-mono font-black">{i + 1}</span>
+                                      )}
+                                    </div>
+                                    <div className="flex flex-col md:items-center">
+                                      <span className={cn(
+                                        "text-[9px] font-black uppercase tracking-wide",
+                                        isActive
+                                          ? "text-indigo-655 font-black"
+                                          : isCompleted
+                                          ? "text-emerald-600 font-black"
+                                          : "text-slate-400 font-bold"
+                                      )}>
+                                        {stage.name}
+                                      </span>
+                                      <span className="text-[8px] font-mono text-slate-450 uppercase tracking-widest mt-0.5">
+                                        {stage.score}% PRI
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              });
+                            })()}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* SECTION 7: QUICK ACTION BAR (Floating Dock) */}
+                      <div className="bg-white p-6 md:p-8 rounded-[2.5rem] border border-slate-200 shadow-sm space-y-4">
+                        <strong className="text-xs font-black text-slate-455 uppercase tracking-widest block font-mono">WORKSPACE COMMAND SHORTCUTS</strong>
+                        <div className="flex flex-wrap gap-2.5">
                           {[
-                            { day: "M", active: true },
-                            { day: "T", active: true },
-                            { day: "W", active: true },
-                            { day: "T", active: false },
-                            { day: "F", active: true },
-                            { day: "S", active: true },
-                            { day: "S", active: true }
-                          ].map((act, i) => (
-                            <div key={i} className="flex flex-col items-center gap-1 flex-1">
-                              <span className="text-[9px] font-bold text-slate-400 font-mono">{act.day}</span>
-                              <div className={cn(
-                                "w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border transition-all duration-300",
-                                act.active
-                                  ? "bg-emerald-50 border-emerald-200 text-emerald-600 shadow-[0_0_8px_rgba(16,185,129,0.2)]"
-                                  : "bg-red-50/50 border-red-150 text-red-400"
-                              )}>
-                                {act.active ? "✓" : "✗"}
+                            { label: "Run ATS Scan", action: "resume-os", icon: <FileCheck className="w-3.5 h-3.5" /> },
+                            { label: "Open CRM Pipeline", action: "placement-tracker", icon: <Layers className="w-3.5 h-3.5" /> },
+                            { label: "Launch Mock Interview", action: "interview-prep", icon: <MessageSquare className="w-3.5 h-3.5" /> },
+                            { label: "Open Project Advisor", action: "projects-os", icon: <Sparkles className="w-3.5 h-3.5" /> },
+                            { label: "Interactive Roadmap", action: "roadmap", icon: <Compass className="w-3.5 h-3.5" /> },
+                            { label: "Community Hub", action: "community", icon: <Users className="w-3.5 h-3.5" /> },
+                            { label: "Book 1-on-1 Mentor", action: "mentorship-os", icon: <CalendarIcon className="w-3.5 h-3.5" /> }
+                          ].filter(btn => isFeatureVisible(btn.action, user)).map(btn => (
+                            <button
+                              key={btn.label}
+                              onClick={() => handleTabTransition(btn.action)}
+                              className="flex items-center gap-2 px-4.5 py-2.5 bg-slate-900 hover:bg-indigo-650 text-white text-[10px] font-black uppercase tracking-wider rounded-xl transition-all duration-200 cursor-pointer shadow-sm hover:-translate-y-0.5 active:translate-y-0"
+                            >
+                              {btn.icon}
+                              <span>{btn.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                    </div>
+
+                    {/* RIGHT COLUMN: Snapshots & Achievements Vault */}
+                    <div className="lg:col-span-4 space-y-8">
+                      
+                      {/* SECTION 3: PROGRESS SNAPSHOT */}
+                      <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm space-y-6">
+                        <h3 className="text-xs font-black text-slate-455 uppercase tracking-widest leading-none font-mono">Progress Snapshot</h3>
+                        
+                        <div className="space-y-4">
+                          {[
+                            { label: "Resume Readiness", score: priRecord ? Math.round((priRecord.resume_score / 25) * 100) : 0, color: "from-indigo-500 to-indigo-600", feature: "resume-os" },
+                            { label: "Project Readiness", score: priRecord ? Math.round((priRecord.projects_score / 20) * 100) : 0, color: "from-blue-500 to-blue-600", feature: "projects-os" },
+                            { label: "Interview Readiness", score: priRecord ? Math.round((priRecord.interview_score / 15) * 100) : 0, color: "from-amber-500 to-amber-600", feature: "interview-prep" },
+                            { label: "Application Readiness", score: priRecord ? Math.round((priRecord.application_score / 10) * 100) : 0, color: "from-rose-500 to-rose-600", feature: "placement-tracker" },
+                            { label: "Networking Readiness", score: priRecord ? Math.round((priRecord.portfolio_score / 10) * 100) : 0, color: "from-emerald-500 to-emerald-600", feature: "linkedin-os" }
+                          ].filter(bar => isFeatureVisible(bar.feature, user)).map(bar => (
+                            <div key={bar.label} className="space-y-1.5">
+                              <div className="flex justify-between text-[10px] font-black text-slate-700">
+                                <span>{bar.label}</span>
+                                <span className="font-mono text-slate-455">{bar.score}%</span>
+                              </div>
+                              <div className="relative w-full h-3 bg-slate-100 rounded-full overflow-hidden p-[2px] border border-slate-200/50">
+                                <div 
+                                  className={cn("h-full rounded-full bg-gradient-to-r transition-all duration-1000", bar.color)} 
+                                  style={{ width: `${bar.score}%` }} 
+                                />
                               </div>
                             </div>
                           ))}
                         </div>
                       </div>
 
-                      {/* SVG consistency Sparkline trend chart */}
-                      <div className="pt-3 border-t border-slate-100 space-y-2">
-                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block font-mono">CONSISTENCY PATTERN</span>
-                        <div className="h-10 w-full bg-slate-50/60 rounded-xl p-1 border border-slate-100 flex items-center justify-center">
-                          <svg className="w-full h-full text-indigo-500" viewBox="0 0 100 20" preserveAspectRatio="none">
-                            <path
-                              d="M0,15 Q15,5 30,12 T60,4 T90,14 L100,10"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              className="stroke-indigo-500"
-                            />
-                            <path
-                              d="M0,15 Q15,5 30,12 T60,4 T90,14 L100,10"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="5"
-                              strokeLinecap="round"
-                              className="stroke-indigo-400/20 blur-[1px]"
-                            />
-                          </svg>
+                      {/* SECTION 5: STREAKS & ACHIEVEMENTS */}
+                      <div className="bg-white/90 backdrop-blur-md p-6 rounded-[2rem] border border-slate-200 shadow-sm space-y-6">
+                        <h3 className="text-xs font-black text-slate-455 uppercase tracking-widest leading-none font-mono">Career Achievement Vault</h3>
+                        
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="bg-slate-50/70 border border-slate-100 p-3 rounded-2xl hover:border-indigo-150 transition-all hover:-translate-y-0.5 group">
+                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider block font-mono">Streak</span>
+                            <strong className="text-sm font-black text-slate-800 group-hover:text-indigo-650 transition-colors">🔥 {streakCount} Days</strong>
+                          </div>
+                          <div className="bg-slate-50/70 border border-slate-100 p-3 rounded-2xl hover:border-indigo-150 transition-all hover:-translate-y-0.5 group">
+                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider block font-mono">Missions</span>
+                            <strong className="text-sm font-black text-slate-800 group-hover:text-indigo-650 transition-colors">🏆 {completedMissions} Done</strong>
+                          </div>
+                          <div className="bg-slate-50/70 border border-slate-100 p-3 rounded-2xl hover:border-indigo-150 transition-all hover:-translate-y-0.5 group">
+                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider block font-mono">Badges</span>
+                            <strong className="text-sm font-black text-slate-800 group-hover:text-indigo-650 transition-colors">🎖 {totalBadges} Earned</strong>
+                          </div>
+                          <div className="bg-slate-50/70 border border-slate-100 p-3 rounded-2xl hover:border-indigo-150 transition-all hover:-translate-y-0.5 group">
+                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider block font-mono">XP Multiplier</span>
+                            <strong className="text-sm font-black text-slate-800 group-hover:text-indigo-650 transition-colors">⚡ {(1.0 + (streakCount * 0.1)).toFixed(1)}x</strong>
+                          </div>
+                        </div>
+
+                        <div className="space-y-3 pt-4 border-t border-slate-100">
+                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block font-mono">Recent Milestone Badges</span>
+                          <ul className="space-y-2 text-xs font-semibold text-slate-655">
+                            {recentBadges.length > 0 ? (
+                              recentBadges.map((badge, idx) => (
+                                <li key={idx} className="flex items-center gap-2 group hover:translate-x-0.5 transition-all">
+                                  <CheckCircle className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                  <span className="group-hover:text-slate-900">{badge}</span>
+                                </li>
+                              ))
+                            ) : (
+                              <span className="text-slate-400 font-bold block text-[10px]">No badges unlocked yet. Complete tasks to earn milestones.</span>
+                            )}
+                          </ul>
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-4 pt-3 border-t border-slate-100 font-mono text-center">
-                        <div>
-                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">Weekly</span>
-                          <strong className="text-xs font-black text-slate-800">85% Consistency</strong>
-                        </div>
-                        <div>
-                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">Monthly</span>
-                          <strong className="text-xs font-black text-slate-800">72% Consistency</strong>
+                      {/* SECTION 6: PLACEMENT MOMENTUM */}
+                      <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm space-y-6">
+                        <h3 className="text-xs font-black text-slate-455 uppercase tracking-widest leading-none font-mono">Placement Momentum</h3>
+                        
+                        <div className="space-y-4">
+                          <div>
+                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-2 font-mono">7-DAY ACTIVITY MATRIX</span>
+                            <div className="flex justify-between items-center gap-1.5">
+                              {[
+                                { day: "M", active: streakCount >= 5 },
+                                { day: "T", active: streakCount >= 4 },
+                                { day: "W", active: streakCount >= 3 },
+                                { day: "T", active: streakCount >= 2 },
+                                { day: "F", active: streakCount >= 1 },
+                                { day: "S", active: false },
+                                { day: "S", active: false }
+                              ].map((act, i) => (
+                                <div key={i} className="flex flex-col items-center gap-1 flex-1">
+                                  <span className="text-[9px] font-bold text-slate-400 font-mono">{act.day}</span>
+                                  <div className={cn(
+                                    "w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border transition-all duration-300",
+                                    act.active
+                                      ? "bg-emerald-50 border-emerald-200 text-emerald-600 shadow-[0_0_8px_rgba(16,185,129,0.2)]"
+                                      : "bg-red-50/50 border-red-150 text-red-400"
+                                  )}>
+                                    {act.active ? "✓" : "✗"}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="pt-3 border-t border-slate-100 space-y-2">
+                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block font-mono">CONSISTENCY PATTERN</span>
+                            <div className="h-10 w-full bg-slate-50/60 rounded-xl p-1 border border-slate-100 flex items-center justify-center">
+                              <svg className="w-full h-full text-indigo-500" viewBox="0 0 100 20" preserveAspectRatio="none">
+                                <path
+                                  d="M0,15 Q15,5 30,12 T60,4 T90,14 L100,10"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  className="stroke-indigo-500"
+                                />
+                                <path
+                                  d="M0,15 Q15,5 30,12 T60,4 T90,14 L100,10"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="5"
+                                  strokeLinecap="round"
+                                  className="stroke-indigo-400/20 blur-[1px]"
+                                />
+                              </svg>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-4 pt-3 border-t border-slate-100 font-mono text-center">
+                            <div>
+                              <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">Weekly</span>
+                              <strong className="text-xs font-black text-slate-800">{weeklyConsistency}% Consistency</strong>
+                            </div>
+                            <div>
+                              <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">Monthly</span>
+                              <strong className="text-xs font-black text-slate-800">{monthlyConsistency}% Consistency</strong>
+                            </div>
+                          </div>
                         </div>
                       </div>
+
                     </div>
+
                   </div>
-
-                </div>
-
-              </div>
-
+                </>
+              )}
             </motion.div>
           )}
 
@@ -1499,6 +1583,47 @@ export default function DashboardPage() {
             >
               Cancel
             </button>
+          </motion.div>
+        </div>
+      )}
+
+      {/* First Login Welcome Modal */}
+      {showWelcomeModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-6 z-50">
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-white p-8 md:p-10 rounded-[3rem] border border-slate-200 shadow-2xl max-w-md w-full space-y-6 text-center"
+          >
+            <div className="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-[2rem] flex items-center justify-center mx-auto shadow-md">
+              <Sparkles className="w-8 h-8 animate-pulse" />
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-2xl font-black text-slate-900 font-display font-black">Welcome to BuggedBrain! 🎉</h3>
+              <p className="text-slate-500 font-semibold text-xs leading-relaxed">
+                Let's build your placement journey. Complete your profile setup wizard to unlock ATS scans, project recommendations, and roadmap milestones.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-3 pt-2">
+              <button
+                onClick={() => router.push("/onboarding")}
+                className="w-full py-4 bg-indigo-650 hover:bg-indigo-750 text-white font-black text-xs uppercase tracking-widest rounded-2xl transition-all shadow-md flex items-center justify-center gap-2 font-mono"
+              >
+                <span>Start Setup</span>
+              </button>
+              <button
+                onClick={() => {
+                  if (user) {
+                    localStorage.setItem(`onboarding_skipped_${user.id}`, "true");
+                  }
+                  setShowWelcomeModal(false);
+                }}
+                className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-500 font-black text-xs uppercase tracking-widest rounded-2xl transition-all font-mono"
+              >
+                Skip for Now
+              </button>
+            </div>
           </motion.div>
         </div>
       )}

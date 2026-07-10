@@ -517,6 +517,13 @@ export async function submitAnswer(
 
     executeWrite("assessment_answers", "insert", payload).catch(e => console.error(e));
   }
+
+  // Trigger assessment completion XP and update PRI
+  import("./missions").then(async ({ awardActivityXP }) => {
+    await awardActivityXP(userId, "assessment_completed", supabaseClient);
+    const { calculatePRIScore } = await import("./placement-readiness");
+    await calculatePRIScore(userId, undefined, supabaseClient);
+  }).catch(e => console.error("Assessment XP award failed:", e));
 }
 
 export async function completeAttempt(

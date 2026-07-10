@@ -48,7 +48,7 @@ export function classifyPlacementLevel(score: number): string {
 export async function calculatePRIScore(userId: string, forceLocalMockData?: any, supabaseClient?: any): Promise<PlacementReadiness> {
   const isBrowser = typeof window !== "undefined";
   
-  // 1. Initialize Sub-Scores with Baseline/Fallbacks
+  // 1. Initialize Sub-Scores strictly to 0
   let resumeScore = 0;
   let portfolioScore = 0;
   let projectsScore = 0;
@@ -60,11 +60,14 @@ export async function calculatePRIScore(userId: string, forceLocalMockData?: any
   let communityScore = 0;
   let assessmentScore = 0;
 
-  // Baseline values to ensure nice starting experience
-  let atsVal = 70;
-  let applicationsCount = 0;
-  let mockInterviewsCount = 0;
-  let projectsCount = 0;
+  let resumeUploadedScore = 0;
+  let resumeAtsAbove80Score = 0;
+  let githubLinkedScore = 0;
+  let portfolioLinkedScore = 0;
+  let projectsCompletedScore = 0;
+  let assessmentSolvedScore = 0;
+  let mockInterviewTakenScore = 0;
+  let crmApplicationMadeScore = 0;
 
   const db = await getDb(supabaseClient);
 
@@ -72,233 +75,148 @@ export async function calculatePRIScore(userId: string, forceLocalMockData?: any
     if (userId && userId !== "guest-user") {
       // --- FETCH DATA FROM SUPABASE ---
       
-      // A. Resume Score (max 20)
       const { data: scans } = await db
         .from("resume_scans")
         .select("ats_score")
         .eq("user_id", userId)
         .order("created_at", { ascending: false });
         
-      if (scans && scans.length > 0) {
-        atsVal = scans[0].ats_score || 70;
-        resumeScore = Math.round((atsVal / 100) * 20);
-      } else {
-        resumeScore = 12; // Baseline fallback
-      }
-
-      // B. Portfolio Score (max 10)
       const { data: profile } = await db
         .from("profiles")
         .select("*")
         .eq("user_id", userId)
         .maybeSingle();
 
-      if (profile) {
-        if (profile.portfolio_url) portfolioScore += 5;
-        if (profile.github_url) portfolioScore += 5;
-      } else {
-        portfolioScore = 3; // Baseline fallback
+      // 1. Resume uploaded check (+15)
+      if ((scans && scans.length > 0) || profile?.resume_url) {
+        resumeUploadedScore = 15;
       }
-
-      // C. Projects Score (max 15)
-      if (profile && profile.raw_profile_data?.projects) {
+      // 2. ATS > 80 check (+10)
+      if (scans && scans.some((s: any) => (s.ats_score || 0) >= 80)) {
+        resumeAtsAbove80Score = 10;
+      }
+      // 3. GitHub linked check (+5)
+      if (profile?.github_url) {
+        githubLinkedScore = 5;
+      }
+      // 4. Portfolio linked check (+5)
+      if (profile?.portfolio_url) {
+        portfolioLinkedScore = 5;
+      }
+      // 5. Projects score check (+10 each, max 20)
+      let projectsCount = 0;
+      if (profile?.raw_profile_data?.projects && Array.isArray(profile.raw_profile_data.projects)) {
         projectsCount = profile.raw_profile_data.projects.length;
-        projectsScore = Math.min(projectsCount * 5, 15);
-      } else {
-        projectsScore = 5; // Baseline fallback
       }
-
-      // D. Skills Score (max 15)
-      const { data: roadmaps } = await db
-        .from("roadmap_progress")
-        .select("completed")
-        .eq("user_id", userId)
-        .eq("completed", true);
-
-      const completedRoadmapSteps = roadmaps?.length || 0;
-      const profileSkillsCount = profile?.skills?.length || 0;
-      skillsScore = Math.min(completedRoadmapSteps * 3 + Math.round(profileSkillsCount * 1.5), 15);
-      if (skillsScore === 0) {
-        skillsScore = 8; // Baseline fallback
-      }
-
-      // E. Applications Score (max 15)
-      const { data: apps } = await db
-        .from("applications")
-        .select("status")
+      const { data: dbProjects } = await db
+        .from("projects")
+        .select("id")
         .eq("user_id", userId);
+      if (dbProjects && dbProjects.length > 0) {
+        projectsCount = Math.max(projectsCount, dbProjects.length);
+      }
+      projectsCompletedScore = Math.min(projectsCount * 10, 20);
 
-      if (apps) {
-        const activeApps = apps.filter((a: any) => a.status !== "Saved");
-        applicationsCount = activeApps.length;
-        if (applicationsCount >= 20) applicationScore = 15;
-        else if (applicationsCount >= 10) applicationScore = 12;
-        else if (applicationsCount >= 5) applicationScore = 10;
-        else if (applicationsCount >= 1) applicationScore = 5;
-        else applicationScore = 0;
-      } else {
-        applicationScore = 4; // Baseline fallback
+      // 6. Assessments score check (+15 if any)
+      const { count: ansCount } = await db
+        .from("assessment_answers")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId);
+      if (ansCount && ansCount > 0) {
+        assessmentSolvedScore = 15;
       }
 
-      // F. Mock Interviews Score (max 10)
+      // 7. Mock interviews check (+15 if any)
+      let hasInterviews = false;
       if (isBrowser) {
         const storedHistory = localStorage.getItem("interview_history");
         if (storedHistory) {
           try {
             const hist = JSON.parse(storedHistory);
-            mockInterviewsCount = hist.length;
-            if (mockInterviewsCount > 0) {
-              const avgScore = Math.round(hist.reduce((acc: number, curr: any) => acc + (curr.overallScore || 0), 0) / hist.length);
-              interviewScore = Math.min(mockInterviewsCount * 3, 9) + (avgScore >= 80 ? 1 : 0);
-            }
+            if (hist.length > 0) hasInterviews = true;
           } catch {}
         }
       }
-      if (interviewScore === 0) {
-        interviewScore = 4; // Baseline fallback
-      }
-
-      // G. Company Prep Score (max 5)
-      if (profile && profile.raw_profile_data?.company_prep_completed) {
-        companyPrepScore = 5;
-      } else {
-        companyPrepScore = 2; // Baseline fallback
-      }
-
-      // H. Consistency Score (max 5)
-      const { data: xpRecord } = await db
-        .from("user_xp")
-        .select("streak_days")
-        .eq("user_id", userId)
-        .maybeSingle();
-      const streakDays = xpRecord?.streak_days || 0;
-      consistencyScore = Math.min(streakDays * 1, 5);
-      if (consistencyScore === 0) {
-        consistencyScore = 3; // Baseline fallback
-      }
-
-      // I. Community Score (max 5)
-      const { count: postsCount } = await db
-        .from("community_posts")
+      const { count: interviewCount } = await db
+        .from("interview_sessions")
         .select("id", { count: "exact", head: true })
         .eq("user_id", userId);
-        
-      const { count: commentsCount } = await db
-        .from("community_comments")
+      if (interviewCount && interviewCount > 0) {
+        hasInterviews = true;
+      }
+      mockInterviewTakenScore = hasInterviews ? 15 : 0;
+
+      // 8. CRM Job applications check (+10 if any)
+      const { count: appCount } = await db
+        .from("applications")
         .select("id", { count: "exact", head: true })
         .eq("user_id", userId);
-
-      const posts = postsCount || 0;
-      const comments = commentsCount || 0;
-      communityScore = Math.min(posts * 2 + comments * 1, 5);
-      if (communityScore === 0) {
-        communityScore = 2; // Baseline fallback
+      if (appCount && appCount > 0) {
+        crmApplicationMadeScore = 10;
       }
 
-      // J. Assessment Score (max 10)
-      try {
-        const { getUserAssessmentAnalytics } = await import("./assessment");
-        const analytics = await getUserAssessmentAnalytics(userId, db);
-        const accuracy = analytics.overallAccuracy || 0;
-        if (accuracy > 90) assessmentScore = 10;
-        else if (accuracy > 75) assessmentScore = 8;
-        else if (accuracy > 60) assessmentScore = 6;
-        else if (accuracy > 40) assessmentScore = 3;
-        else assessmentScore = 0;
-      } catch (err) {
-        console.error("Failed to load assessment score in calculatePRIScore", err);
-        assessmentScore = 4; // Baseline fallback
-      }
+      // Merge into the DB columns schema
+      resumeScore = resumeUploadedScore + resumeAtsAbove80Score;
+      portfolioScore = githubLinkedScore + portfolioLinkedScore;
+      projectsScore = projectsCompletedScore;
+      applicationScore = crmApplicationMadeScore;
+      interviewScore = mockInterviewTakenScore;
+      assessmentScore = assessmentSolvedScore;
 
     } else {
       // --- LOCAL STORAGE MOCK CALCULATIONS FOR GUEST USERS ---
       if (isBrowser) {
         const storedAts = localStorage.getItem("ats_score");
-        if (storedAts) {
-          atsVal = parseInt(storedAts, 10) || 70;
-          resumeScore = Math.round((atsVal / 100) * 20);
-        } else {
-          resumeScore = 12;
+        const atsVal = storedAts ? parseInt(storedAts, 10) : 0;
+        if (atsVal > 0) {
+          resumeUploadedScore = 15;
+        }
+        if (atsVal >= 80) {
+          resumeAtsAbove80Score = 10;
         }
 
-        const profileData = localStorage.getItem("resume_builder_profile");
+        const profileData = localStorage.getItem("onboarding_guest_state") || localStorage.getItem("resume_builder_profile");
         if (profileData) {
           try {
             const parsed = JSON.parse(profileData);
-            if (parsed.portfolio) portfolioScore += 5;
-            if (parsed.github) portfolioScore += 5;
+            if (parsed.github_url || parsed.github) githubLinkedScore = 5;
+            if (parsed.portfolio_url || parsed.portfolio) portfolioLinkedScore = 5;
             
-            if (parsed.projects) {
-              projectsCount = parsed.projects.length;
-              projectsScore = Math.min(projectsCount * 5, 15);
-            }
+            const pCount = parsed.projects?.length || 0;
+            projectsCompletedScore = Math.min(pCount * 10, 20);
           } catch {}
-        } else {
-          portfolioScore = 3;
-          projectsScore = 5;
         }
 
-        const progressStates = localStorage.getItem("roadmap_progress_states");
-        if (progressStates) {
+        const answersData = localStorage.getItem("bb_answers");
+        if (answersData) {
           try {
-            const parsed = JSON.parse(progressStates);
-            const checked = Object.values(parsed).filter(Boolean).length;
-            skillsScore = Math.min(checked * 3 + 4, 15);
+            const parsed = JSON.parse(answersData);
+            if (parsed.length > 0) assessmentSolvedScore = 15;
           } catch {}
-        } else {
-          skillsScore = 8;
         }
 
-        const storedApps = localStorage.getItem("placement_crm_applications");
-        if (storedApps) {
+        const interviewData = localStorage.getItem("interview_history");
+        if (interviewData) {
           try {
-            const parsed = JSON.parse(storedApps);
-            const active = parsed.filter((a: any) => a.status !== "Saved");
-            applicationsCount = active.length;
-            if (applicationsCount >= 20) applicationScore = 15;
-            else if (applicationsCount >= 10) applicationScore = 12;
-            else if (applicationsCount >= 5) applicationScore = 10;
-            else if (applicationsCount >= 1) applicationScore = 5;
-            else applicationScore = 0;
+            const parsed = JSON.parse(interviewData);
+            if (parsed.length > 0) mockInterviewTakenScore = 15;
           } catch {}
-        } else {
-          applicationScore = 4;
         }
 
-        const storedHistory = localStorage.getItem("interview_history");
-        if (storedHistory) {
+        const applicationsData = localStorage.getItem("placement_crm_applications");
+        if (applicationsData) {
           try {
-            const hist = JSON.parse(storedHistory);
-            mockInterviewsCount = hist.length;
-            if (mockInterviewsCount > 0) {
-              const avgScore = Math.round(hist.reduce((acc: number, curr: any) => acc + (curr.overallScore || 0), 0) / hist.length);
-              interviewScore = Math.min(mockInterviewsCount * 3, 9) + (avgScore >= 80 ? 1 : 0);
-            }
+            const parsed = JSON.parse(applicationsData);
+            if (parsed.length > 0) crmApplicationMadeScore = 10;
           } catch {}
-        } else {
-          interviewScore = 4;
         }
 
-        companyPrepScore = 2; // Baseline fallback
-
-        const memberStreak = typeof window !== "undefined" ? parseInt(localStorage.getItem("member_learning_streak") || "3", 10) : 3;
-        consistencyScore = Math.min(memberStreak * 1, 5);
-
-        communityScore = 2; // Baseline fallback
-
-        // J. Assessment Score (max 10)
-        try {
-          const { getUserAssessmentAnalytics } = await import("./assessment");
-          const analytics = await getUserAssessmentAnalytics("guest-user");
-          const accuracy = analytics.overallAccuracy || 0;
-          if (accuracy > 90) assessmentScore = 10;
-          else if (accuracy > 75) assessmentScore = 8;
-          else if (accuracy > 60) assessmentScore = 6;
-          else if (accuracy > 40) assessmentScore = 3;
-          else assessmentScore = 0;
-        } catch {
-          assessmentScore = 4; // Baseline fallback
-        }
+        resumeScore = resumeUploadedScore + resumeAtsAbove80Score;
+        portfolioScore = githubLinkedScore + portfolioLinkedScore;
+        projectsScore = projectsCompletedScore;
+        applicationScore = crmApplicationMadeScore;
+        interviewScore = mockInterviewTakenScore;
+        assessmentScore = assessmentSolvedScore;
       }
     }
   } catch (err) {

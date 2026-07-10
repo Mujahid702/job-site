@@ -900,6 +900,12 @@ export default function AiInterviewPrep() {
     }).catch(console.error);
 
     triggerMissionProgress(uid, "interviews", 1).catch(console.error);
+
+    if (user) {
+      import("@/lib/db/missions").then(({ awardActivityXP }) => {
+        awardActivityXP(user.id, "interview_completed").catch(console.error);
+      }).catch(console.error);
+    }
   };
 
   const getResourceRecommendations = (weakList: string[]) => {

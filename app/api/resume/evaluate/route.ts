@@ -5,6 +5,8 @@ import { rateLimit } from '@/lib/rate-limit'
 import { validateUploadedFile } from '@/lib/file-validator'
 import { z } from 'zod'
 import { logAnalyticsEvent } from '@/lib/db/admin-analytics'
+import { createClient } from '@/lib/supabase/server'
+import { checkUsage, incrementUsage, hashString } from '@/lib/security/FeatureGuard'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,6 +26,31 @@ export async function POST(request: Request) {
         { success: false, message: 'Rate limit exceeded. Please try again later.' },
         { status: 200, headers: limitResult.headers }
       )
+    }
+
+    // User session check
+    const supabaseClient = await createClient()
+    const { data: { user } } = await supabaseClient.auth.getUser()
+    const userId = user?.id
+
+    if (!userId) {
+      return NextResponse.json(
+        { success: false, message: 'Unauthorized login session required.' },
+        { status: 401 }
+      )
+    }
+
+    // Usage check
+    const quota = await checkUsage(userId, 'ats_analyzer')
+    if (!quota.allowed) {
+      return NextResponse.json({
+        success: false,
+        message: 'Monthly Free Limit Reached. Upgrade to Premium to continue immediately.',
+        quotaExhausted: true,
+        remaining: 0,
+        limit: quota.limit,
+        resetDate: quota.resetDate
+      })
     }
 
     // 2. Parse form data and validate
@@ -455,6 +482,13 @@ TARGET ROLE:
 
     const result = JSON.parse(textResponse.trim())
     await logAnalyticsEvent('ats_analyzer', undefined, { response_time_ms: Date.now() - startTime, success: true })
+    
+    // Increment usage
+    await incrementUsage(userId, 'ats_analyzer', {
+      executionTimeMs: Date.now() - startTime,
+      ipHash: hashString(ip)
+    })
+
     return NextResponse.json(
       { success: true, data: result, rawText: resumeText },
       { status: 200, headers: limitResult.headers }

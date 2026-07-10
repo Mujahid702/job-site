@@ -11,21 +11,11 @@ export async function GET(request: Request) {
     const supabase = await createClient()
     const { error } = await supabase.auth.exchangeCodeForSession(code)
     if (!error) {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('id')
-          .eq('user_id', user.id)
-          .maybeSingle()
-        if (!profile) {
-          return NextResponse.redirect(`${origin}/onboarding`)
-        }
-      }
-      return NextResponse.redirect(`${origin}${next}`)
+      return NextResponse.redirect(`${origin}/auth/verified`)
+    } else {
+      return NextResponse.redirect(`${origin}/auth/verified?already=true`)
     }
   }
 
-  // return the user to an error page with instructions
   return NextResponse.redirect(`${origin}/auth/auth-code-error`)
 }

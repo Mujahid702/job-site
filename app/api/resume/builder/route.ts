@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { rateLimit } from '@/lib/rate-limit'
 import { z } from 'zod'
 import { generateResponse } from '@/lib/ai/router'
+import { createClient } from '@/lib/supabase/server'
+import { checkUsage, incrementUsage, hashString } from '@/lib/security/FeatureGuard'
 
 export const dynamic = 'force-dynamic'
 
@@ -332,6 +334,7 @@ function generateTemplateLatex(profile: any, templateId: string): string {
 }
 
 export async function POST(request: Request) {
+  const startTime = Date.now()
   try {
     // 1. Rate limiting check (20 requests/hour)
     const ip = request.headers.get('x-forwarded-for') || '127.0.0.1'
@@ -358,6 +361,34 @@ export async function POST(request: Request) {
     }
 
     const { action, text, profileData, jdText, templateId, targetRole } = validation.data
+
+    // User session check for AI parsing/optimization actions
+    let userId = ""
+    if (action === 'structure' || action === 'optimize-jd') {
+      const supabaseClient = await createClient()
+      const { data: { user } } = await supabaseClient.auth.getUser()
+      userId = user?.id || ""
+
+      if (!userId) {
+        return NextResponse.json(
+          { success: false, message: 'Unauthorized login session required.' },
+          { status: 401 }
+        )
+      }
+
+      // Quota check
+      const quota = await checkUsage(userId, 'resume_builder')
+      if (!quota.allowed) {
+        return NextResponse.json({
+          success: false,
+          message: 'Monthly Free Limit Reached. Upgrade to Premium to continue immediately.',
+          quotaExhausted: true,
+          remaining: 0,
+          limit: quota.limit,
+          resetDate: quota.resetDate
+        })
+      }
+    }
 
     // Handle latex generation directly without API key requirement
     if (action === 'latex') {
@@ -505,6 +536,13 @@ CRITICAL DIRECTIONS:
       }
 
       const res = await callGemini(payload, apiKey, 'structure')
+      
+      // Increment usage
+      await incrementUsage(userId, 'resume_builder', {
+        executionTimeMs: Date.now() - startTime,
+        ipHash: hashString(ip)
+      })
+
       return NextResponse.json(
         { success: true, data: res },
         { status: 200, headers: limitResult.headers }
@@ -633,6 +671,13 @@ CRITICAL DIRECTIONS:
       }
 
       const res = await callGemini(payload, apiKey, 'optimize-jd')
+      
+      // Increment usage
+      await incrementUsage(userId, 'resume_builder', {
+        executionTimeMs: Date.now() - startTime,
+        ipHash: hashString(ip)
+      })
+
       return NextResponse.json(
         { success: true, data: res },
         { status: 200, headers: limitResult.headers }

@@ -34,6 +34,7 @@ import {
   Sparkles
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import UsageMeter from "@/components/UsageMeter";
 import { createClient } from "@/lib/supabase/client";
 import Editor from "@monaco-editor/react";
 import { 
@@ -460,6 +461,21 @@ export default function AssessmentOS() {
   // EXAM SIMULATOR CONTROLLERS
   // ==========================================
   const handleLaunchExam = async (test: AssessmentCompanyTest) => {
+    try {
+      const res = await fetch("/api/assessment/attempt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "start" })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        alert(data.message || "Monthly Free Limit Reached. Upgrade to Premium to continue immediately.");
+        return;
+      }
+    } catch (err) {
+      console.error("Failed to check exam limits:", err);
+    }
+
     // Toggle browser fullscreen
     const docEl = document.documentElement;
     if (docEl.requestFullscreen) {
@@ -947,6 +963,9 @@ export default function AssessmentOS() {
                     <span className="text-[8px] font-bold text-slate-400 block font-mono">Requires targeted drills</span>
                   </div>
                 </div>
+
+                {/* Usage limit meters tracker */}
+                <UsageMeter />
 
                 {/* GRAPHICAL RADAR & COMPANY READINESS GRID */}
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">

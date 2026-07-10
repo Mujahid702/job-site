@@ -15,6 +15,7 @@ import {
   Download
 } from "lucide-react";
 import { cn, flattenSkills } from "@/lib/utils";
+import UsageMeter from "@/components/UsageMeter";
 
 // Types
 interface CoverLetterProfile {
@@ -310,34 +311,64 @@ export default function CoverLetterOS() {
   };
 
   // Create alternative cover letter style and compare
-  const handleCreateAlternative = () => {
+  const handleCreateAlternative = async () => {
     if (!versionA.content && !versionB.content) {
       alert("Please compile Version A first.");
       return;
     }
-    const styles = ["technical", "startup", "professional", "modern", "leadership"];
-    if (versionA.content && !versionB.content) {
-      const altStyle = styles.find(s => s !== versionA.style) || "modern";
-      generateDraftLetter("B", altStyle);
-      alert(`Successfully generated Version B with an alternative style: "${altStyle}". You can now compare them in the Comparator Board tab!`);
-    } else if (!versionA.content && versionB.content) {
-      const altStyle = styles.find(s => s !== versionB.style) || "technical";
-      generateDraftLetter("A", altStyle);
-      alert(`Successfully generated Version A with an alternative style: "${altStyle}". You can now compare them in the Comparator Board tab!`);
-    } else {
-      // Both exist, generate a different style for Version B
-      const currentAltStyle = versionB.style;
-      const remainingStyles = styles.filter(s => s !== versionA.style && s !== currentAltStyle);
-      const altStyle = remainingStyles[0] || "startup";
-      generateDraftLetter("B", altStyle);
-      alert(`Successfully regenerated Version B with a new alternative style: "${altStyle}". Check the Comparator Board tab to compare!`);
+    try {
+      const res = await fetch("/api/cover-letter/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        alert(data.message || "Monthly Free Limit Reached. Upgrade to Premium to continue immediately.");
+        return;
+      }
+
+      const styles = ["technical", "startup", "professional", "modern", "leadership"];
+      if (versionA.content && !versionB.content) {
+        const altStyle = styles.find(s => s !== versionA.style) || "modern";
+        generateDraftLetter("B", altStyle);
+        alert(`Successfully generated Version B with an alternative style: "${altStyle}". You can now compare them in the Comparator Board tab!`);
+      } else if (!versionA.content && versionB.content) {
+        const altStyle = styles.find(s => s !== versionB.style) || "technical";
+        generateDraftLetter("A", altStyle);
+        alert(`Successfully generated Version A with an alternative style: "${altStyle}". You can now compare them in the Comparator Board tab!`);
+      } else {
+        // Both exist, generate a different style for Version B
+        const currentAltStyle = versionB.style;
+        const remainingStyles = styles.filter(s => s !== versionA.style && s !== currentAltStyle);
+        const altStyle = remainingStyles[0] || "startup";
+        generateDraftLetter("B", altStyle);
+        alert(`Successfully regenerated Version B with a new alternative style: "${altStyle}". Check the Comparator Board tab to compare!`);
+      }
+    } catch (err) {
+      console.error("Failed to check cover letter limits:", err);
     }
   };
 
   // Compile letter trigger
-  const handleCompileLetter = () => {
-    generateDraftLetter(activeVersion);
-    alert(`Success! Generated Version ${activeVersion} Cover Letter aligned for ${targetCompany} (${coverLetterStyle} style).`);
+  const handleCompileLetter = async () => {
+    try {
+      const res = await fetch("/api/cover-letter/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        alert(data.message || "Monthly Free Limit Reached. Upgrade to Premium to continue immediately.");
+        return;
+      }
+
+      generateDraftLetter(activeVersion);
+      alert(`Success! Generated Version ${activeVersion} Cover Letter aligned for ${targetCompany} (${coverLetterStyle} style).`);
+    } catch (err) {
+      console.error("Failed to check cover letter limits:", err);
+      // Fallback
+      generateDraftLetter(activeVersion);
+    }
   };
 
   // Switch versions
@@ -1104,6 +1135,9 @@ For a **${targetRole}** role, emphasize your **${profile.projects[0]?.title || "
 
       {/* RIGHT COLUMN (Scorer Sidebar & Cover Letter Copilot) */}
       <div className="lg:col-span-4 space-y-8">
+
+        {/* Quotas & Usage Tracker */}
+        <UsageMeter />
         
         {/* Readiness panel */}
         <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200/60 shadow-sm space-y-6">

@@ -1,10 +1,35 @@
 import { NextResponse } from "next/server";
 import { generateResponse } from "@/lib/ai/router";
+import { createClient } from "@/lib/supabase/server";
+import { checkUsage, incrementUsage, hashString } from "@/lib/security/FeatureGuard";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  const startTime = Date.now()
   try {
+    const supabaseClient = await createClient()
+    const { data: { user } } = await supabaseClient.auth.getUser()
+    const userId = user?.id
+
+    if (!userId) {
+      return NextResponse.json(
+        { error: "Unauthorized login session required." },
+        { status: 401 }
+      )
+    }
+
+    const quota = await checkUsage(userId, 'project_generation')
+    if (!quota.allowed) {
+      return NextResponse.json({
+        error: "Monthly Free Limit Reached. Upgrade to Premium to continue immediately.",
+        quotaExhausted: true,
+        remaining: 0,
+        limit: quota.limit,
+        resetDate: quota.resetDate
+      })
+    }
+
     const body = await request.json().catch(() => ({}));
     const { targetRole, targetCompany, difficulty, interestArea, resumeText } = body;
 
@@ -457,6 +482,14 @@ Output ONLY pure, valid JSON matching the schema. No markdown formatting blocks 
     }
 
     const result = JSON.parse(textResponse.trim());
+    
+    // Increment usage
+    const ip = request.headers.get('x-forwarded-for') || '127.0.0.1'
+    await incrementUsage(userId, 'project_generation', {
+      executionTimeMs: Date.now() - startTime,
+      ipHash: hashString(ip)
+    })
+
     return NextResponse.json({ success: true, data: result }, { status: 200 });
 
   } catch (err) {
