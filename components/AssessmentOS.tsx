@@ -1095,32 +1095,6 @@ export default function AssessmentOS() {
                         </select>
                       </div>
 
-                      {/* Mode Select */}
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block font-mono">Timed Constraint</label>
-                        <select
-                          value={practiceTimeMode}
-                          onChange={(e) => setPracticeTimeMode(e.target.value as any)}
-                          className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl"
-                        >
-                          <option value="Timed">Timed session</option>
-                          <option value="Untimed">Unlimited duration</option>
-                        </select>
-                      </div>
-
-                      {/* Question limit select */}
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block font-mono">Question Count</label>
-                        <select
-                          value={practiceQuestionLimit}
-                          onChange={(e) => setPracticeQuestionLimit(Number(e.target.value))}
-                          className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl"
-                        >
-                          <option value="5">5 Questions</option>
-                          <option value="10">10 Questions</option>
-                          <option value="20">20 Questions</option>
-                        </select>
-                      </div>
                     </div>
 
                     <button
