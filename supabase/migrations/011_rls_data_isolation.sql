@@ -267,4 +267,4 @@ CREATE POLICY "Admins can view reports" ON public.community_reports
 
 DROP POLICY IF EXISTS "Users can submit reports" ON public.community_reports;
 CREATE POLICY "Users can submit reports" ON public.community_reports
-  FOR INSERT WITH CHECK (auth.uid() = user_id);
+  FOR INSERT WITH CHECK (auth.uid() = reporter_id);
