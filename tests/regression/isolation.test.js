@@ -49,6 +49,12 @@ test('Regression check: LocalStorage keys must partition user data from guest da
   assert.strictEqual(userAKey, "resume_os_snapshots_user-A");
   assert.strictEqual(userBKey, "resume_os_snapshots_user-B");
   assert.notStrictEqual(userAKey, userBKey);
+
+  // New interview scope assertions
+  const interviewA = getScopedKey("interview_history", "user-A");
+  const interviewB = getScopedKey("interview_history", "user-B");
+  assert.strictEqual(interviewA, "interview_history_user-A");
+  assert.notStrictEqual(interviewA, interviewB);
 });
 
 test('Regression check: AI Caching hashes must incorporate user IDs to prevent poisoning', () => {

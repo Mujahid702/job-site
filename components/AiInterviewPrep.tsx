@@ -411,48 +411,74 @@ export default function AiInterviewPrep() {
 
   // Load from localStorage on mount
   useEffect(() => {
-    async function getUserData() {
-      const { data: { user } } = await supabase.auth.getUser();
+    supabase.auth.getUser().then(({ data: { user } }) => {
       setUser(user);
-    }
-    getUserData();
+    });
 
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user || null);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
     if (typeof window !== "undefined") {
+      const activeUser = user?.id || "guest";
+
       // Check if resume exists
-      const savedResumeText = localStorage.getItem("last_analyzed_resume_text");
+      const savedResumeText = localStorage.getItem("last_analyzed_resume_text_" + activeUser) || localStorage.getItem("last_analyzed_resume_text");
       if (savedResumeText && savedResumeText.trim()) {
         setHasResume(true);
+      } else {
+        setHasResume(false);
       }
 
       // Check current PRI score
-      const storedPri = localStorage.getItem("placement_readiness_score");
+      const storedPri = localStorage.getItem("placement_readiness_score_" + activeUser) || localStorage.getItem("placement_readiness_score");
       if (storedPri) {
         setPriScore(parseInt(storedPri, 10));
+      } else {
+        setPriScore(60);
       }
 
       // Load History
-      const savedHistory = localStorage.getItem("interview_history");
+      const savedHistory = localStorage.getItem("interview_history_" + activeUser) || localStorage.getItem("interview_history");
       if (savedHistory) {
         try {
           setHistory(JSON.parse(savedHistory));
-        } catch {}
+        } catch {
+          setHistory([]);
+        }
+      } else {
+        setHistory([]);
       }
 
       // Load Subscription Tier & Duration
-      const savedTier = localStorage.getItem("interview_subscription_tier") as "FREE" | "PRO" | "PREMIUM" | null;
+      const savedTier = localStorage.getItem("interview_subscription_tier_" + activeUser) as "FREE" | "PRO" | "PREMIUM" | null;
       if (savedTier) {
         setSubscriptionTier(savedTier);
       } else {
-        const isPremiumUser = localStorage.getItem("member_is_premium") === "true";
+        const isPremiumUser = localStorage.getItem("member_is_premium_" + activeUser) === "true";
         setSubscriptionTier(isPremiumUser ? "PRO" : "FREE");
       }
 
-      const savedDurationSecs = localStorage.getItem("interview_selected_duration");
+      const savedDurationSecs = localStorage.getItem("interview_selected_duration_" + activeUser);
       if (savedDurationSecs) {
         setSelectedDuration(parseInt(savedDurationSecs, 10));
+      } else {
+        setSelectedDuration(300);
       }
+
+      const unlockedIds = JSON.parse(localStorage.getItem("interview_badges_" + activeUser) || localStorage.getItem("interview_badges") || "[]");
+      setBadges(BADGE_TEMPLATES.map(b => ({
+        ...b,
+        unlocked: unlockedIds.includes(b.id)
+      })));
     }
-  }, []);
+  }, [user]);
 
   // Sync available round when company changes
   useEffect(() => {
@@ -464,12 +490,13 @@ export default function AiInterviewPrep() {
 
   // Load Badges based on updated history lists
   useEffect(() => {
-    const unlockedIds = JSON.parse(localStorage.getItem("interview_badges") || "[]");
+    const activeUser = user?.id || "guest";
+    const unlockedIds = JSON.parse(localStorage.getItem("interview_badges_" + activeUser) || localStorage.getItem("interview_badges") || "[]");
     setBadges(BADGE_TEMPLATES.map(b => ({
       ...b,
       unlocked: unlockedIds.includes(b.id)
     })));
-  }, [history]);
+  }, [history, user]);
 
   // Timer Tick
   useEffect(() => {
@@ -503,7 +530,7 @@ export default function AiInterviewPrep() {
     setApiError(null);
     try {
       const activeDiff = diffOverride || currentDifficulty;
-      const resumeText = resumeTailored ? localStorage.getItem("last_analyzed_resume_text") : undefined;
+      const resumeText = resumeTailored ? (localStorage.getItem("last_analyzed_resume_text_" + (user?.id || "guest")) || localStorage.getItem("last_analyzed_resume_text")) : undefined;
       const excludeList = sessions.map(s => s.question.question);
 
       // Get last session details for advanced/expert conversational follow-ups
@@ -823,13 +850,14 @@ export default function AiInterviewPrep() {
 
     const updatedHistory = [historyItem, ...history];
     setHistory(updatedHistory);
-    localStorage.setItem("interview_history", JSON.stringify(updatedHistory));
+    const activeUser = user?.id || "guest";
+    localStorage.setItem("interview_history_" + activeUser, JSON.stringify(updatedHistory));
 
     // Async save to database
     saveSessionToDb(evaluatedSessions, overallSessionScore, elapsedSeconds, uniqueStrengths, uniqueWeaknesses);
 
     // BADGE VAULT ENGINE CHECKS
-    const unlockedBadges = JSON.parse(localStorage.getItem("interview_badges") || "[]");
+    const unlockedBadges = JSON.parse(localStorage.getItem("interview_badges_" + activeUser) || localStorage.getItem("interview_badges") || "[]");
     let isBadgeUnlocked = false;
 
     // 1. Rookie Badge
@@ -890,7 +918,7 @@ export default function AiInterviewPrep() {
     }
 
     if (isBadgeUnlocked) {
-      localStorage.setItem("interview_badges", JSON.stringify(unlockedBadges));
+      localStorage.setItem("interview_badges_" + (user?.id || "guest"), JSON.stringify(unlockedBadges));
     }
 
     // Refresh PRI Readiness Score
@@ -930,7 +958,7 @@ export default function AiInterviewPrep() {
     e.stopPropagation();
     const updated = history.filter(item => item.id !== id);
     setHistory(updated);
-    localStorage.setItem("interview_history", JSON.stringify(updated));
+    localStorage.setItem("interview_history_" + (user?.id || "guest"), JSON.stringify(updated));
   };
 
   // Format MM:SS elapsed duration
@@ -1257,12 +1285,13 @@ export default function AiInterviewPrep() {
                     onChange={(e) => {
                       const nt = e.target.value as "FREE" | "PRO" | "PREMIUM";
                       setSubscriptionTier(nt);
-                      localStorage.setItem("interview_subscription_tier", nt);
+                      const activeUser = user?.id || "guest";
+                      localStorage.setItem("interview_subscription_tier_" + activeUser, nt);
                       
                       const limits = TIER_LIMITS[nt];
                       if (selectedDuration > limits.maxDuration) {
                         setSelectedDuration(limits.maxDuration);
-                        localStorage.setItem("interview_selected_duration", limits.maxDuration.toString());
+                        localStorage.setItem("interview_selected_duration_" + activeUser, limits.maxDuration.toString());
                       }
                     }}
                     className="w-full py-1 px-2 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-black uppercase text-indigo-650 focus:outline-none"
@@ -1391,7 +1420,7 @@ export default function AiInterviewPrep() {
                               return;
                             }
                             setSelectedDuration(dur.secs);
-                            localStorage.setItem("interview_selected_duration", dur.secs.toString());
+                            localStorage.setItem("interview_selected_duration_" + (user?.id || "guest"), dur.secs.toString());
                           }}
                           className={cn(
                             "px-4 py-3 rounded-xl border text-xs font-black transition-all flex items-center gap-2 cursor-pointer bg-white",

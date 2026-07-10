@@ -97,10 +97,9 @@ export default function ResumeOS({ onScoreUpdate, subTab = "overview", onSubTabC
     async function loadData() {
       if (!userId) {
         // Fallback to local storage for guest
-        // Fallback to local storage for guest
-        const saved = localStorage.getItem("resume_os_snapshots_" + (userId || "guest"));
+        const saved = localStorage.getItem("resume_os_snapshots_guest");
         if (saved) {
-          try { setSnapshots(JSON.parse(saved)); } catch {}
+          try { setSnapshots(JSON.parse(saved)); } catch { setSnapshots([]); }
         } else {
           setSnapshots([
             {
@@ -139,31 +138,45 @@ export default function ResumeOS({ onScoreUpdate, subTab = "overview", onSubTabC
         }
 
         // Local daily goals
-        const savedGoals = localStorage.getItem("completed_daily_goals_" + (userId || "guest"));
+        const savedGoals = localStorage.getItem("completed_daily_goals_guest");
         if (savedGoals) {
           try {
             const parsed = JSON.parse(savedGoals);
             setCompletedGoalsCount(Object.values(parsed).filter(Boolean).length);
-          } catch {}
+          } catch {
+            setCompletedGoalsCount(0);
+          }
+        } else {
+          setCompletedGoalsCount(0);
         }
         // Local roadmap progress
-        const savedRoadmap = localStorage.getItem("completed_roadmap_steps_" + (userId || "guest"));
+        const savedRoadmap = localStorage.getItem("completed_roadmap_steps_guest");
         if (savedRoadmap) {
           try {
             const parsed = JSON.parse(savedRoadmap);
             setCompletedRoadmapStepsCount(Object.values(parsed).filter(Boolean).length);
-          } catch {}
+          } catch {
+            setCompletedRoadmapStepsCount(0);
+          }
+        } else {
+          setCompletedRoadmapStepsCount(0);
         }
         // Local interview history
-        const savedInterview = localStorage.getItem("interview_history_" + (userId || "guest"));
+        const savedInterview = localStorage.getItem("interview_history_guest");
         if (savedInterview) {
           try {
             const list = JSON.parse(savedInterview);
             if (list.length > 0) {
               const sum = list.reduce((acc: number, curr: { overallScore?: number }) => acc + (curr.overallScore || 0), 0);
               setAvgInterviewScore(Math.round(sum / list.length));
+            } else {
+              setAvgInterviewScore(50);
             }
-          } catch {}
+          } catch {
+            setAvgInterviewScore(50);
+          }
+        } else {
+          setAvgInterviewScore(50);
         }
         return;
       }
@@ -190,8 +203,7 @@ export default function ResumeOS({ onScoreUpdate, subTab = "overview", onSubTabC
         setSnapshots(loaded);
       } else {
         // Check local storage to migrate to Supabase
-        // Check local storage to migrate to Supabase
-        const saved = localStorage.getItem("resume_os_snapshots_" + (userId || "guest"));
+        const saved = localStorage.getItem("resume_os_snapshots_" + userId);
         if (saved) {
           try {
             const parsed = JSON.parse(saved) as Snapshot[];
@@ -214,32 +226,46 @@ export default function ResumeOS({ onScoreUpdate, subTab = "overview", onSubTabC
                 }
               });
             }
-          } catch {}
+          } catch {
+            setSnapshots([]);
+          }
+        } else {
+          setSnapshots([]);
         }
       }
 
       // Load completed roadmap progress from DB
       const progress = await getRoadmapProgress(userId);
       const completedSteps = progress.filter(item => item.completed).length;
-      setCompletedRoadmapStepsCount(completedSteps || 1);
+      setCompletedRoadmapStepsCount(completedSteps || 0);
 
       // Load goals & interviews from profile / local history
-      const savedGoals = localStorage.getItem("completed_daily_goals_" + (userId || "guest"));
+      const savedGoals = localStorage.getItem("completed_daily_goals_" + userId);
       if (savedGoals) {
         try {
           const parsed = JSON.parse(savedGoals);
           setCompletedGoalsCount(Object.values(parsed).filter(Boolean).length);
-        } catch {}
+        } catch {
+          setCompletedGoalsCount(0);
+        }
+      } else {
+        setCompletedGoalsCount(0);
       }
-      const savedInterview = localStorage.getItem("interview_history_" + (userId || "guest"));
+      const savedInterview = localStorage.getItem("interview_history_" + userId);
       if (savedInterview) {
         try {
           const list = JSON.parse(savedInterview);
           if (list.length > 0) {
             const sum = list.reduce((acc: number, curr: { overallScore?: number }) => acc + (curr.overallScore || 0), 0);
             setAvgInterviewScore(Math.round(sum / list.length));
+          } else {
+            setAvgInterviewScore(50);
           }
-        } catch {}
+        } catch {
+          setAvgInterviewScore(50);
+        }
+      } else {
+        setAvgInterviewScore(50);
       }
     }
     loadData();
