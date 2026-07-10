@@ -215,11 +215,12 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      const savedKey = localStorage.getItem("gemini_api_key") || "";
+      const activeUser = userId || "guest";
+      const savedKey = localStorage.getItem("gemini_api_key_" + activeUser) || localStorage.getItem("gemini_api_key") || "";
       setApiKey(savedKey);
 
       // Check for previously scanned JD in history to allow JD tailoring
-      const savedHistory = localStorage.getItem("jd_match_history");
+      const savedHistory = localStorage.getItem("jd_match_history_" + activeUser) || localStorage.getItem("jd_match_history");
       if (savedHistory) {
         try {
           const list = JSON.parse(savedHistory);
@@ -230,22 +231,23 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
         } catch(e){}
       }
     }
-  }, []);
+  }, [userId]);
 
   // Sync profile & versions from Supabase
   useEffect(() => {
     async function syncProfile() {
       if (hasLoadedProfile) return;
+      const activeUser = userId || "guest";
       if (!userId) {
         // Fallback to local storage for guest
-        const savedProfile = localStorage.getItem("resume_builder_profile");
+        const savedProfile = localStorage.getItem("resume_builder_profile_" + activeUser);
         if (savedProfile) {
           try {
             setProfile(normalizeProfileData(JSON.parse(savedProfile)));
             setHasLoadedProfile(true);
           } catch(e){}
         }
-        const savedVersions = localStorage.getItem("resume_builder_versions");
+        const savedVersions = localStorage.getItem("resume_builder_versions_" + activeUser);
         if (savedVersions) {
           try { setVersions(JSON.parse(savedVersions)); } catch(e){}
         }
@@ -267,8 +269,8 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
         setHasLoadedProfile(true);
       } else {
         // Migrate local storage to Supabase
-        const localProfStr = localStorage.getItem("resume_builder_profile");
-        const localVersStr = localStorage.getItem("resume_builder_versions");
+        const localProfStr = localStorage.getItem("resume_builder_profile_" + activeUser) || localStorage.getItem("resume_builder_profile");
+        const localVersStr = localStorage.getItem("resume_builder_versions_" + activeUser) || localStorage.getItem("resume_builder_versions");
         let localProf = null;
         let localVers = [];
         try {
@@ -290,11 +292,12 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
 
   // Save changes to Supabase & local storage on profile, versions, or targetRole change
   useEffect(() => {
+    const activeUser = userId || "guest";
     if (userId) {
       upsertUserProfile(userId, { profile, versions, targetRole });
     }
-    localStorage.setItem("resume_builder_profile", JSON.stringify(profile));
-    localStorage.setItem("resume_builder_versions", JSON.stringify(versions));
+    localStorage.setItem("resume_builder_profile_" + activeUser, JSON.stringify(profile));
+    localStorage.setItem("resume_builder_versions_" + activeUser, JSON.stringify(versions));
   }, [profile, versions, targetRole, userId]);
 
   // Compile LaTeX code automatically when profile or template changes
@@ -325,7 +328,7 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
     setProcessingStep("Searching for scanned resume cache...");
     setErrorMsg(null);
 
-    let cachedText = localStorage.getItem("last_analyzed_resume_text");
+    let cachedText = localStorage.getItem("last_analyzed_resume_text_" + (userId || "guest"));
 
     if (!cachedText && userId) {
       try {
@@ -375,7 +378,7 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
         if (!evaluateRes.ok) throw new Error(evaluateData.message || evaluateData.error || "Failed to parse file.");
         
         if (evaluateData.rawText) {
-          localStorage.setItem("last_analyzed_resume_text", evaluateData.rawText);
+          localStorage.setItem("last_analyzed_resume_text_" + (userId || "guest"), evaluateData.rawText);
           handleProcessText(evaluateData.rawText);
         }
       } catch (err: any) {
@@ -418,7 +421,7 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
 
   // JD-Aware optimize
   const handleJdOptimize = async () => {
-    const savedHistory = localStorage.getItem("jd_match_history");
+    const savedHistory = localStorage.getItem("jd_match_history_" + (userId || "guest")) || localStorage.getItem("jd_match_history");
     if (!savedHistory) return;
     
     let jdText = "";
@@ -487,7 +490,7 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
     };
     const updated = [...versions, newVersion];
     setVersions(updated);
-    localStorage.setItem("resume_builder_versions", JSON.stringify(updated));
+    localStorage.setItem("resume_builder_versions_" + (userId || "guest"), JSON.stringify(updated));
     setVersionLabel("");
     setSuccessMessage(`Saved version: "${label}"`);
 
@@ -519,7 +522,7 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
     e.stopPropagation();
     const updated = versions.filter(v => v.id !== id);
     setVersions(updated);
-    localStorage.setItem("resume_builder_versions", JSON.stringify(updated));
+    localStorage.setItem("resume_builder_versions_" + (userId || "guest"), JSON.stringify(updated));
   };
 
   // Download LaTeX File

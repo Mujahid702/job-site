@@ -35,6 +35,7 @@ export async function generateResponse(options: AIRequestOptions): Promise<AIRes
         temperature: options.temperature,
         responseMimeType: options.responseMimeType,
         responseSchema: options.responseSchema,
+        userId: options.userId || "anonymous",
       });
       const hash = crypto.createHash('sha256').update(hashInput).digest('hex');
       cacheKey = `${cachePrefix}:${hash}`;

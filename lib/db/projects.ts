@@ -118,7 +118,7 @@ export async function saveStudentProject(
 
     let result;
     if (project.id) {
-      result = await executeWrite("student_projects", "update", payload, { id: project.id }, db);
+      result = await executeWrite("student_projects", "update", payload, { id: project.id, user_id: userId }, db);
       if (result.success) {
         // Check if project is completed (all checklist items are true)
         const checklist = project.readiness_checklist || {};
@@ -160,7 +160,7 @@ export async function saveStudentProject(
 }
 
 // 6. Delete student project blueprint
-export async function deleteStudentProject(id: string, supabaseClient?: any): Promise<{ success: boolean; error?: any }> {
+export async function deleteStudentProject(id: string, userId: string, supabaseClient?: any): Promise<{ success: boolean; error?: any }> {
   const db = await getDb(supabaseClient);
-  return executeWrite("student_projects", "delete", undefined, { id }, db);
+  return executeWrite("student_projects", "delete", undefined, { id, user_id: userId }, db);
 }

@@ -286,7 +286,7 @@ export async function calculatePRIScore(userId: string, forceLocalMockData?: any
       // Save snapshot in localStorage too for quick offline loading
       if (isBrowser) {
         localStorage.setItem(`pri_readiness_${userId}`, JSON.stringify(payload));
-        localStorage.setItem(`placement_readiness_score`, finalPriScore.toString());
+        localStorage.setItem(`placement_readiness_score_${userId}`, finalPriScore.toString());
       }
 
       // Save to Supabase DB using sync helper
@@ -303,10 +303,11 @@ export async function calculatePRIScore(userId: string, forceLocalMockData?: any
 
   // Save score change notifications inside alert engine
   if (isBrowser) {
-    const prevScore = parseInt(localStorage.getItem("placement_readiness_prev_score") || "0", 10);
+    const keyUserId = userId || "guest-user";
+    const prevScore = parseInt(localStorage.getItem(`placement_readiness_prev_score_${keyUserId}`) || "0", 10);
     if (prevScore > 0 && prevScore !== finalPriScore) {
       const difference = finalPriScore - prevScore;
-      const alertList = JSON.parse(localStorage.getItem("placement_readiness_alerts") || "[]");
+      const alertList = JSON.parse(localStorage.getItem(`placement_readiness_alerts_${keyUserId}`) || "[]");
       const newAlert = {
         id: `alert-${Date.now()}`,
         message: difference > 0
@@ -315,9 +316,9 @@ export async function calculatePRIScore(userId: string, forceLocalMockData?: any
         type: difference > 0 ? "success" : "warning",
         timestamp: new Date().toISOString()
       };
-      localStorage.setItem("placement_readiness_alerts", JSON.stringify([newAlert, ...alertList].slice(0, 10)));
+      localStorage.setItem(`placement_readiness_alerts_${keyUserId}`, JSON.stringify([newAlert, ...alertList].slice(0, 10)));
     }
-    localStorage.setItem("placement_readiness_prev_score", finalPriScore.toString());
+    localStorage.setItem(`placement_readiness_prev_score_${keyUserId}`, finalPriScore.toString());
   }
 
   // Trigger 'pri' category career mission progress updates
@@ -350,7 +351,7 @@ export async function getPlacementReadiness(userId: string, supabaseClient?: any
         // Cache locally
         if (isBrowser) {
           localStorage.setItem(`pri_readiness_${userId}`, JSON.stringify(data));
-          localStorage.setItem(`placement_readiness_score`, data.pri_score.toString());
+          localStorage.setItem(`placement_readiness_score_${userId}`, data.pri_score.toString());
         }
         return data;
       }

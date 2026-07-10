@@ -77,7 +77,8 @@ export default function ProjectOS() {
     let ats = 0;
     let resumeText = "";
     if (typeof window !== "undefined") {
-      const savedSnapshots = localStorage.getItem("resume_os_snapshots");
+      const activeUser = userId || "guest";
+      const savedSnapshots = localStorage.getItem("resume_os_snapshots_" + activeUser);
       if (savedSnapshots) {
         try {
           const list = JSON.parse(savedSnapshots);
@@ -88,8 +89,8 @@ export default function ProjectOS() {
           }
         } catch {}
       } else {
-        ats = Number(localStorage.getItem("ats_score") || "0");
-        resumeText = localStorage.getItem("last_analyzed_resume_text") || "";
+        ats = Number(localStorage.getItem("ats_score_" + activeUser) || localStorage.getItem("ats_score") || "0");
+        resumeText = localStorage.getItem("last_analyzed_resume_text_" + activeUser) || localStorage.getItem("last_analyzed_resume_text") || "";
       }
     }
     return {
@@ -104,7 +105,8 @@ export default function ProjectOS() {
       let ats = 0;
       let resumeText = "";
       if (typeof window !== "undefined") {
-        const savedSnapshots = localStorage.getItem("resume_os_snapshots");
+        const activeUser = userId || "guest";
+        const savedSnapshots = localStorage.getItem("resume_os_snapshots_" + activeUser);
         if (savedSnapshots) {
           try {
             const list = JSON.parse(savedSnapshots);
@@ -115,8 +117,8 @@ export default function ProjectOS() {
             }
           } catch {}
         } else {
-          ats = Number(localStorage.getItem("ats_score") || "0");
-          resumeText = localStorage.getItem("last_analyzed_resume_text") || "";
+          ats = Number(localStorage.getItem("ats_score_" + activeUser) || localStorage.getItem("ats_score") || "0");
+          resumeText = localStorage.getItem("last_analyzed_resume_text_" + activeUser) || localStorage.getItem("last_analyzed_resume_text") || "";
         }
       }
       setWorkspaceStats({
@@ -126,11 +128,14 @@ export default function ProjectOS() {
       });
     };
 
+    // Run once on userId load
+    syncStats();
+
     window.addEventListener("active_resume_updated", syncStats);
     return () => {
       window.removeEventListener("active_resume_updated", syncStats);
     };
-  }, []);
+  }, [userId]);
 
   // Track auth state & load initial data
   useEffect(() => {
@@ -198,7 +203,7 @@ export default function ProjectOS() {
   const handleGenerateProject = async () => {
     setGenerating(true);
     try {
-      const apiKey = typeof window !== "undefined" ? localStorage.getItem("gemini_api_key") || "" : "";
+      const apiKey = typeof window !== "undefined" ? localStorage.getItem("gemini_api_key_" + (userId || "guest")) || localStorage.getItem("gemini_api_key") || "" : "";
       const generationDifficulty = projectDifficulty === "All" ? "Advanced" : projectDifficulty;
       
       let finalBlueprint;
@@ -460,7 +465,7 @@ export default function ProjectOS() {
     setCopilotLoading(true);
 
     try {
-      const apiKey = typeof window !== "undefined" ? localStorage.getItem("gemini_api_key") || "" : "";
+      const apiKey = typeof window !== "undefined" ? localStorage.getItem("gemini_api_key_" + (userId || "guest")) || localStorage.getItem("gemini_api_key") || "" : "";
       const res = await fetch("/api/placement/copilot", {
         method: "POST",
         headers: {

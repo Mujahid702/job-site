@@ -31,9 +31,14 @@ export default function Header() {
     };
     getUser();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user ?? null);
       setIsAdmin(checkAdmin(session?.user ?? null));
+      if (event === "SIGNED_OUT") {
+        import("@/lib/security/LocalStorage").then(({ purgeAllScopedData }) => {
+          purgeAllScopedData();
+        }).catch(err => console.error("Purge cache failed:", err));
+      }
     });
 
     return () => subscription.unsubscribe();

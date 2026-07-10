@@ -315,10 +315,31 @@ async function getDb(supabaseClient?: any) {
   return supabase;
 }
 
+function getActiveUserId(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith("sb-") && key.endsWith("-auth-token")) {
+        const value = localStorage.getItem(key);
+        if (value) {
+          const parsed = JSON.parse(value);
+          if (parsed && parsed.user && parsed.user.id) {
+            return parsed.user.id;
+          }
+        }
+      }
+    }
+  } catch {}
+  return null;
+}
+
 function getLocalData<T>(key: string, defaultValue: T): T {
   if (typeof window === "undefined") return defaultValue;
   try {
-    const stored = localStorage.getItem(key);
+    const userId = getActiveUserId();
+    const scopedKey = userId ? `${key}_${userId}` : `${key}_guest`;
+    const stored = localStorage.getItem(scopedKey) || localStorage.getItem(key);
     return stored ? JSON.parse(stored) : defaultValue;
   } catch {
     return defaultValue;
@@ -328,7 +349,9 @@ function getLocalData<T>(key: string, defaultValue: T): T {
 function saveLocalData<T>(key: string, value: T) {
   if (typeof window === "undefined") return;
   try {
-    localStorage.setItem(key, JSON.stringify(value));
+    const userId = getActiveUserId();
+    const scopedKey = userId ? `${key}_${userId}` : `${key}_guest`;
+    localStorage.setItem(scopedKey, JSON.stringify(value));
   } catch (err) {
     console.error("LocalStorage write failed:", err);
   }
@@ -549,7 +572,7 @@ export async function completeAttempt(
   } else {
     try {
       const db = await getDb(supabaseClient);
-      const { data } = await db.from("assessment_attempts").select("*").eq("id", attemptId).single();
+      const { data } = await db.from("assessment_attempts").select("*").eq("id", attemptId).eq("user_id", userId).single();
       if (data) attempt = data;
     } catch {}
   }

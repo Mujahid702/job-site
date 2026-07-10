@@ -97,7 +97,8 @@ export default function ResumeOS({ onScoreUpdate, subTab = "overview", onSubTabC
     async function loadData() {
       if (!userId) {
         // Fallback to local storage for guest
-        const saved = localStorage.getItem("resume_os_snapshots");
+        // Fallback to local storage for guest
+        const saved = localStorage.getItem("resume_os_snapshots_" + (userId || "guest"));
         if (saved) {
           try { setSnapshots(JSON.parse(saved)); } catch {}
         } else {
@@ -138,7 +139,7 @@ export default function ResumeOS({ onScoreUpdate, subTab = "overview", onSubTabC
         }
 
         // Local daily goals
-        const savedGoals = localStorage.getItem("completed_daily_goals");
+        const savedGoals = localStorage.getItem("completed_daily_goals_" + (userId || "guest"));
         if (savedGoals) {
           try {
             const parsed = JSON.parse(savedGoals);
@@ -146,7 +147,7 @@ export default function ResumeOS({ onScoreUpdate, subTab = "overview", onSubTabC
           } catch {}
         }
         // Local roadmap progress
-        const savedRoadmap = localStorage.getItem("completed_roadmap_steps");
+        const savedRoadmap = localStorage.getItem("completed_roadmap_steps_" + (userId || "guest"));
         if (savedRoadmap) {
           try {
             const parsed = JSON.parse(savedRoadmap);
@@ -154,7 +155,7 @@ export default function ResumeOS({ onScoreUpdate, subTab = "overview", onSubTabC
           } catch {}
         }
         // Local interview history
-        const savedInterview = localStorage.getItem("interview_history");
+        const savedInterview = localStorage.getItem("interview_history_" + (userId || "guest"));
         if (savedInterview) {
           try {
             const list = JSON.parse(savedInterview);
@@ -189,7 +190,8 @@ export default function ResumeOS({ onScoreUpdate, subTab = "overview", onSubTabC
         setSnapshots(loaded);
       } else {
         // Check local storage to migrate to Supabase
-        const saved = localStorage.getItem("resume_os_snapshots");
+        // Check local storage to migrate to Supabase
+        const saved = localStorage.getItem("resume_os_snapshots_" + (userId || "guest"));
         if (saved) {
           try {
             const parsed = JSON.parse(saved) as Snapshot[];
@@ -222,14 +224,14 @@ export default function ResumeOS({ onScoreUpdate, subTab = "overview", onSubTabC
       setCompletedRoadmapStepsCount(completedSteps || 1);
 
       // Load goals & interviews from profile / local history
-      const savedGoals = localStorage.getItem("completed_daily_goals");
+      const savedGoals = localStorage.getItem("completed_daily_goals_" + (userId || "guest"));
       if (savedGoals) {
         try {
           const parsed = JSON.parse(savedGoals);
           setCompletedGoalsCount(Object.values(parsed).filter(Boolean).length);
         } catch {}
       }
-      const savedInterview = localStorage.getItem("interview_history");
+      const savedInterview = localStorage.getItem("interview_history_" + (userId || "guest"));
       if (savedInterview) {
         try {
           const list = JSON.parse(savedInterview);
@@ -247,7 +249,7 @@ export default function ResumeOS({ onScoreUpdate, subTab = "overview", onSubTabC
   const saveSnapshotsToStorage = async (updated: Snapshot[]) => {
     setSnapshots(updated);
     if (typeof window !== "undefined") {
-      localStorage.setItem("resume_os_snapshots", JSON.stringify(updated));
+      localStorage.setItem("resume_os_snapshots_" + (userId || "guest"), JSON.stringify(updated));
     }
     if (userId) {
       const latest = updated[updated.length - 1];
@@ -347,7 +349,7 @@ export default function ResumeOS({ onScoreUpdate, subTab = "overview", onSubTabC
     setCompareError(null);
     setCompareData(null);
 
-    const currentApiKey = typeof window !== "undefined" ? localStorage.getItem("gemini_api_key") || "" : "";
+    const currentApiKey = typeof window !== "undefined" ? localStorage.getItem("gemini_api_key_" + (userId || "guest")) || "" : "";
 
     try {
       const res = await fetch("/api/resume/compare", {
@@ -466,12 +468,12 @@ export default function ResumeOS({ onScoreUpdate, subTab = "overview", onSubTabC
 
   const restoreHistoryItem = (snap: Snapshot) => {
     if (typeof window !== "undefined") {
-      localStorage.setItem("last_analyzed_resume_text", snap.rawText);
-      localStorage.setItem("last_analyzed_resume_name", snap.version);
-      localStorage.setItem("last_analyzed_resume_timestamp", new Date().toISOString());
-      localStorage.removeItem("jd_match_history");
-      localStorage.removeItem("resume_enhance_result");
-      localStorage.removeItem("resume_builder_cache");
+      localStorage.setItem("last_analyzed_resume_text_" + (userId || "guest"), snap.rawText);
+      localStorage.setItem("last_analyzed_resume_name_" + (userId || "guest"), snap.version);
+      localStorage.setItem("last_analyzed_resume_timestamp_" + (userId || "guest"), new Date().toISOString());
+      localStorage.removeItem("jd_match_history_" + (userId || "guest"));
+      localStorage.removeItem("resume_enhance_result_" + (userId || "guest"));
+      localStorage.removeItem("resume_builder_cache_" + (userId || "guest"));
       window.dispatchEvent(new Event("active_resume_updated"));
       alert(`Success! "${snap.version}" has been restored as the active resume. Scans will now reference this text.`);
     }
