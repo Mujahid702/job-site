@@ -181,7 +181,13 @@ CREATE POLICY "Users can operate on own applications" ON public.applications
 
 DROP POLICY IF EXISTS "Users can operate on own application history" ON public.application_history;
 CREATE POLICY "Users can operate on own application history" ON public.application_history
-  FOR ALL USING (auth.uid() = user_id OR public.is_admin());
+  FOR ALL USING (
+    EXISTS (
+      SELECT 1 FROM public.applications a
+      WHERE a.id = application_id
+      AND (a.user_id = auth.uid() OR public.is_admin())
+    )
+  );
 
 DROP POLICY IF EXISTS "Users can operate on own resume analytics" ON public.resume_analytics;
 CREATE POLICY "Users can operate on own resume analytics" ON public.resume_analytics
@@ -234,11 +240,17 @@ CREATE POLICY "Users can operate on own interview answers" ON public.interview_a
 
 DROP POLICY IF EXISTS "Users can operate on own recruiter verifications" ON public.recruiter_verifications;
 CREATE POLICY "Users can operate on own recruiter verifications" ON public.recruiter_verifications
-  FOR ALL USING (auth.uid() = user_id OR public.is_admin());
+  FOR ALL USING (
+    EXISTS (
+      SELECT 1 FROM public.recruiters r
+      WHERE r.id = recruiter_id
+      AND (r.user_id = auth.uid() OR public.is_admin())
+    )
+  );
 
 DROP POLICY IF EXISTS "Users can operate on own recruiter reports" ON public.recruiter_reports;
 CREATE POLICY "Users can operate on own recruiter reports" ON public.recruiter_reports
-  FOR ALL USING (auth.uid() = reporter_id OR public.is_admin());
+  FOR ALL USING (auth.uid() = reporter_user_id OR public.is_admin());
 
 DROP POLICY IF EXISTS "Users can operate on own recruiter ratings" ON public.recruiter_ratings;
 CREATE POLICY "Users can operate on own recruiter ratings" ON public.recruiter_ratings
