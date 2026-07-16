@@ -4,6 +4,8 @@ import React, { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { getPosts, createPost, upvotePost, createComment, reportPost } from "@/lib/db/community";
 import { getUserProfile, upsertUserProfile } from "@/lib/db/profiles";
+import { getScopedKey } from "@/lib/security/LocalStorage";
+import { createClient } from "@/lib/supabase/client";
 
 import {
   MessageCircle,
@@ -230,17 +232,7 @@ export default function CommunityHubOS() {
   ]);
   const [showNotifDrawer, setShowNotifDrawer] = useState(false);
 
-  const [blockedUsers, setBlockedUsers] = useState<string[]>(() => {
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem("placement_community_blocked_users");
-      if (stored) {
-        try {
-          return JSON.parse(stored);
-        } catch {}
-      }
-    }
-    return [];
-  });
+  const [blockedUsers, setBlockedUsers] = useState<string[]>([]);
 
   const [reportingPostId, setReportingPostId] = useState<string | null>(null);
   const [reportingCommentId, setReportingCommentId] = useState<{ postId: string; commentIndex: number } | null>(null);
@@ -249,13 +241,9 @@ export default function CommunityHubOS() {
   const [loading, setLoading] = useState<boolean>(true);
   const [currentUserName, setCurrentUserName] = useState<string>("Mujahid Ahmed");
 
-  // Sync blocked users
-  useEffect(() => {
-    localStorage.setItem("placement_community_blocked_users", JSON.stringify(blockedUsers));
-  }, [blockedUsers]);
-
   // Listen to Auth State
   useEffect(() => {
+    const supabase = createClient();
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) setUserId(user.id);
     });
@@ -268,6 +256,27 @@ export default function CommunityHubOS() {
       subscription.unsubscribe();
     };
   }, []);
+
+  // Sync blocked users from storage on userId change
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem(getScopedKey("placement_community_blocked_users", userId));
+      if (stored) {
+        try {
+          setBlockedUsers(JSON.parse(stored));
+          return;
+        } catch {}
+      }
+      setBlockedUsers([]);
+    }
+  }, [userId]);
+
+  // Sync blocked users to storage on update
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem(getScopedKey("placement_community_blocked_users", userId), JSON.stringify(blockedUsers));
+    }
+  }, [blockedUsers, userId]);
 
   // Fetch community posts and experiences, join with profiles
   useEffect(() => {
@@ -472,9 +481,9 @@ export default function CommunityHubOS() {
   useEffect(() => {
     if (typeof window !== "undefined") {
       setTimeout(() => {
-        setAtsScore(Number(localStorage.getItem("ats_score")));
+        setAtsScore(Number(localStorage.getItem(getScopedKey("ats_score", userId))));
         
-        const projectProfile = localStorage.getItem("project_os_profile");
+        const projectProfile = localStorage.getItem(getScopedKey("project_os_profile", userId));
         if (projectProfile) {
           try {
             const parsed = JSON.parse(projectProfile);
@@ -484,10 +493,10 @@ export default function CommunityHubOS() {
           } catch {}
         }
 
-        setPortfolioTheme(localStorage.getItem("portfolio_profile_os_theme"));
+        setPortfolioTheme(localStorage.getItem(getScopedKey("portfolio_profile_os_theme", userId)));
       }, 0);
     }
-  }, [activeSubTab]);
+  }, [activeSubTab, userId]);
 
   const handleShareAtsScore = async () => {
     if (!atsScore) return;
@@ -835,7 +844,7 @@ export default function CommunityHubOS() {
     setCopilotLoading(true);
 
     try {
-      const apiKey = typeof window !== "undefined" ? localStorage.getItem("gemini_api_key") || "" : "";
+      const apiKey = typeof window !== "undefined" ? localStorage.getItem(getScopedKey("gemini_api_key", userId)) || "" : "";
       const res = await fetch("/api/placement/copilot", {
         method: "POST",
         headers: {

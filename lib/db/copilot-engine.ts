@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { executeWrite } from "./sync";
+import { getScopedKey } from "@/lib/security/LocalStorage";
 
 export interface StudentFullContext {
   atsScore: number;
@@ -37,23 +38,23 @@ export async function loadStudentFullContext(
   const db = supabaseClient || supabase;
   
   // Base default fallbacks
-  let atsVal = 70;
-  let priScore = 40;
+  let atsVal = 0;
+  let priScore = 0;
   let targetRole = "Software Engineer";
-  let targetCompanies = ["Deloitte", "TCS", "Accenture"];
-  let techStack: string[] = ["JavaScript", "React"];
+  let targetCompanies: string[] = [];
+  let techStack: string[] = [];
   let placementLevel = "Placement Beginner";
   let applicationsCount = 0;
   let applications: any[] = [];
-  let assessmentAccuracy = 50;
-  let mockInterviewsAvg = 60;
-  let projectsCount = 1;
+  let assessmentAccuracy = 0;
+  let mockInterviewsAvg = 0;
+  let projectsCount = 0;
   let portfolioStatus = { portfolio: false, github: false };
   let roadmapProgressCount = 0;
   const totalRoadmapCount = 10;
-  let strengths: string[] = ["Communication", "Basic Coding"];
-  let weaknesses: string[] = ["System Design", "SQL joins"];
-  let repeatedMistakes: string[] = ["Weak resume metrics"];
+  let strengths: string[] = [];
+  let weaknesses: string[] = [];
+  let repeatedMistakes: string[] = [];
 
   if (userId && userId !== "guest-user") {
     try {
@@ -136,10 +137,10 @@ export async function loadStudentFullContext(
   } else {
     // Guest Fallback checking
     if (isBrowser) {
-      atsVal = Number(localStorage.getItem("ats_score") || "70");
-      priScore = Number(localStorage.getItem("placement_readiness_score") || "40");
+      atsVal = Number(localStorage.getItem(getScopedKey("ats_score", userId)) || "0");
+      priScore = Number(localStorage.getItem(getScopedKey("placement_readiness_score", userId)) || "0");
       
-      const guestMemory = localStorage.getItem("placement_copilot_guest_memory");
+      const guestMemory = localStorage.getItem(getScopedKey("placement_copilot_guest_memory", userId));
       if (guestMemory) {
         try {
           const parsed = JSON.parse(guestMemory);
@@ -149,7 +150,7 @@ export async function loadStudentFullContext(
         } catch {}
       }
 
-      const crmApps = localStorage.getItem("placement_crm_applications");
+      const crmApps = localStorage.getItem(getScopedKey("placement_crm_applications", userId));
       if (crmApps) {
         try {
           const parsed = JSON.parse(crmApps);
@@ -207,7 +208,7 @@ export async function updateCopilotMemory(
     }
   } else {
     if (isBrowser) {
-      localStorage.setItem("placement_copilot_guest_memory", JSON.stringify(memory));
+      localStorage.setItem(getScopedKey("placement_copilot_guest_memory", userId), JSON.stringify(memory));
       return true;
     }
     return false;
@@ -249,7 +250,7 @@ export async function executeCopilotAction(
     // Offline local storage actions simulation
     if (isBrowser) {
       if (actionType === "SAVE_JOB") {
-        const list = JSON.parse(localStorage.getItem("placement_crm_applications") || "[]");
+        const list = JSON.parse(localStorage.getItem(getScopedKey("placement_crm_applications", userId)) || "[]");
         const newApp = {
           id: `app-guest-${Date.now()}`,
           company: payload.company || "Google",
@@ -258,7 +259,7 @@ export async function executeCopilotAction(
           applied_date: new Date().toISOString()
         };
         list.push(newApp);
-        localStorage.setItem("placement_crm_applications", JSON.stringify(list));
+        localStorage.setItem(getScopedKey("placement_crm_applications", userId), JSON.stringify(list));
         return { success: true, message: `Successfully saved ${newApp.role} at ${newApp.company} to guest CRM.` };
       }
     }

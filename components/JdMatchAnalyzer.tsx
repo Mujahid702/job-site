@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { getJdMatches, addJdMatch } from "@/lib/db/resume";
+import { getScopedKey } from "@/lib/security/LocalStorage";
 
 import { enqueueTask, startWorker, fileToBase64 } from "@/lib/queue";
 import { motion, AnimatePresence } from "framer-motion";
@@ -117,6 +118,23 @@ interface JdMatchAnalyzerProps {
 
 export default function JdMatchAnalyzer({ onScoreUpdate, onTabChange, onMatchComplete }: JdMatchAnalyzerProps) {
   const { savedJobs } = useSavedJobs();
+
+  const [userId, setUserId] = useState<string | null>(null);
+
+  // Listen to Auth State
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) setUserId(user.id);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUserId(session?.user?.id || null);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
   
   // Input settings states
   const [resumeInputMode, setResumeInputMode] = useState<"upload" | "saved">("upload");
@@ -157,24 +175,29 @@ export default function JdMatchAnalyzer({ onScoreUpdate, onTabChange, onMatchCom
   // Synchronize resume scan cache
   useEffect(() => {
     if (typeof window !== "undefined") {
-      if (localStorage.getItem("last_analyzed_resume_text")) {
+      const savedText = localStorage.getItem(getScopedKey("last_analyzed_resume_text", userId));
+      if (savedText) {
         setResumeInputMode("saved");
-        setCachedResumeName(localStorage.getItem("last_analyzed_resume_name") || "Resume");
-        setCachedResumeTimestamp(localStorage.getItem("last_analyzed_resume_timestamp") || "");
+        setCachedResumeName(localStorage.getItem(getScopedKey("last_analyzed_resume_name", userId)) || "Resume");
+        setCachedResumeTimestamp(localStorage.getItem(getScopedKey("last_analyzed_resume_timestamp", userId)) || "");
+      } else {
+        setResumeInputMode("upload");
+        setCachedResumeName("");
+        setCachedResumeTimestamp("");
       }
     }
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
     const handleResumeUpdate = () => {
       setResult(null);
       setOptimizeResult(null);
       if (typeof window !== "undefined") {
-        const savedText = localStorage.getItem("last_analyzed_resume_text");
+        const savedText = localStorage.getItem(getScopedKey("last_analyzed_resume_text", userId));
         if (savedText) {
           setResumeInputMode("saved");
-          setCachedResumeName(localStorage.getItem("last_analyzed_resume_name") || "Resume");
-          setCachedResumeTimestamp(localStorage.getItem("last_analyzed_resume_timestamp") || "");
+          setCachedResumeName(localStorage.getItem(getScopedKey("last_analyzed_resume_name", userId)) || "Resume");
+          setCachedResumeTimestamp(localStorage.getItem(getScopedKey("last_analyzed_resume_timestamp", userId)) || "");
         } else {
           setResumeInputMode("upload");
           setCachedResumeName("");
@@ -187,7 +210,7 @@ export default function JdMatchAnalyzer({ onScoreUpdate, onTabChange, onMatchCom
     return () => {
       window.removeEventListener("active_resume_updated", handleResumeUpdate);
     };
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
     if (!activeTaskId) return;
@@ -212,7 +235,7 @@ export default function JdMatchAnalyzer({ onScoreUpdate, onTabChange, onMatchCom
           
           let resumeTextToSend = "";
           if (resumeInputMode === "saved") {
-            resumeTextToSend = localStorage.getItem("last_analyzed_resume_text") || "";
+            resumeTextToSend = localStorage.getItem(getScopedKey("last_analyzed_resume_text", userId)) || "";
           }
 
           saveToHistory(
@@ -248,35 +271,20 @@ export default function JdMatchAnalyzer({ onScoreUpdate, onTabChange, onMatchCom
     return () => {
       window.removeEventListener("bb_task_updated", handleTaskUpdate);
     };
-  }, [activeTaskId, jdText, resumeInputMode, onMatchComplete, onScoreUpdate]);
+  }, [activeTaskId, jdText, resumeInputMode, onMatchComplete, onScoreUpdate, userId]);
 
-  const [userId, setUserId] = useState<string | null>(null);
 
-  // Listen to Auth State
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) setUserId(user.id);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUserId(session?.user?.id || null);
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, []);
 
   // Load from local storage / Supabase
   useEffect(() => {
     async function loadHistory() {
       if (typeof window !== "undefined") {
-        const savedKey = localStorage.getItem("gemini_api_key") || "";
+        const savedKey = localStorage.getItem(getScopedKey("gemini_api_key", userId)) || "";
         setApiKey(savedKey);
       }
 
       if (!userId) {
-        const savedHistory = localStorage.getItem("jd_match_history");
+        const savedHistory = localStorage.getItem(getScopedKey("jd_match_history", userId));
         if (savedHistory) {
           try {
             setHistory(JSON.parse(savedHistory));
@@ -302,7 +310,7 @@ export default function JdMatchAnalyzer({ onScoreUpdate, onTabChange, onMatchCom
         setHistory(loadedHistory);
       } else {
         // Migrate local storage history
-        const savedHistory = localStorage.getItem("jd_match_history");
+        const savedHistory = localStorage.getItem(getScopedKey("jd_match_history", userId));
         if (savedHistory) {
           try {
             const parsed = JSON.parse(savedHistory) as HistoryItem[];
@@ -341,7 +349,7 @@ export default function JdMatchAnalyzer({ onScoreUpdate, onTabChange, onMatchCom
     
     const updatedHistory = [newItem, ...history.slice(0, 19)]; // Keep last 20 scans
     setHistory(updatedHistory);
-    localStorage.setItem("jd_match_history", JSON.stringify(updatedHistory));
+    localStorage.setItem(getScopedKey("jd_match_history", userId), JSON.stringify(updatedHistory));
 
     if (userId) {
       await addJdMatch(userId, {
@@ -361,7 +369,7 @@ export default function JdMatchAnalyzer({ onScoreUpdate, onTabChange, onMatchCom
     e.stopPropagation();
     const updated = history.filter(h => h.id !== id);
     setHistory(updated);
-    localStorage.setItem("jd_match_history", JSON.stringify(updated));
+    localStorage.setItem(getScopedKey("jd_match_history", userId), JSON.stringify(updated));
     if (result && history.find(h => h.id === id)?.result === result) {
       setResult(null);
       setOptimizeResult(null);
@@ -499,7 +507,7 @@ export default function JdMatchAnalyzer({ onScoreUpdate, onTabChange, onMatchCom
     
     let resumeTextToSend = "";
     if (resumeInputMode === "saved") {
-      const savedText = localStorage.getItem("last_analyzed_resume_text");
+      const savedText = localStorage.getItem(getScopedKey("last_analyzed_resume_text", userId));
       if (!savedText) {
         setErrorMsg("No previously analyzed resume text found. Please upload a resume file instead, or complete a scan in the ATS Resume Analyzer first.");
         return;
@@ -566,7 +574,7 @@ export default function JdMatchAnalyzer({ onScoreUpdate, onTabChange, onMatchCom
     
     let resumeTextToSend = "";
     if (resumeInputMode === "saved") {
-      resumeTextToSend = localStorage.getItem("last_analyzed_resume_text") || "";
+      resumeTextToSend = localStorage.getItem(getScopedKey("last_analyzed_resume_text", userId)) || "";
     } else {
       // Re-use mock or cached if uploaded
       resumeTextToSend = "Uploaded resume content";

@@ -51,6 +51,7 @@ import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { User } from "@supabase/supabase-js";
+import { getScopedKey, migrateOrCleanupLegacyKeys } from "@/lib/security/LocalStorage";
 import { upsertUserProfile } from "@/lib/db/profiles";
 
 // Categories & Roles for dynamic Tailoring
@@ -338,7 +339,7 @@ export default function DashboardPage() {
 
   // Derived Placement Readiness Index Metrics
   const readinessScore = (() => {
-    let score = 30;
+    let score = 0;
     // Streak contribution
     score += Math.min(streakCount * 3, 20);
     // Goals checked
@@ -347,7 +348,7 @@ export default function DashboardPage() {
     // Roadmap checked (computed dynamically from actual learning steps checked in localStorage)
     let checkedSteps = 0;
     if (typeof window !== "undefined") {
-      const savedProgress = localStorage.getItem("roadmap_progress_states");
+      const savedProgress = localStorage.getItem(getScopedKey("roadmap_progress_states", user?.id || null));
       if (savedProgress) {
         try {
           const parsed = JSON.parse(savedProgress);
@@ -364,7 +365,7 @@ export default function DashboardPage() {
     let crmAppsCount = 0;
     let crmHasOffer = false;
     if (typeof window !== "undefined") {
-      const stored = localStorage.getItem("placement_crm_applications");
+      const stored = localStorage.getItem(getScopedKey("placement_crm_applications", user?.id || null));
       if (stored) {
         try {
           const parsedApps = JSON.parse(stored);
@@ -385,6 +386,7 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!isFeatureVisible("placement-readiness", user)) return;
     if (user) {
+      migrateOrCleanupLegacyKeys(user.id);
       import("@/lib/db/placement-readiness").then(({ getPlacementReadiness }) => {
         getPlacementReadiness(user.id).then(res => {
           if (res) {
@@ -402,7 +404,7 @@ export default function DashboardPage() {
         });
       });
     } else {
-      const stored = localStorage.getItem("placement_readiness_score");
+      const stored = localStorage.getItem(getScopedKey("placement_readiness_score", null));
       if (stored) {
         setLiveReadinessScore(parseInt(stored, 10) || 0);
       }

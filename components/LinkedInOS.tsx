@@ -18,6 +18,7 @@ import {
 import { cn, flattenSkills } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { upsertUserProfile } from "@/lib/db/profiles";
+import { getScopedKey } from "@/lib/security/LocalStorage";
 
 // Types
 interface LinkedInProfile {
@@ -139,36 +140,61 @@ export default function LinkedInOS() {
   const [activeSubTab, setActiveSubTab] = useState<string>("analyzer");
 
   const PROFILE_KEY = "linkedin_profile_os";
+  const [userId, setUserId] = useState<string | null>(null);
+
+  // Listen to Auth State
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) setUserId(user.id);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUserId(session?.user?.id || null);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
 
   // State Management
-  const [profile, setProfile] = useState<LinkedInProfile>(() => {
+  const [profile, setProfile] = useState<LinkedInProfile>(defaultProfile);
+
+  // Sync profile when userId changes
+  useEffect(() => {
     if (typeof window !== "undefined") {
-      const cached = localStorage.getItem(PROFILE_KEY);
+      const scopedKey = getScopedKey(PROFILE_KEY, userId);
+      const cached = localStorage.getItem(scopedKey);
       if (cached) {
         try {
-          return JSON.parse(cached);
+          setProfile(JSON.parse(cached));
         } catch {}
+      } else {
+        setProfile(defaultProfile);
       }
     }
-    return defaultProfile;
-  });
+  }, [userId]);
 
   const [pdfUploadProgress, setPdfUploadProgress] = useState<number | null>(null);
   const [profileUrlInput, setProfileUrlInput] = useState("");
   const [profileUrlSyncing, setProfileUrlSyncing] = useState(false);
 
   // Real LinkedIn OAuth connection states via Supabase Auth
-  const [isLinkedinConnected, setIsLinkedinConnected] = useState<boolean>(() => {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem("linkedin_oauth_connected") === "true";
-    }
-    return false;
-  });
+  const [isLinkedinConnected, setIsLinkedinConnected] = useState<boolean>(false);
   const [linkedInUserMeta, setLinkedInUserMeta] = useState<{ name?: string; email?: string; avatar?: string } | null>(null);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [linkedinSyncLoading, setLinkedinSyncLoading] = useState(false);
   const [providerToken, setProviderToken] = useState<string | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
+
+  // Sync LinkedIn OAuth connection state on userId change
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const isConn = localStorage.getItem(getScopedKey("linkedin_oauth_connected", userId)) === "true";
+      setIsLinkedinConnected(isConn);
+    }
+  }, [userId]);
 
   // Check LinkedIn session status on mount
   useEffect(() => {
@@ -181,10 +207,11 @@ export default function LinkedInOS() {
         }
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
+          setUserId(user.id);
           const identity = user.identities?.find(id => id.provider === "linkedin_oidc");
           if (identity) {
             setIsLinkedinConnected(true);
-            localStorage.setItem("linkedin_oauth_connected", "true");
+            localStorage.setItem(getScopedKey("linkedin_oauth_connected", user.id), "true");
             setLinkedInUserMeta({
               name: identity.identity_data?.name,
               email: identity.identity_data?.email,
@@ -210,7 +237,7 @@ export default function LinkedInOS() {
             }
           } else {
             setIsLinkedinConnected(false);
-            localStorage.setItem("linkedin_oauth_connected", "false");
+            localStorage.setItem(getScopedKey("linkedin_oauth_connected", user.id), "false");
             setLinkedInUserMeta(null);
           }
         }
@@ -244,22 +271,25 @@ export default function LinkedInOS() {
   const [enhancedPostTags, setEnhancedPostTags] = useState<string[]>([]);
 
   // Completed brand tasks
-  const [completedBrandTasks, setCompletedBrandTasks] = useState<Record<string, boolean>>(() => {
+  const [completedBrandTasks, setCompletedBrandTasks] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
     if (typeof window !== "undefined") {
-      const cached = localStorage.getItem("linkedin_completed_tasks");
+      const cached = localStorage.getItem(getScopedKey("linkedin_completed_tasks", userId));
       if (cached) {
         try {
-          return JSON.parse(cached);
+          setCompletedBrandTasks(JSON.parse(cached));
         } catch {}
+      } else {
+        setCompletedBrandTasks({});
       }
     }
-    return {};
-  });
+  }, [userId]);
 
   const saveCompletedTasks = (updated: Record<string, boolean>) => {
     setCompletedBrandTasks(updated);
     if (typeof window !== "undefined") {
-      localStorage.setItem("linkedin_completed_tasks", JSON.stringify(updated));
+      localStorage.setItem(getScopedKey("linkedin_completed_tasks", userId), JSON.stringify(updated));
     }
   };
 
@@ -403,7 +433,7 @@ export default function LinkedInOS() {
   const triggerLinkedInOAuthSync = async () => {
     setLinkedinSyncLoading(true);
     try {
-      const apiKey = typeof window !== "undefined" ? localStorage.getItem("gemini_api_key") || "" : "";
+      const apiKey = typeof window !== "undefined" ? localStorage.getItem(getScopedKey("gemini_api_key", userId)) || "" : "";
       const res = await fetch("/api/portfolio/linkedin", {
         method: "POST",
         headers: {
@@ -448,7 +478,7 @@ export default function LinkedInOS() {
     if (!customPostDraft.trim()) return;
     setIsEnhancingPost(true);
     try {
-      const apiKey = typeof window !== "undefined" ? localStorage.getItem("gemini_api_key") || "" : "";
+      const apiKey = typeof window !== "undefined" ? localStorage.getItem(getScopedKey("gemini_api_key", userId)) || "" : "";
       const res = await fetch("/api/linkedin/enhance", {
         method: "POST",
         headers: {
@@ -572,14 +602,14 @@ export default function LinkedInOS() {
   const saveProfile = (updated: LinkedInProfile) => {
     setProfile(updated);
     if (typeof window !== "undefined") {
-      localStorage.setItem(PROFILE_KEY, JSON.stringify(updated));
+      localStorage.setItem(getScopedKey(PROFILE_KEY, userId), JSON.stringify(updated));
     }
   };
 
   // Helper trigger to import from Resume OS
   const handleImportFromResume = () => {
     if (typeof window !== "undefined") {
-      const cachedResume = localStorage.getItem("resume_builder_profile");
+      const cachedResume = localStorage.getItem(getScopedKey("resume_builder_profile", userId));
       if (cachedResume) {
         try {
           const parsed = JSON.parse(cachedResume);
@@ -612,7 +642,7 @@ export default function LinkedInOS() {
   // Helper trigger to import projects from Portfolio Builder
   const handleImportFromPortfolio = () => {
     if (typeof window !== "undefined") {
-      const cachedPortfolio = localStorage.getItem("portfolio_profile_os");
+      const cachedPortfolio = localStorage.getItem(getScopedKey("portfolio_profile_os", userId));
       if (cachedPortfolio) {
         try {
           const parsed = JSON.parse(cachedPortfolio);
@@ -745,14 +775,14 @@ export default function LinkedInOS() {
     let resumeScore = 70;
     let portfolioScore = 65;
     if (typeof window !== "undefined") {
-      const snapObj = localStorage.getItem("resume_os_snapshots");
+      const snapObj = localStorage.getItem(getScopedKey("resume_os_snapshots", userId));
       if (snapObj) {
         try {
           const list = JSON.parse(snapObj);
           if (list.length > 0) resumeScore = list[0].score || 70;
         } catch {}
       }
-      const portProfile = localStorage.getItem("portfolio_profile_os");
+      const portProfile = localStorage.getItem(getScopedKey("portfolio_profile_os", userId));
       if (portProfile) {
         try {
           const p = JSON.parse(portProfile);
@@ -786,7 +816,7 @@ export default function LinkedInOS() {
     setCopilotLoading(true);
 
     try {
-      const apiKey = typeof window !== "undefined" ? localStorage.getItem("gemini_api_key") || "" : "";
+      const apiKey = typeof window !== "undefined" ? localStorage.getItem(getScopedKey("gemini_api_key", userId)) || "" : "";
       const res = await fetch("/api/placement/copilot", {
         method: "POST",
         headers: {

@@ -19,6 +19,8 @@ import {
   Plus
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
+import { getScopedKey } from "@/lib/security/LocalStorage";
 
 interface ChatMessage {
   id: string;
@@ -66,26 +68,49 @@ export default function PlacementCopilot({
   targetRole,
   techStack
 }: PlacementCopilotProps) {
-  // Lazy initialize messages from storage
-  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+  const [userId, setUserId] = useState<string | null>(null);
+
+  // Listen to Auth State
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) setUserId(user.id);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUserId(session?.user?.id || null);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+
+  // Sync messages on userId change
+  useEffect(() => {
     if (typeof window !== "undefined") {
-      const cached = localStorage.getItem("placement_copilot_chat_history");
+      const cached = localStorage.getItem(getScopedKey("placement_copilot_chat_history", userId));
       if (cached) {
         try {
           const parsed = JSON.parse(cached);
-          if (parsed && parsed.length > 0) return parsed;
+          if (parsed && parsed.length > 0) {
+            setMessages(parsed);
+            return;
+          }
         } catch {}
       }
+      setMessages([
+        {
+          id: "msg-welcome",
+          role: "copilot",
+          content: `Welcome back! I am your **AI Placement Copilot**, the strategist for your hiring journey. \n\nI have evaluated your workspace metrics. Currently, you are aiming for a **${targetRole}** role. I can check your placement readiness, suggest customized projects, build study timelines, or dispatch app triggers. \n\nClick one of the suggestions below or ask me any question directly!`,
+          timestamp: generateTimestamp()
+        }
+      ]);
     }
-    return [
-      {
-        id: "msg-welcome",
-        role: "copilot",
-        content: `Welcome back! I am your **AI Placement Copilot**, the strategist for your hiring journey. \n\nI have evaluated your workspace metrics. Currently, you are aiming for a **${targetRole}** role. I can check your placement readiness, suggest customized projects, build study timelines, or dispatch app triggers. \n\nClick one of the suggestions below or ask me any question directly!`,
-        timestamp: generateTimestamp()
-      }
-    ];
-  });
+  }, [userId, targetRole]);
 
   const [isLoading, setIsLoading] = useState(false);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
@@ -132,7 +157,7 @@ export default function PlacementCopilot({
           setMessages(prev => {
             const finalMessages = [...prev, copilotMsg];
             if (typeof window !== "undefined") {
-              localStorage.setItem("placement_copilot_chat_history", JSON.stringify(finalMessages));
+              localStorage.setItem(getScopedKey("placement_copilot_chat_history", userId), JSON.stringify(finalMessages));
             }
             return finalMessages;
           });
@@ -183,7 +208,7 @@ export default function PlacementCopilot({
           setMessages(prev => {
             const finalMessages = [...prev, copilotMsg];
             if (typeof window !== "undefined") {
-              localStorage.setItem("placement_copilot_chat_history", JSON.stringify(finalMessages));
+              localStorage.setItem(getScopedKey("placement_copilot_chat_history", userId), JSON.stringify(finalMessages));
             }
             return finalMessages;
           });
@@ -205,38 +230,41 @@ export default function PlacementCopilot({
     return () => {
       window.removeEventListener("bb_task_updated", handleTaskUpdate);
     };
-  }, [activeTaskId]);
+  }, [activeTaskId, userId]);
 
-  const [activeHealthReport, setActiveHealthReport] = useState<ChatMessage["healthReport"] | null>(() => {
+  const [activeHealthReport, setActiveHealthReport] = useState<ChatMessage["healthReport"] | null>(null);
+
+  useEffect(() => {
     if (typeof window !== "undefined") {
-      const cached = localStorage.getItem("placement_copilot_chat_history");
+      const cached = localStorage.getItem(getScopedKey("placement_copilot_chat_history", userId));
       if (cached) {
         try {
           const parsed = JSON.parse(cached);
           const healthReports = parsed.filter((m: ChatMessage) => m.healthReport);
           if (healthReports.length > 0) {
-            return healthReports[healthReports.length - 1].healthReport;
+            setActiveHealthReport(healthReports[healthReports.length - 1].healthReport);
+            return;
           }
         } catch {}
       }
+      setActiveHealthReport(null);
     }
-    return null;
-  });
+  }, [userId]);
   
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // Load context from local workspace metrics
   const getContextMetrics = () => {
-    let ats = 72;
+    let ats = 0;
     let interview = 50;
     let roadmapProgress = 0;
     const totalRoadmap = 10;
     let crmApps: { status: string }[] = [];
 
     if (typeof window !== "undefined") {
-      ats = Number(localStorage.getItem("ats_score") || "72");
+      ats = Number(localStorage.getItem(getScopedKey("ats_score", userId)) || "0");
       
-      const interviewHistory = localStorage.getItem("interview_history");
+      const interviewHistory = localStorage.getItem(getScopedKey("interview_history", userId));
       if (interviewHistory) {
         try {
           const list = JSON.parse(interviewHistory);
@@ -246,7 +274,7 @@ export default function PlacementCopilot({
         } catch {}
       }
 
-      const roadmapProgressStates = localStorage.getItem("roadmap_progress_states");
+      const roadmapProgressStates = localStorage.getItem(getScopedKey("roadmap_progress_states", userId));
       if (roadmapProgressStates) {
         try {
           const parsed = JSON.parse(roadmapProgressStates);
@@ -254,7 +282,7 @@ export default function PlacementCopilot({
         } catch {}
       }
 
-      const crmApplications = localStorage.getItem("placement_crm_applications");
+      const crmApplications = localStorage.getItem(getScopedKey("placement_crm_applications", userId));
       if (crmApplications) {
         try {
           crmApps = JSON.parse(crmApplications);
@@ -281,7 +309,7 @@ export default function PlacementCopilot({
   const saveChatHistory = (list: ChatMessage[]) => {
     setMessages(list);
     if (typeof window !== "undefined") {
-      localStorage.setItem("placement_copilot_chat_history", JSON.stringify(list));
+      localStorage.setItem(getScopedKey("placement_copilot_chat_history", userId), JSON.stringify(list));
     }
   };
 

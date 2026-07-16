@@ -219,7 +219,7 @@ CREATE POLICY "Users can operate on own student projects" ON public.student_proj
 
 DROP POLICY IF EXISTS "Users can operate on own referrals" ON public.referrals;
 CREATE POLICY "Users can operate on own referrals" ON public.referrals
-  FOR ALL USING (auth.uid() = user_id OR public.is_admin());
+  FOR ALL USING (auth.uid() = referrer_user_id OR auth.uid() = referred_user_id OR public.is_admin());
 
 DROP POLICY IF EXISTS "Users can operate on own streaks" ON public.user_streaks;
 CREATE POLICY "Users can operate on own streaks" ON public.user_streaks

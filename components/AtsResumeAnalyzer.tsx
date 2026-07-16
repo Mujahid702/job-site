@@ -24,6 +24,8 @@ import {
   Trash2,
   Info
 } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
+import { getScopedKey } from "@/lib/security/LocalStorage";
 
 const TARGET_ROLES = [
   "Software Engineer",
@@ -199,6 +201,24 @@ export default function AtsResumeAnalyzer({ onScoreUpdate, onTabChange, onAnalys
     }
   };
 
+  const [userId, setUserId] = useState<string | null>(null);
+
+  // Listen to Auth State
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) setUserId(user.id);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUserId(session?.user?.id || null);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [taskProgress, setTaskProgress] = useState<number>(0);
 
@@ -220,13 +240,13 @@ export default function AtsResumeAnalyzer({ onScoreUpdate, onTabChange, onAnalys
           setResult(resData);
           if (updatedTask.result.rawText) {
             // Store resume text and rich metadata for cross-module synchronization
-            localStorage.setItem("last_analyzed_resume_text", updatedTask.result.rawText);
-            localStorage.setItem("last_analyzed_resume_name", uploadedFile?.name || resumeText ? "Pasted Resume Text" : "Resume");
-            localStorage.setItem("last_analyzed_resume_timestamp", new Date().toISOString());
+            localStorage.setItem(getScopedKey("last_analyzed_resume_text", userId), updatedTask.result.rawText);
+            localStorage.setItem(getScopedKey("last_analyzed_resume_name", userId), uploadedFile?.name || resumeText ? "Pasted Resume Text" : "Resume");
+            localStorage.setItem(getScopedKey("last_analyzed_resume_timestamp", userId), new Date().toISOString());
             // Invalidate all stale cached analyses across Resume OS modules
-            localStorage.removeItem("jd_match_history");
-            localStorage.removeItem("resume_enhance_result");
-            localStorage.removeItem("resume_builder_cache");
+            localStorage.removeItem(getScopedKey("jd_match_history", userId));
+            localStorage.removeItem(getScopedKey("resume_enhance_result", userId));
+            localStorage.removeItem(getScopedKey("resume_builder_cache", userId));
             if (typeof window !== "undefined") {
               window.dispatchEvent(new Event("active_resume_updated"));
             }
@@ -255,7 +275,7 @@ export default function AtsResumeAnalyzer({ onScoreUpdate, onTabChange, onAnalys
     return () => {
       window.removeEventListener("bb_task_updated", handleTaskUpdate);
     };
-  }, [activeTaskId]);
+  }, [activeTaskId, userId]);
 
   const handleRunEvaluation = async () => {
     if (!uploadedFile && !resumeText.trim()) {

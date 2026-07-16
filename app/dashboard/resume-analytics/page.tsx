@@ -97,64 +97,7 @@ export default function ResumeAnalyticsDashboard() {
 
   // Fallback high-fidelity sample metrics for empty states
   const displayHistory = useMemo(() => {
-    if (analyticsHistory.length > 0) return analyticsHistory;
-    
-    // Default mock history
-    const baseDate = new Date();
-    return [
-      {
-        id: "mock-1",
-        ats_score: 52,
-        role_fit_score: 58,
-        target_role: "Software Engineer",
-        keyword_score: 48,
-        format_score: 60,
-        readability_score: 50,
-        skills_score: 45,
-        projects_score: 55,
-        experience_score: 40,
-        analysis_date: new Date(baseDate.getTime() - 40 * 24 * 60 * 60 * 1000).toISOString()
-      },
-      {
-        id: "mock-2",
-        ats_score: 61,
-        role_fit_score: 68,
-        target_role: "Software Engineer",
-        keyword_score: 58,
-        format_score: 70,
-        readability_score: 62,
-        skills_score: 55,
-        projects_score: 60,
-        experience_score: 50,
-        analysis_date: new Date(baseDate.getTime() - 25 * 24 * 60 * 60 * 1000).toISOString()
-      },
-      {
-        id: "mock-3",
-        ats_score: 72,
-        role_fit_score: 78,
-        target_role: "Software Engineer",
-        keyword_score: 68,
-        format_score: 80,
-        readability_score: 75,
-        skills_score: 70,
-        projects_score: 70,
-        experience_score: 65,
-        analysis_date: new Date(baseDate.getTime() - 10 * 24 * 60 * 60 * 1000).toISOString()
-      },
-      {
-        id: "mock-4",
-        ats_score: 85,
-        role_fit_score: 88,
-        target_role: "Software Engineer",
-        keyword_score: 82,
-        format_score: 90,
-        readability_score: 85,
-        skills_score: 82,
-        projects_score: 88,
-        experience_score: 80,
-        analysis_date: baseDate.toISOString()
-      }
-    ] as ResumeAnalytics[];
+    return analyticsHistory;
   }, [analyticsHistory]);
 
   const latestAnalytics = displayHistory[displayHistory.length - 1];
@@ -171,6 +114,7 @@ export default function ResumeAnalyticsDashboard() {
 
   // Section 3: Role Fit Evolution
   const roleFitBreakdown = useMemo(() => {
+    if (!latestAnalytics) return [];
     const previous = displayHistory[displayHistory.length - 2] || displayHistory[0];
     const rolesList = [
       { id: "se", name: "Software Engineer", current: latestAnalytics.role_fit_score, prev: previous.role_fit_score },
@@ -262,14 +206,14 @@ export default function ResumeAnalyticsDashboard() {
 
   // Section 12: Badges
   const badgesList = useMemo(() => {
-    const maxScore = Math.max(...displayHistory.map(h => h.ats_score));
+    const maxScore = displayHistory.length > 0 ? Math.max(...displayHistory.map(h => h.ats_score)) : 0;
     const totalOptimizations = displayHistory.length;
     return [
       { id: "b1", title: "ATS 70+", desc: "Unlock baseline passing score.", unlocked: maxScore >= 70 },
       { id: "b2", title: "ATS 80+", desc: "Unlock premium recruiter line.", unlocked: maxScore >= 80 },
       { id: "b3", title: "ATS 90+", desc: "Reach gold standard formatting.", unlocked: maxScore >= 90 },
       { id: "b4", title: "Resume Optimizer", desc: "Scan 5+ iterations of resumes.", unlocked: totalOptimizations >= 5 },
-      { id: "b5", title: "Keyword Master", desc: "Pass 80%+ keywords coverage.", unlocked: latestAnalytics.keyword_score >= 80 },
+      { id: "b5", title: "Keyword Master", desc: "Pass 80%+ keywords coverage.", unlocked: latestAnalytics ? latestAnalytics.keyword_score >= 80 : false },
       { id: "b6", title: "Top 10% Resume", desc: "Outperform 90% of students.", unlocked: maxScore >= 86 }
     ];
   }, [displayHistory, latestAnalytics]);
@@ -582,6 +526,57 @@ export default function ResumeAnalyticsDashboard() {
 
     return { path: pathD, area: areaD, dots: points };
   }, [displayHistory]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center font-sans">
+        <div className="text-sm font-black text-indigo-650 uppercase tracking-widest animate-pulse">
+          Loading Analytics Engine...
+        </div>
+      </div>
+    );
+  }
+
+  if (analyticsHistory.length === 0) {
+    return (
+      <div className="min-h-screen bg-slate-50 pb-24 font-sans text-left">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-8">
+          {/* Back Link navigation header */}
+          <Link
+            href="/dashboard"
+            className="inline-flex items-center gap-2 text-xs font-black text-slate-500 hover:text-slate-900 uppercase tracking-widest transition-colors cursor-pointer"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            Back to Command Center
+          </Link>
+
+          <div className="bg-white rounded-[2.5rem] p-12 border border-slate-200 shadow-xl text-center space-y-8 max-w-2xl mx-auto">
+            <div className="w-24 h-24 bg-indigo-50 text-indigo-650 rounded-[2rem] flex items-center justify-center mx-auto border border-indigo-100 shadow-inner">
+              <BookOpen className="w-12 h-12" />
+            </div>
+            
+            <div className="space-y-3">
+              <h2 className="text-3xl font-black text-slate-900 tracking-tight font-display">
+                No Resume Scans Found
+              </h2>
+              <p className="text-slate-550 font-semibold text-sm max-w-md mx-auto leading-relaxed">
+                You haven't scanned any resumes yet. Perform your first ATS resume scan to generate real-time performance analytics, role fit evolution history, and AI coaching insights.
+              </p>
+            </div>
+
+            <div className="pt-4">
+              <Link
+                href="/dashboard"
+                className="inline-flex items-center gap-2 px-8 py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs uppercase tracking-widest rounded-2xl cursor-pointer shadow-lg transition-all"
+              >
+                Go to Resume OS
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 pb-24 font-sans text-left">

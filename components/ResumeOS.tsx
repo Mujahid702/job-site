@@ -101,40 +101,7 @@ export default function ResumeOS({ onScoreUpdate, subTab = "overview", onSubTabC
         if (saved) {
           try { setSnapshots(JSON.parse(saved)); } catch { setSnapshots([]); }
         } else {
-          setSnapshots([
-            {
-              id: "snap-1",
-              version: "Resume V1",
-              date: "May 10, 2026",
-              atsScore: 58,
-              jdMatchScore: 65,
-              healthScore: 61,
-              roleTargeted: "Software Developer",
-              rawText: "John Doe. Contact: john.doe@example.com. Education: State University. Experience: Intern at TechCorp. Projects: Whiteboard.",
-              completeness: 75,
-              keywordCoverage: 50,
-              skillsRelevance: 60,
-              projectStrength: 55,
-              roleMatch: 60,
-              readability: 65
-            },
-            {
-              id: "snap-2",
-              version: "Resume V2",
-              date: "May 25, 2026",
-              atsScore: 72,
-              jdMatchScore: 75,
-              healthScore: 73,
-              roleTargeted: "Software Developer",
-              rawText: "John Doe. Contact: john.doe@example.com, github.com/johndoe. Education: State University, BS in Computer Science. Experience: Software Engineer Intern at TechCorp. Built admin dashboard used by 150+ agents. Projects: Whiteboard using React, Node.js.",
-              completeness: 85,
-              keywordCoverage: 68,
-              skillsRelevance: 75,
-              projectStrength: 70,
-              roleMatch: 75,
-              readability: 72
-            }
-          ]);
+          setSnapshots([]);
         }
 
         // Local daily goals

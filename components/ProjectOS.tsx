@@ -32,6 +32,7 @@ import { ROLE_PROJECT_SUGGESTIONS, compileLocalBlueprint } from "@/lib/project-f
 import { supabase } from "@/lib/supabase";
 import { useToast } from "@/components/Toast";
 import AiLoader from "@/components/ui/AiLoader";
+import { getScopedKey } from "@/lib/security/LocalStorage";
 
 export default function ProjectOS() {
   const { showToast } = useToast();
@@ -74,29 +75,10 @@ export default function ProjectOS() {
 
   // User Stats state
   const [workspaceStats, setWorkspaceStats] = useState(() => {
-    let ats = 0;
-    let resumeText = "";
-    if (typeof window !== "undefined") {
-      const activeUser = userId || "guest";
-      const savedSnapshots = localStorage.getItem("resume_os_snapshots_" + activeUser);
-      if (savedSnapshots) {
-        try {
-          const list = JSON.parse(savedSnapshots);
-          if (list.length > 0) {
-            const latest = list[list.length - 1];
-            ats = latest.atsScore || 0;
-            resumeText = latest.rawText || "";
-          }
-        } catch {}
-      } else {
-        ats = Number(localStorage.getItem("ats_score_" + activeUser) || localStorage.getItem("ats_score") || "0");
-        resumeText = localStorage.getItem("last_analyzed_resume_text_" + activeUser) || localStorage.getItem("last_analyzed_resume_text") || "";
-      }
-    }
     return {
-      atsScore: ats,
-      resumeText: resumeText || "No resume uploaded yet.",
-      hasResume: !!resumeText
+      atsScore: 0,
+      resumeText: "No resume uploaded yet.",
+      hasResume: false
     };
   });
 
@@ -105,8 +87,7 @@ export default function ProjectOS() {
       let ats = 0;
       let resumeText = "";
       if (typeof window !== "undefined") {
-        const activeUser = userId || "guest";
-        const savedSnapshots = localStorage.getItem("resume_os_snapshots_" + activeUser);
+        const savedSnapshots = localStorage.getItem(getScopedKey("resume_os_snapshots", userId));
         if (savedSnapshots) {
           try {
             const list = JSON.parse(savedSnapshots);
@@ -117,8 +98,8 @@ export default function ProjectOS() {
             }
           } catch {}
         } else {
-          ats = Number(localStorage.getItem("ats_score_" + activeUser) || localStorage.getItem("ats_score") || "0");
-          resumeText = localStorage.getItem("last_analyzed_resume_text_" + activeUser) || localStorage.getItem("last_analyzed_resume_text") || "";
+          ats = Number(localStorage.getItem(getScopedKey("ats_score", userId)) || "0");
+          resumeText = localStorage.getItem(getScopedKey("last_analyzed_resume_text", userId)) || "";
         }
       }
       setWorkspaceStats({
@@ -203,7 +184,7 @@ export default function ProjectOS() {
   const handleGenerateProject = async () => {
     setGenerating(true);
     try {
-      const apiKey = typeof window !== "undefined" ? localStorage.getItem("gemini_api_key_" + (userId || "guest")) || localStorage.getItem("gemini_api_key") || "" : "";
+      const apiKey = typeof window !== "undefined" ? localStorage.getItem(getScopedKey("gemini_api_key", userId)) || "" : "";
       const generationDifficulty = projectDifficulty === "All" ? "Advanced" : projectDifficulty;
       
       let finalBlueprint;
@@ -465,7 +446,7 @@ export default function ProjectOS() {
     setCopilotLoading(true);
 
     try {
-      const apiKey = typeof window !== "undefined" ? localStorage.getItem("gemini_api_key_" + (userId || "guest")) || localStorage.getItem("gemini_api_key") || "" : "";
+      const apiKey = typeof window !== "undefined" ? localStorage.getItem(getScopedKey("gemini_api_key", userId)) || "" : "";
       const res = await fetch("/api/placement/copilot", {
         method: "POST",
         headers: {

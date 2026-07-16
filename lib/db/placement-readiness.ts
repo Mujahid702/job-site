@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { executeWrite } from "./sync";
+import { getScopedKey } from "@/lib/security/LocalStorage";
 
 async function getDb(supabaseClient?: any) {
   if (supabaseClient) return supabaseClient;
@@ -129,7 +130,7 @@ export async function calculatePRIScore(userId: string, forceLocalMockData?: any
       // 7. Mock interviews check (+15 if any)
       let hasInterviews = false;
       if (isBrowser) {
-        const storedHistory = localStorage.getItem("interview_history");
+        const storedHistory = localStorage.getItem(getScopedKey("interview_history", userId));
         if (storedHistory) {
           try {
             const hist = JSON.parse(storedHistory);
@@ -166,7 +167,7 @@ export async function calculatePRIScore(userId: string, forceLocalMockData?: any
     } else {
       // --- LOCAL STORAGE MOCK CALCULATIONS FOR GUEST USERS ---
       if (isBrowser) {
-        const storedAts = localStorage.getItem("ats_score");
+        const storedAts = localStorage.getItem(getScopedKey("ats_score", userId));
         const atsVal = storedAts ? parseInt(storedAts, 10) : 0;
         if (atsVal > 0) {
           resumeUploadedScore = 15;
@@ -175,7 +176,7 @@ export async function calculatePRIScore(userId: string, forceLocalMockData?: any
           resumeAtsAbove80Score = 10;
         }
 
-        const profileData = localStorage.getItem("onboarding_guest_state") || localStorage.getItem("resume_builder_profile");
+        const profileData = localStorage.getItem(getScopedKey("onboarding_guest_state", userId)) || localStorage.getItem(getScopedKey("resume_builder_profile", userId));
         if (profileData) {
           try {
             const parsed = JSON.parse(profileData);
@@ -187,7 +188,7 @@ export async function calculatePRIScore(userId: string, forceLocalMockData?: any
           } catch {}
         }
 
-        const answersData = localStorage.getItem("bb_answers");
+        const answersData = localStorage.getItem(getScopedKey("bb_answers", userId));
         if (answersData) {
           try {
             const parsed = JSON.parse(answersData);
@@ -195,7 +196,7 @@ export async function calculatePRIScore(userId: string, forceLocalMockData?: any
           } catch {}
         }
 
-        const interviewData = localStorage.getItem("interview_history");
+        const interviewData = localStorage.getItem(getScopedKey("interview_history", userId));
         if (interviewData) {
           try {
             const parsed = JSON.parse(interviewData);
@@ -203,7 +204,7 @@ export async function calculatePRIScore(userId: string, forceLocalMockData?: any
           } catch {}
         }
 
-        const applicationsData = localStorage.getItem("placement_crm_applications");
+        const applicationsData = localStorage.getItem(getScopedKey("placement_crm_applications", userId));
         if (applicationsData) {
           try {
             const parsed = JSON.parse(applicationsData);
@@ -285,8 +286,8 @@ export async function calculatePRIScore(userId: string, forceLocalMockData?: any
       
       // Save snapshot in localStorage too for quick offline loading
       if (isBrowser) {
-        localStorage.setItem(`pri_readiness_${userId}`, JSON.stringify(payload));
-        localStorage.setItem(`placement_readiness_score_${userId}`, finalPriScore.toString());
+        localStorage.setItem(getScopedKey("pri_readiness", userId), JSON.stringify(payload));
+        localStorage.setItem(getScopedKey("placement_readiness_score", userId), finalPriScore.toString());
       }
 
       // Save to Supabase DB using sync helper
@@ -296,18 +297,17 @@ export async function calculatePRIScore(userId: string, forceLocalMockData?: any
     }
   } else {
     if (isBrowser) {
-      localStorage.setItem(`pri_readiness_guest`, JSON.stringify(payload));
-      localStorage.setItem(`placement_readiness_score`, finalPriScore.toString());
+      localStorage.setItem(getScopedKey("pri_readiness", null), JSON.stringify(payload));
+      localStorage.setItem(getScopedKey("placement_readiness_score", null), finalPriScore.toString());
     }
   }
 
   // Save score change notifications inside alert engine
   if (isBrowser) {
-    const keyUserId = userId || "guest-user";
-    const prevScore = parseInt(localStorage.getItem(`placement_readiness_prev_score_${keyUserId}`) || "0", 10);
+    const prevScore = parseInt(localStorage.getItem(getScopedKey("placement_readiness_prev_score", userId)) || "0", 10);
     if (prevScore > 0 && prevScore !== finalPriScore) {
       const difference = finalPriScore - prevScore;
-      const alertList = JSON.parse(localStorage.getItem(`placement_readiness_alerts_${keyUserId}`) || "[]");
+      const alertList = JSON.parse(localStorage.getItem(getScopedKey("placement_readiness_alerts", userId)) || "[]");
       const newAlert = {
         id: `alert-${Date.now()}`,
         message: difference > 0
@@ -316,9 +316,9 @@ export async function calculatePRIScore(userId: string, forceLocalMockData?: any
         type: difference > 0 ? "success" : "warning",
         timestamp: new Date().toISOString()
       };
-      localStorage.setItem(`placement_readiness_alerts_${keyUserId}`, JSON.stringify([newAlert, ...alertList].slice(0, 10)));
+      localStorage.setItem(getScopedKey("placement_readiness_alerts", userId), JSON.stringify([newAlert, ...alertList].slice(0, 10)));
     }
-    localStorage.setItem(`placement_readiness_prev_score_${keyUserId}`, finalPriScore.toString());
+    localStorage.setItem(getScopedKey("placement_readiness_prev_score", userId), finalPriScore.toString());
   }
 
   // Trigger 'pri' category career mission progress updates
@@ -350,8 +350,8 @@ export async function getPlacementReadiness(userId: string, supabaseClient?: any
       if (data) {
         // Cache locally
         if (isBrowser) {
-          localStorage.setItem(`pri_readiness_${userId}`, JSON.stringify(data));
-          localStorage.setItem(`placement_readiness_score_${userId}`, data.pri_score.toString());
+          localStorage.setItem(getScopedKey("pri_readiness", userId), JSON.stringify(data));
+          localStorage.setItem(getScopedKey("placement_readiness_score", userId), data.pri_score.toString());
         }
         return data;
       }
@@ -362,8 +362,7 @@ export async function getPlacementReadiness(userId: string, supabaseClient?: any
 
   // Local storage cache checkout
   if (isBrowser) {
-    const cacheKey = userId && userId !== "guest-user" ? `pri_readiness_${userId}` : `pri_readiness_guest`;
-    const stored = localStorage.getItem(cacheKey);
+    const stored = localStorage.getItem(getScopedKey("pri_readiness", userId));
     if (stored) {
       try {
         return JSON.parse(stored);

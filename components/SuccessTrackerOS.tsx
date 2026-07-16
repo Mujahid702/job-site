@@ -8,6 +8,8 @@ import {
   Info
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
+import { getScopedKey } from "@/lib/security/LocalStorage";
 
 interface TrackedApplication {
   id: string;
@@ -50,17 +52,39 @@ const DEFAULT_APPLICATIONS: TrackedApplication[] = [
 ];
 
 export default function SuccessTrackerOS() {
-  const [apps, setApps] = useState<TrackedApplication[]>(() => {
+  const [userId, setUserId] = useState<string | null>(null);
+
+  // Listen to Auth State
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) setUserId(user.id);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUserId(session?.user?.id || null);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  const [apps, setApps] = useState<TrackedApplication[]>([]);
+
+  // Sync apps when userId changes
+  useEffect(() => {
     if (typeof window !== "undefined") {
-      const stored = localStorage.getItem("placement_success_tracking_applications");
+      const stored = localStorage.getItem(getScopedKey("placement_success_tracking_applications", userId));
       if (stored) {
         try {
-          return JSON.parse(stored);
+          setApps(JSON.parse(stored));
+          return;
         } catch {}
       }
+      setApps(userId ? [] : DEFAULT_APPLICATIONS);
     }
-    return DEFAULT_APPLICATIONS;
-  });
+  }, [userId]);
 
   // New Application inputs
   const [newCompany, setNewCompany] = useState("");
@@ -70,13 +94,15 @@ export default function SuccessTrackerOS() {
 
   // Sync to localStorage
   useEffect(() => {
-    localStorage.setItem("placement_success_tracking_applications", JSON.stringify(apps));
-  }, [apps]);
+    if (typeof window !== "undefined") {
+      localStorage.setItem(getScopedKey("placement_success_tracking_applications", userId), JSON.stringify(apps));
+    }
+  }, [apps, userId]);
 
   // Sync back to CRM if present
   useEffect(() => {
     if (typeof window !== "undefined") {
-      const storedCrm = localStorage.getItem("placement_crm_applications");
+      const storedCrm = localStorage.getItem(getScopedKey("placement_crm_applications", userId));
       if (storedCrm) {
         try {
           const parsedCrm = JSON.parse(storedCrm);
@@ -109,12 +135,12 @@ export default function SuccessTrackerOS() {
           });
 
           if (modified) {
-            localStorage.setItem("placement_crm_applications", JSON.stringify(updatedCrm));
+            localStorage.setItem(getScopedKey("placement_crm_applications", userId), JSON.stringify(updatedCrm));
           }
         } catch {}
       }
     }
-  }, [apps]);
+  }, [apps, userId]);
 
   const handleAddApplication = (e: React.FormEvent) => {
     e.preventDefault();
@@ -159,9 +185,9 @@ export default function SuccessTrackerOS() {
 
   // Diagnostics & Probabilities math formulas
   const calculateMetrics = () => {
-    let atsScore = 75;
+    let atsScore = 0;
     if (typeof window !== "undefined") {
-      atsScore = Number(localStorage.getItem("ats_score") || "75");
+      atsScore = Number(localStorage.getItem(getScopedKey("ats_score", userId)) || "0");
     }
 
     const hasOffer = apps.some(app => app.status === "Offer Received");

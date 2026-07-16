@@ -7,6 +7,7 @@ import { getRoadmapProgress, updateRoadmapProgress } from "@/lib/db/roadmaps";
 import { getUserProfile, upsertUserProfile } from "@/lib/db/profiles";
 import { calculatePRIScore } from "@/lib/db/placement-readiness";
 import { TRACK_PRESETS, TrackPreset } from "@/lib/career-roadmap-presets";
+import { getScopedKey } from "@/lib/security/LocalStorage";
 
 import {
   Sparkles,
@@ -462,6 +463,72 @@ export default function CareerRoadmapNavigator({ targetRole: parentRole, onRoleC
 
   const [userId, setUserId] = useState<string | null>(null);
 
+  // Loaded statistics from localStorage
+  const [workspaceStats, setWorkspaceStats] = useState(() => {
+    return {
+      atsScore: 0,
+      jdMatchScore: 0,
+      avgInterviewScore: 50,
+      resumeTextLength: 0,
+      resumeText: "",
+      completedProjectsCount: 1
+    };
+  });
+
+  useEffect(() => {
+    let ats = 0;
+    let resumeText = "";
+    let jd = 0;
+    let interviewAvg = 50;
+
+    if (typeof window !== "undefined") {
+      const savedSnapshots = localStorage.getItem(getScopedKey("resume_os_snapshots", userId));
+      if (savedSnapshots) {
+        try {
+          const list = JSON.parse(savedSnapshots);
+          if (list.length > 0) {
+            const latest = list[list.length - 1];
+            ats = latest.atsScore || 0;
+            resumeText = latest.rawText || "";
+          }
+        } catch {}
+      } else {
+        ats = Number(localStorage.getItem(getScopedKey("ats_score", userId)) || "0");
+        resumeText = localStorage.getItem(getScopedKey("last_analyzed_resume_text", userId)) || "";
+      }
+
+      const jdHistory = localStorage.getItem(getScopedKey("jd_match_history", userId));
+      if (jdHistory) {
+        try {
+          const list = JSON.parse(jdHistory);
+          if (list.length > 0) {
+            jd = list[0].score || 0;
+          }
+        } catch {}
+      }
+
+      const interviewHistory = localStorage.getItem(getScopedKey("interview_history", userId));
+      if (interviewHistory) {
+        try {
+          const list = JSON.parse(interviewHistory);
+          if (list.length > 0) {
+            const sum = list.reduce((acc: number, curr: { overallScore?: number }) => acc + (curr.overallScore || 0), 0);
+            interviewAvg = Math.round(sum / list.length);
+          }
+        } catch {}
+      }
+    }
+
+    setWorkspaceStats({
+      atsScore: ats,
+      jdMatchScore: jd,
+      avgInterviewScore: interviewAvg,
+      resumeTextLength: resumeText.length,
+      resumeText: resumeText,
+      completedProjectsCount: resumeText ? (resumeText.match(/project|PROJECT/g) || []).length : 1
+    });
+  }, [userId]);
+
   // Accordion Expander State
   const [expandedStages, setExpandedStages] = useState<Record<number, boolean>>({ 1: true });
 
@@ -504,7 +571,7 @@ export default function CareerRoadmapNavigator({ targetRole: parentRole, onRoleC
           loadedChecked[item.step_name] = item.completed;
         });
       } else {
-        const savedProgress = localStorage.getItem("roadmap_progress_states");
+        const savedProgress = localStorage.getItem(getScopedKey("roadmap_progress_states", userId));
         if (savedProgress) {
           try { loadedChecked = JSON.parse(savedProgress); } catch {}
         }
@@ -523,13 +590,13 @@ export default function CareerRoadmapNavigator({ targetRole: parentRole, onRoleC
         if (dbProfile && dbProfile.raw_profile_data && dbProfile.raw_profile_data[`roadmap_data_${selectedRole}`]) {
           loadedRoadmap = dbProfile.raw_profile_data[`roadmap_data_${selectedRole}`];
         } else {
-          const cached = localStorage.getItem(`roadmap_data_${selectedRole}`);
+          const cached = localStorage.getItem(getScopedKey(`roadmap_data_${selectedRole}`, userId));
           if (cached) {
             try { loadedRoadmap = JSON.parse(cached); } catch {}
           }
         }
       } else {
-        const cached = localStorage.getItem(`roadmap_data_${selectedRole}`);
+        const cached = localStorage.getItem(getScopedKey(`roadmap_data_${selectedRole}`, userId));
         if (cached) {
           try { loadedRoadmap = JSON.parse(cached); } catch {}
         }
@@ -542,66 +609,13 @@ export default function CareerRoadmapNavigator({ targetRole: parentRole, onRoleC
       setCheckedItems(loadedChecked);
     }
     loadRoadmapAndProgress();
-  }, [userId, selectedRole]);
+  }, [userId, selectedRole, workspaceStats]);
 
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [genStep, setGenStep] = useState<string>("");
   const [genError, setGenError] = useState<string | null>(null);
 
-  // Loaded statistics from localStorage
-  const [workspaceStats] = useState(() => {
-    let ats = 0;
-    let resumeText = "";
-    let jd = 0;
-    let interviewAvg = 50;
 
-    if (typeof window !== "undefined") {
-      const savedSnapshots = localStorage.getItem("resume_os_snapshots");
-      if (savedSnapshots) {
-        try {
-          const list = JSON.parse(savedSnapshots);
-          if (list.length > 0) {
-            const latest = list[list.length - 1];
-            ats = latest.atsScore || 0;
-            resumeText = latest.rawText || "";
-          }
-        } catch {}
-      } else {
-        ats = Number(localStorage.getItem("ats_score") || "0");
-        resumeText = localStorage.getItem("last_analyzed_resume_text") || "";
-      }
-
-      const jdHistory = localStorage.getItem("jd_match_history");
-      if (jdHistory) {
-        try {
-          const list = JSON.parse(jdHistory);
-          if (list.length > 0) {
-            jd = list[0].score || 0;
-          }
-        } catch {}
-      }
-
-      const interviewHistory = localStorage.getItem("interview_history");
-      if (interviewHistory) {
-        try {
-          const list = JSON.parse(interviewHistory);
-          if (list.length > 0) {
-            const sum = list.reduce((acc: number, curr: { overallScore?: number }) => acc + (curr.overallScore || 0), 0);
-            interviewAvg = Math.round(sum / list.length);
-          }
-        } catch {}
-      }
-    }
-
-    return {
-      atsScore: ats,
-      jdMatchScore: jd,
-      avgInterviewScore: interviewAvg,
-      resumeTextLength: resumeText.length,
-      resumeText: resumeText,
-      completedProjectsCount: resumeText ? (resumeText.match(/project|PROJECT/g) || []).length : 1
-    };
-  });
 
   // Track checked steps and checklists
   const [checkedItems, setCheckedItems] = useState<Record<string, boolean>>({});
@@ -694,7 +708,7 @@ export default function CareerRoadmapNavigator({ targetRole: parentRole, onRoleC
     if (updated) {
       setCheckedItems(nextChecked);
       if (typeof window !== "undefined") {
-        localStorage.setItem("roadmap_progress_states", JSON.stringify(nextChecked));
+        localStorage.setItem(getScopedKey("roadmap_progress_states", userId), JSON.stringify(nextChecked));
       }
     }
   }, [roadmapData, workspaceStats]);
@@ -720,14 +734,14 @@ export default function CareerRoadmapNavigator({ targetRole: parentRole, onRoleC
     }
     
     if (typeof window !== "undefined") {
-      localStorage.setItem("roadmap_progress_states", JSON.stringify(updated));
+      localStorage.setItem(getScopedKey("roadmap_progress_states", userId), JSON.stringify(updated));
       // Save stats to update workspace daily goals checklist sync
-      const savedGoals = localStorage.getItem("completed_daily_goals");
+      const savedGoals = localStorage.getItem(getScopedKey("completed_daily_goals", userId));
       if (savedGoals) {
         try {
           const parsed = JSON.parse(savedGoals);
           parsed["goal-3"] = progressPercent >= 30; // sync goal-3 "Complete 1 Section in Roadmap"
-          localStorage.setItem("completed_daily_goals", JSON.stringify(parsed));
+          localStorage.setItem(getScopedKey("completed_daily_goals", userId), JSON.stringify(parsed));
         } catch {}
       }
     }
@@ -762,7 +776,7 @@ export default function CareerRoadmapNavigator({ targetRole: parentRole, onRoleC
     setCoachLoading(true);
 
     try {
-      const apiKey = typeof window !== "undefined" ? localStorage.getItem("gemini_api_key") || "" : "";
+      const apiKey = typeof window !== "undefined" ? localStorage.getItem(getScopedKey("gemini_api_key", userId)) || "" : "";
       const res = await fetch("/api/placement/copilot", {
         method: "POST",
         headers: {
@@ -830,7 +844,7 @@ export default function CareerRoadmapNavigator({ targetRole: parentRole, onRoleC
     })();
 
     try {
-      const savedKey = typeof window !== "undefined" ? localStorage.getItem("gemini_api_key") || "" : "";
+      const savedKey = typeof window !== "undefined" ? localStorage.getItem(getScopedKey("gemini_api_key", userId)) || "" : "";
       
       const res = await fetch("/api/resume/roadmap", {
         method: "POST",
@@ -858,7 +872,7 @@ export default function CareerRoadmapNavigator({ targetRole: parentRole, onRoleC
       setRoadmapData(freshRoadmap);
       
       if (typeof window !== "undefined") {
-        localStorage.setItem(`roadmap_data_${selectedRole}`, JSON.stringify(freshRoadmap));
+        localStorage.setItem(getScopedKey(`roadmap_data_${selectedRole}`, userId), JSON.stringify(freshRoadmap));
       }
 
       if (userId) {

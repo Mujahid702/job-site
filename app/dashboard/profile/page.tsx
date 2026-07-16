@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { getScopedKey } from "@/lib/security/LocalStorage";
 import { User } from "@supabase/supabase-js";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -251,10 +252,10 @@ export default function ProfileDashboardPage() {
       } else {
         // LocalStorage fallback for guests
         if (typeof window !== "undefined") {
-          setFullName(localStorage.getItem("resume_builder_name") || "Guest Candidate");
-          setTargetRole(localStorage.getItem("placement_target_role") || "Software Engineer");
+          setFullName(localStorage.getItem(getScopedKey("resume_builder_name", null)) || "Guest Candidate");
+          setTargetRole(localStorage.getItem(getScopedKey("placement_target_role", null)) || "Software Engineer");
           
-          const storedProfile = localStorage.getItem("resume_builder_profile");
+          const storedProfile = localStorage.getItem(getScopedKey("resume_builder_profile", null));
           if (storedProfile) {
             try {
               const parsed = JSON.parse(storedProfile);
@@ -272,17 +273,17 @@ export default function ProfileDashboardPage() {
             } catch {}
           }
           
-          const localSkills = localStorage.getItem("resume_builder_skills") || "";
+          const localSkills = localStorage.getItem(getScopedKey("resume_builder_skills", null)) || "";
           if (localSkills) {
             setSkillsMatrix(localSkills.split(",").map(s => ({ name: s.trim(), proficiency: 8 })));
           }
 
-          const storedJobs = localStorage.getItem("buggedbrain_saved_jobs");
+          const storedJobs = localStorage.getItem(getScopedKey("buggedbrain_saved_jobs", null));
           if (storedJobs) {
             try { setSavedJobsList(JSON.parse(storedJobs)); } catch {}
           }
 
-          const storedScans = localStorage.getItem("ats_scan_history");
+          const storedScans = localStorage.getItem(getScopedKey("ats_scan_history", null));
           if (storedScans) {
             try { setScansHistory(JSON.parse(storedScans)); } catch {}
           }
@@ -291,7 +292,7 @@ export default function ProfileDashboardPage() {
 
       // Load CRM applications from localstorage
       if (typeof window !== "undefined") {
-        const storedCrm = localStorage.getItem("placement_crm_applications");
+        const storedCrm = localStorage.getItem(getScopedKey("placement_crm_applications", user?.id || null));
         if (storedCrm) {
           try { setCrmApplications(JSON.parse(storedCrm)); } catch {}
         }
@@ -437,7 +438,7 @@ export default function ProfileDashboardPage() {
     if (placementScores) return placementScores.score;
 
     // Direct UI evaluation in case DB scores are empty
-    let score = 30;
+    let score = 0;
     
     // Resume scans contribution (Max 25 points)
     if (scansHistory.length > 0) {
@@ -1080,11 +1081,11 @@ export default function ProfileDashboardPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-100 text-center">
                       <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">ATS Score</span>
-                      <strong className="text-xl font-black text-indigo-600">{scansHistory[0]?.ats_score || 72}%</strong>
+                      <strong className="text-xl font-black text-indigo-600">{scansHistory[0]?.ats_score || 0}%</strong>
                     </div>
                     <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-100 text-center">
                       <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Role Fit Score</span>
-                      <strong className="text-xl font-black text-emerald-600">{scansHistory[0]?.role_fit_score || 78}%</strong>
+                      <strong className="text-xl font-black text-emerald-600">{scansHistory[0]?.role_fit_score || 0}%</strong>
                     </div>
                   </div>
 
@@ -1092,7 +1093,7 @@ export default function ProfileDashboardPage() {
                   <div className="space-y-2 pt-2">
                     <button
                       onClick={() => {
-                        const rawText = scansHistory[0]?.analysis?.rawText || localStorage.getItem("last_analyzed_resume_text");
+                        const rawText = scansHistory[0]?.analysis?.rawText || localStorage.getItem(getScopedKey("last_analyzed_resume_text", user?.id || null));
                         if (rawText) {
                           setActiveResumeText(rawText);
                           setShowResumeModal(true);

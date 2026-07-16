@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { getScopedKey } from "@/lib/security/LocalStorage";
 import { User } from "@supabase/supabase-js";
 import {
   ChevronLeft,
@@ -60,7 +61,7 @@ export default function PlacementCommandCenterPage() {
   const [projectsCount, setProjectsCount] = useState<number>(0);
   const [applicationsCount, setApplicationsCount] = useState<number>(0);
   const [mockInterviewsCount, setMockInterviewsCount] = useState<number>(0);
-  const [atsVal, setAtsVal] = useState<number>(70);
+  const [atsVal, setAtsVal] = useState<number>(0);
   const [techStack, setTechStack] = useState<string>("React, Node.js, TypeScript");
   const [allCompanies, setAllCompanies] = useState<CompanyProfile[]>([]);
   const [applications, setApplications] = useState<any[]>([]);
@@ -135,15 +136,15 @@ export default function PlacementCommandCenterPage() {
           .order("created_at", { ascending: false });
 
         if (scans && scans.length > 0) {
-          setAtsVal(scans[0].ats_score || 70);
+          setAtsVal(scans[0].ats_score || 0);
         }
       } else {
         // Fallback checks from localStorage
         if (typeof window !== "undefined") {
-          const storedAts = localStorage.getItem("ats_score");
+          const storedAts = localStorage.getItem(getScopedKey("ats_score", uid));
           if (storedAts) setAtsVal(parseInt(storedAts, 10));
 
-          const profileData = localStorage.getItem("resume_builder_profile");
+          const profileData = localStorage.getItem(getScopedKey("resume_builder_profile", uid));
           if (profileData) {
             try {
               const parsed = JSON.parse(profileData);
@@ -157,7 +158,7 @@ export default function PlacementCommandCenterPage() {
 
       // 6. Mock interviews count evaluation
       if (typeof window !== "undefined") {
-        const storedHistory = localStorage.getItem("interview_history");
+        const storedHistory = localStorage.getItem(getScopedKey("interview_history", uid));
         if (storedHistory) {
           try {
             const hist = JSON.parse(storedHistory);

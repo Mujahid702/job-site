@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Award,
   Zap,
@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 import { cn, flattenSkills } from "@/lib/utils";
 import UsageMeter from "@/components/UsageMeter";
+import { createClient } from "@/lib/supabase/client";
+import { getScopedKey } from "@/lib/security/LocalStorage";
 
 // Types
 interface CoverLetterProfile {
@@ -128,19 +130,41 @@ export default function CoverLetterOS() {
   const [activeSubTab, setActiveSubTab] = useState<string>("generator");
 
   const PROFILE_KEY = "cover_letter_os_profile";
+  const [userId, setUserId] = useState<string | null>(null);
+
+  // Listen to Auth State
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) setUserId(user.id);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUserId(session?.user?.id || null);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
 
   // State Management
-  const [profile, setProfile] = useState<CoverLetterProfile>(() => {
+  const [profile, setProfile] = useState<CoverLetterProfile>(defaultProfile);
+
+  // Sync profile when userId changes
+  useEffect(() => {
     if (typeof window !== "undefined") {
-      const cached = localStorage.getItem(PROFILE_KEY);
+      const scopedKey = getScopedKey(PROFILE_KEY, userId);
+      const cached = localStorage.getItem(scopedKey);
       if (cached) {
         try {
-          return JSON.parse(cached);
+          setProfile(JSON.parse(cached));
         } catch {}
+      } else {
+        setProfile(defaultProfile);
       }
     }
-    return defaultProfile;
-  });
+  }, [userId]);
 
   const [inputSource, setInputSource] = useState<"resume" | "resume_jd" | "resume_url" | "resume_company" | "resume_all">("resume_jd");
   const [targetCompany, setTargetCompany] = useState<string>("Google");
@@ -191,16 +215,14 @@ export default function CoverLetterOS() {
   const saveProfile = (updated: CoverLetterProfile) => {
     setProfile(updated);
     if (typeof window !== "undefined") {
-      localStorage.setItem(PROFILE_KEY, JSON.stringify(updated));
+      localStorage.setItem(getScopedKey(PROFILE_KEY, userId), JSON.stringify(updated));
     }
   };
-
-
 
   // Sync data loaders
   const handleImportFromResume = () => {
     if (typeof window !== "undefined") {
-      const cachedResume = localStorage.getItem("resume_builder_profile");
+      const cachedResume = localStorage.getItem(getScopedKey("resume_builder_profile", userId));
       if (cachedResume) {
         try {
           const parsed = JSON.parse(cachedResume);
@@ -229,7 +251,7 @@ export default function CoverLetterOS() {
 
   const handleImportFromPortfolio = () => {
     if (typeof window !== "undefined") {
-      const cachedPortfolio = localStorage.getItem("portfolio_profile_os");
+      const cachedPortfolio = localStorage.getItem(getScopedKey("portfolio_profile_os", userId));
       if (cachedPortfolio) {
         try {
           const parsed = JSON.parse(cachedPortfolio);
@@ -415,7 +437,7 @@ export default function CoverLetterOS() {
     setCopilotLoading(true);
 
     try {
-      const apiKey = typeof window !== "undefined" ? localStorage.getItem("gemini_api_key") || "" : "";
+      const apiKey = typeof window !== "undefined" ? localStorage.getItem(getScopedKey("gemini_api_key", userId)) || "" : "";
       const res = await fetch("/api/placement/copilot", {
         method: "POST",
         headers: {
