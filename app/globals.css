@@ -13,6 +13,9 @@
   
   --color-accent: var(--accent);
   --color-accent-foreground: #ffffff;
+  
+  --color-indigo-650: #2563eb;
+  --color-indigo-750: #1d4ed8;
 }
 
 :root {

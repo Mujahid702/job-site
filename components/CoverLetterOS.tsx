@@ -15,6 +15,8 @@ import {
   Download
 } from "lucide-react";
 import { cn, flattenSkills } from "@/lib/utils";
+import RemainingUsageBadge from "./RemainingUsageBadge";
+import UpgradeBanner from "./UpgradeBanner";
 import UsageMeter from "@/components/UsageMeter";
 import { createClient } from "@/lib/supabase/client";
 import { getScopedKey } from "@/lib/security/LocalStorage";
@@ -128,6 +130,7 @@ const generateCopilotMsgId = () => {
 
 export default function CoverLetterOS() {
   const [activeSubTab, setActiveSubTab] = useState<string>("generator");
+  const [showUpgradeModal, setShowUpgradeModal] = useState<boolean>(false);
 
   const PROFILE_KEY = "cover_letter_os_profile";
   const [userId, setUserId] = useState<string | null>(null);
@@ -345,7 +348,7 @@ export default function CoverLetterOS() {
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
-        alert(data.message || "Monthly Free Limit Reached. Upgrade to Premium to continue immediately.");
+        setShowUpgradeModal(true);
         return;
       }
 
@@ -380,9 +383,10 @@ export default function CoverLetterOS() {
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
-        alert(data.message || "Monthly Free Limit Reached. Upgrade to Premium to continue immediately.");
+        setShowUpgradeModal(true);
         return;
       }
+      import("@/components/RemainingUsageBadge").then(({ triggerBadgeRefresh }) => triggerBadgeRefresh());
 
       generateDraftLetter(activeVersion);
       alert(`Success! Generated Version ${activeVersion} Cover Letter aligned for ${targetCompany} (${coverLetterStyle} style).`);
@@ -636,7 +640,12 @@ For a **${targetRole}** role, emphasize your **${profile.projects[0]?.title || "
           {activeSubTab === "generator" && (
             <div className="space-y-8 animate-fade-in">
               <div className="flex justify-between items-center flex-wrap gap-4">
-                <h2 className="text-xl font-black text-slate-900 font-display">Cover Letter Workspace</h2>
+                <div className="flex flex-col">
+                  <h2 className="text-xl font-black text-slate-900 font-display">Cover Letter Workspace</h2>
+                  <div className="mt-1">
+                    <RemainingUsageBadge featureName="cover_letter_generation" />
+                  </div>
+                </div>
                 <div className="flex gap-2">
                   <button
                     onClick={handleImportFromResume}
@@ -1296,7 +1305,7 @@ For a **${targetRole}** role, emphasize your **${profile.projects[0]?.title || "
         </div>
 
       </div>
-
+      <UpgradeBanner isOpen={showUpgradeModal} onClose={() => setShowUpgradeModal(false)} featureName="cover_letter_generation" />
     </div>
   );
 }

@@ -26,6 +26,8 @@ import {
   LayoutGrid
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import RemainingUsageBadge from "./RemainingUsageBadge";
+import UpgradeBanner from "./UpgradeBanner";
 
 const TARGET_ROLES = [
   "Software Engineer",
@@ -89,6 +91,7 @@ export default function AiResumeEnhancer({ onScoreUpdate, onTabChange, userId }:
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState<string>("");
   const [explanationExpanded, setExplanationExpanded] = useState<boolean>(true);
+  const [showUpgradeModal, setShowUpgradeModal] = useState<boolean>(false);
   
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [taskProgress, setTaskProgress] = useState<number>(0);
@@ -139,9 +142,15 @@ export default function AiResumeEnhancer({ onScoreUpdate, onTabChange, userId }:
           }
           
           setActiveTaskId(null);
+          import("@/components/RemainingUsageBadge").then(({ triggerBadgeRefresh }) => triggerBadgeRefresh());
         } else if (updatedTask.status === "FAILED") {
           setIsEnhancing(false);
-          setErrorMsg(updatedTask.error || "Enhancement failed. Please try again.");
+          const err = updatedTask.error || "";
+          if (err.toLowerCase().includes("limit reached") || err.toLowerCase().includes("upgrade to premium")) {
+            setShowUpgradeModal(true);
+          } else {
+            setErrorMsg(err || "Enhancement failed. Please try again.");
+          }
           setActiveTaskId(null);
         }
       }
@@ -240,7 +249,10 @@ export default function AiResumeEnhancer({ onScoreUpdate, onTabChange, userId }:
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         {/* Left Column: Draft Input & Settings */}
         <div className="lg:col-span-5 bg-white p-8 rounded-[2.5rem] border border-slate-200/60 shadow-sm space-y-6">
-          <h3 className="text-xl font-black text-slate-900 font-display">Draft Builder</h3>
+          <div className="flex justify-between items-center flex-wrap gap-4">
+            <h3 className="text-xl font-black text-slate-900 font-display">Draft Builder</h3>
+            <RemainingUsageBadge featureName="resume_enhancer" />
+          </div>
 
           {/* Input Method Tabs */}
           <div className="space-y-2">
@@ -716,6 +728,7 @@ export default function AiResumeEnhancer({ onScoreUpdate, onTabChange, userId }:
           </AnimatePresence>
         </div>
       </div>
+      <UpgradeBanner isOpen={showUpgradeModal} onClose={() => setShowUpgradeModal(false)} featureName="resume_enhancer" />
     </div>
   );
 }

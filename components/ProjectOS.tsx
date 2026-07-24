@@ -33,11 +33,14 @@ import { supabase } from "@/lib/supabase";
 import { useToast } from "@/components/Toast";
 import AiLoader from "@/components/ui/AiLoader";
 import { getScopedKey } from "@/lib/security/LocalStorage";
+import RemainingUsageBadge from "./RemainingUsageBadge";
+import UpgradeBanner from "./UpgradeBanner";
 
 export default function ProjectOS() {
   const { showToast } = useToast();
   const [activeSubTab, setActiveSubTab] = useState<string>("discovery");
   const [userId, setUserId] = useState<string | null>(null);
+  const [showUpgradeModal, setShowUpgradeModal] = useState<boolean>(false);
 
   // Core State
   const [companies, setCompanies] = useState<CompanyProfile[]>([]);
@@ -188,28 +191,34 @@ export default function ProjectOS() {
       const generationDifficulty = projectDifficulty === "All" ? "Advanced" : projectDifficulty;
       
       let finalBlueprint;
-      if (apiKey) {
-        // Call backend Gemini generator API
-        const res = await fetch("/api/placement/projects/generate", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-gemini-api-key": apiKey
-          },
-          body: JSON.stringify({
-            targetRole,
-            targetCompany,
-            difficulty: generationDifficulty,
-            interestArea,
-            resumeText: workspaceStats.resumeText
-          })
-        });
-        const result = await res.json();
-        if (res.ok && result.success) {
-          finalBlueprint = result.data;
-        } else {
-          console.warn("AI generation failed or key unauthorized. Falling back to premium local compiler.");
+      // ALWAYS call the backend API first to enforce server-side quota checks
+      const res = await fetch("/api/placement/projects/generate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(apiKey ? { "x-gemini-api-key": apiKey } : {})
+        },
+        body: JSON.stringify({
+          targetRole,
+          targetCompany,
+          difficulty: generationDifficulty,
+          interestArea,
+          resumeText: workspaceStats.resumeText
+        })
+      });
+      const result = await res.json();
+      
+      if (!res.ok || result.success === false) {
+        if (result.message?.toLowerCase().includes("limit reached") || result.message?.toLowerCase().includes("upgrade to")) {
+          setShowUpgradeModal(true);
+          setGenerating(false);
+          return;
         }
+      }
+      
+      if (res.ok && result.success) {
+        finalBlueprint = result.data;
+        import("@/components/RemainingUsageBadge").then(({ triggerBadgeRefresh }) => triggerBadgeRefresh());
       }
 
       if (!finalBlueprint) {
@@ -570,7 +579,12 @@ export default function ProjectOS() {
           {activeSubTab === "discovery" && !generating && (
             <div className="space-y-8 animate-fade-in">
               <div className="flex justify-between items-center flex-wrap gap-4 border-b border-slate-100 pb-4">
-                <h2 className="text-xl font-black text-slate-900 font-display">Recruiter-Aligned Project Channels</h2>
+                <div className="flex flex-col">
+                  <h2 className="text-xl font-black text-slate-900 font-display">Recruiter-Aligned Project Channels</h2>
+                  <div className="mt-1">
+                    <RemainingUsageBadge featureName="project_generation" />
+                  </div>
+                </div>
                 <div className="flex gap-2">
                   <span className="text-xs font-bold text-slate-400">Targeting:</span>
                   <span className="text-xs font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">{targetRole}</span>
@@ -1972,9 +1986,9 @@ export default function ProjectOS() {
             </button>
           </div>
         </div>
-
+        <RemainingUsageBadge featureName="project_generation" />
       </div>
-
+      <UpgradeBanner isOpen={showUpgradeModal} onClose={() => setShowUpgradeModal(false)} featureName="project_generation" />
     </div>
   );
 }

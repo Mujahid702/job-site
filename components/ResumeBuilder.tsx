@@ -35,6 +35,8 @@ import {
   ListOrdered
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import RemainingUsageBadge from "./RemainingUsageBadge";
+import UpgradeBanner from "./UpgradeBanner";
 
 interface EducationItem {
   school: string;
@@ -136,6 +138,7 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
   const [latexCode, setLatexCode] = useState<string>("");
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [showUpgradeModal, setShowUpgradeModal] = useState<boolean>(false);
   
   // Versioning state
   const [versions, setVersions] = useState<{ id: string; label: string; data: ProfileData }[]>([]);
@@ -383,7 +386,12 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
         }
       } catch (err: any) {
         console.error(err);
-        setErrorMsg(err.message || "Failed to process resume file.");
+        const errMsg = err.message || "";
+        if (errMsg.toLowerCase().includes("limit reached") || errMsg.toLowerCase().includes("upgrade to")) {
+          setShowUpgradeModal(true);
+        } else {
+          setErrorMsg(errMsg || "Failed to process resume file.");
+        }
         setIsProcessing(false);
       }
     }
@@ -407,10 +415,18 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
         })
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || data.error || "Failed to parse resume.");
+      if (!res.ok || data.success === false) {
+        if (data.message?.toLowerCase().includes("limit reached") || data.message?.toLowerCase().includes("upgrade to")) {
+          setShowUpgradeModal(true);
+          setIsProcessing(false);
+          return;
+        }
+        throw new Error(data.message || data.error || "Failed to parse resume.");
+      }
 
       setProfile(normalizeProfileData(data.data));
       setSuccessMessage("Resume imported successfully!");
+      import("@/components/RemainingUsageBadge").then(({ triggerBadgeRefresh }) => triggerBadgeRefresh());
     } catch (err: any) {
       console.error(err);
       setErrorMsg(err.message || "Failed to structure resume content.");
@@ -452,10 +468,18 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
         })
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || data.error || "Failed to optimize resume for target job.");
+      if (!res.ok || data.success === false) {
+        if (data.message?.toLowerCase().includes("limit reached") || data.message?.toLowerCase().includes("upgrade to")) {
+          setShowUpgradeModal(true);
+          setIsJdOptimizing(false);
+          return;
+        }
+        throw new Error(data.message || data.error || "Failed to optimize resume for target job.");
+      }
 
       setProfile(normalizeProfileData(data.data));
       setSuccessMessage("Resume successfully optimized for job description!");
+      import("@/components/RemainingUsageBadge").then(({ triggerBadgeRefresh }) => triggerBadgeRefresh());
     } catch (err: any) {
       console.error(err);
       setErrorMsg(err.message || "Failed to run JD-aware resume tailoring.");
@@ -931,9 +955,12 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
     <div className="space-y-12">
       {/* Page Heading */}
       <div className="max-w-3xl space-y-4">
-        <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-[10px] font-black uppercase tracking-widest">
-          <Layers className="w-3.5 h-3.5 fill-indigo-100" />
-          Overleaf integration
+        <div className="flex justify-between items-center flex-wrap gap-4">
+          <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-[10px] font-black uppercase tracking-widest">
+            <Layers className="w-3.5 h-3.5 fill-indigo-100" />
+            Overleaf integration
+          </div>
+          <RemainingUsageBadge featureName="resume_builder" />
         </div>
         <h1 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tighter leading-tight font-display">
           LaTeX Resume Builder
@@ -1722,6 +1749,7 @@ export default function ResumeBuilder({ onScoreUpdate, onTabChange }: { onScoreU
 
       {/* Hidden iframe for PDF compilation support */}
       <iframe ref={iframeRef} className="hidden" title="print-frame" />
+      <UpgradeBanner isOpen={showUpgradeModal} onClose={() => setShowUpgradeModal(false)} featureName="resume_builder" />
     </div>
   );
 }

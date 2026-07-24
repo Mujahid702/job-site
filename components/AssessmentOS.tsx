@@ -34,6 +34,8 @@ import {
   Sparkles
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import RemainingUsageBadge from "./RemainingUsageBadge";
+import UpgradeBanner from "./UpgradeBanner";
 import UsageMeter from "@/components/UsageMeter";
 import { createClient } from "@/lib/supabase/client";
 import Editor from "@monaco-editor/react";
@@ -62,6 +64,7 @@ export default function AssessmentOS() {
   const supabase = createClient();
   const [userId, setUserId] = useState<string>("guest-user");
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState<boolean>(false);
   const [activeSubTab, setActiveSubTab] = useState<"dashboard" | "practice" | "exam" | "coach" | "admin">("dashboard");
 
   // Shared Data States
@@ -469,7 +472,7 @@ export default function AssessmentOS() {
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
-        alert(data.message || "Monthly Free Limit Reached. Upgrade to Premium to continue immediately.");
+        setShowUpgradeModal(true);
         return;
       }
     } catch (err) {
@@ -577,6 +580,7 @@ export default function AssessmentOS() {
 
     setExamActive(false);
     refreshStats();
+    import("@/components/RemainingUsageBadge").then(({ triggerBadgeRefresh }) => triggerBadgeRefresh());
   };
 
   // ==========================================
@@ -650,9 +654,12 @@ export default function AssessmentOS() {
       {/* HEADER SECTION */}
       {!examActive && (
         <div className="max-w-3xl space-y-4">
-          <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-[10px] font-black uppercase tracking-widest">
-            <ClipboardList className="w-3.5 h-3.5 fill-indigo-100" />
-            Active Placement Simulator
+          <div className="flex justify-between items-center flex-wrap gap-4">
+            <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-[10px] font-black uppercase tracking-widest">
+              <ClipboardList className="w-3.5 h-3.5 fill-indigo-100" />
+              Active Placement Simulator
+            </div>
+            <RemainingUsageBadge featureName="exam_mode" />
           </div>
           <h1 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tighter leading-tight font-display">
             Assessment OS
@@ -1524,6 +1531,7 @@ export default function AssessmentOS() {
           </AnimatePresence>
         </>
       )}
+      <UpgradeBanner isOpen={showUpgradeModal} onClose={() => setShowUpgradeModal(false)} featureName="exam_mode" />
     </div>
   );
 }

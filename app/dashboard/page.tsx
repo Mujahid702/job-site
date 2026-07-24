@@ -42,7 +42,8 @@ import {
   BookOpen,
   Send,
   Plus,
-  Clock
+  Clock,
+  RefreshCw
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -569,10 +570,33 @@ export default function DashboardPage() {
     }
   };
 
-  // Toggle premium membership
-  const togglePremiumPlan = async () => {
-    await updatePremiumStatus(!isPremium);
-    setShowCheckoutModal(false);
+  const [checkoutLoading, setCheckoutLoading] = useState<boolean>(false);
+
+  const handleCheckoutPro = async () => {
+    setCheckoutLoading(true);
+    try {
+      const res = await fetch("/api/subscriptions/checkout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          planId: "pro",
+          provider: "stripe"
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success && data.order?.checkoutUrl) {
+        window.location.href = data.order.checkoutUrl;
+      } else {
+        alert(data.message || "Failed to initialize payment order.");
+        setCheckoutLoading(false);
+      }
+    } catch {
+      alert("Failed to establish checkout request.");
+      setCheckoutLoading(false);
+    }
   };
 
   // Admin Actions
@@ -1641,10 +1665,12 @@ export default function DashboardPage() {
             </div>
 
             <button 
-              onClick={togglePremiumPlan}
-              className="w-full py-4 bg-slate-900 text-white font-black text-xs uppercase tracking-widest rounded-2xl hover:bg-indigo-600 transition-all shadow-lg"
+              onClick={handleCheckoutPro}
+              disabled={checkoutLoading}
+              className="w-full py-4 bg-slate-900 text-white font-black text-xs uppercase tracking-widest rounded-2xl hover:bg-indigo-600 transition-all shadow-lg disabled:opacity-50 flex items-center justify-center gap-2"
             >
-              Simulate Secure Checkout Payment
+              {checkoutLoading && <RefreshCw className="w-4 h-4 animate-spin" />}
+              <span>{checkoutLoading ? "Connecting to checkout..." : "Simulate Secure Checkout Payment"}</span>
             </button>
 
             <button 

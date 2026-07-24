@@ -4,6 +4,8 @@ import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { getJdMatches, addJdMatch } from "@/lib/db/resume";
 import { getScopedKey } from "@/lib/security/LocalStorage";
+import RemainingUsageBadge from "./RemainingUsageBadge";
+import UpgradeBanner from "./UpgradeBanner";
 
 import { enqueueTask, startWorker, fileToBase64 } from "@/lib/queue";
 import { motion, AnimatePresence } from "framer-motion";
@@ -120,6 +122,7 @@ export default function JdMatchAnalyzer({ onScoreUpdate, onTabChange, onMatchCom
   const { savedJobs } = useSavedJobs();
 
   const [userId, setUserId] = useState<string | null>(null);
+  const [showUpgradeModal, setShowUpgradeModal] = useState<boolean>(false);
 
   // Listen to Auth State
   useEffect(() => {
@@ -258,10 +261,16 @@ export default function JdMatchAnalyzer({ onScoreUpdate, onTabChange, onMatchCom
           if (onScoreUpdate) {
             onScoreUpdate(resData.overallScore);
           }
+          import("@/components/RemainingUsageBadge").then(({ triggerBadgeRefresh }) => triggerBadgeRefresh());
           setActiveTaskId(null);
         } else if (updatedTask.status === "FAILED") {
           setIsAnalyzing(false);
-          setErrorMsg(updatedTask.error || "Matching audit failed. Please try again.");
+          const err = updatedTask.error || "";
+          if (err.toLowerCase().includes("limit reached") || err.toLowerCase().includes("upgrade to premium")) {
+            setShowUpgradeModal(true);
+          } else {
+            setErrorMsg(err || "Matching audit failed. Please try again.");
+          }
           setActiveTaskId(null);
         }
       }
@@ -639,7 +648,10 @@ export default function JdMatchAnalyzer({ onScoreUpdate, onTabChange, onMatchCom
         {/* Left Column: Input Builder */}
         <div className="lg:col-span-5 space-y-6">
           <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200/60 shadow-sm space-y-6">
-            <h3 className="text-xl font-black text-slate-900 font-display">Scan Configuration</h3>
+            <div className="flex justify-between items-center flex-wrap gap-4">
+              <h3 className="text-xl font-black text-slate-900 font-display">Scan Configuration</h3>
+              <RemainingUsageBadge featureName="jd_matcher" />
+            </div>
 
             {/* Input A: Resume Selection */}
             <div className="space-y-2">
@@ -1378,6 +1390,7 @@ export default function JdMatchAnalyzer({ onScoreUpdate, onTabChange, onMatchCom
           </AnimatePresence>
         </div>
       </div>
+      <UpgradeBanner isOpen={showUpgradeModal} onClose={() => setShowUpgradeModal(false)} featureName="jd_matcher" />
     </div>
   );
 }

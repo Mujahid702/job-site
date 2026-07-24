@@ -45,85 +45,45 @@ const DISPOSABLE_EMAIL_DOMAINS = [
  * Lazy retrieves or creates a user's subscription
  */
 export async function getOrCreateSubscription(userId: string): Promise<{ plan_type: "FREE" | "PREMIUM" | "ADMIN"; expires_at: string | null }> {
-  // Query Supabase
-  const { data, error } = await supabase
-    .from("user_subscriptions")
-    .select("plan_type, expires_at")
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  if (error) {
-    console.error("[FeatureGuard] Error reading user subscription:", error);
-    return { plan_type: "FREE", expires_at: null };
+  const { getUserSubscription } = await import("@/lib/services/subscription");
+  const sub = await getUserSubscription(userId);
+  let plan_type: "FREE" | "PREMIUM" | "ADMIN" = "FREE";
+  
+  if (sub.subscription_plan === "admin") {
+    plan_type = "ADMIN";
+  } else if (sub.subscription_plan !== "free") {
+    plan_type = "PREMIUM";
   }
 
-  if (data) {
-    return { plan_type: data.plan_type as any, expires_at: data.expires_at };
-  }
-
-  // Create default subscription
-  const { data: newSub, error: insertError } = await supabase
-    .from("user_subscriptions")
-    .insert({ user_id: userId, plan_type: "FREE" })
-    .select("plan_type, expires_at")
-    .single();
-
-  if (insertError) {
-    console.error("[FeatureGuard] Error creating default subscription:", insertError);
-    return { plan_type: "FREE", expires_at: null };
-  }
-
-  return { plan_type: newSub.plan_type as any, expires_at: newSub.expires_at };
+  return {
+    plan_type,
+    expires_at: sub.expiry_date
+  };
 }
 
 /**
  * Checks if user is permitted to run a feature based on monthly limits
  */
 export async function checkUsage(userId: string, featureName: string): Promise<QuotaCheckResult> {
-  const currentMonth = new Date().toISOString().substring(0, 7); // format: 'YYYY-MM'
+  const { canUseFeature, getUserSubscription } = await import("@/lib/services/subscription");
+  const result = await canUseFeature(userId, featureName);
+  const sub = await getUserSubscription(userId);
   
-  // Calculate next reset date (1st of next month)
-  const nextMonth = new Date();
-  nextMonth.setUTCMonth(nextMonth.getUTCMonth() + 1);
-  nextMonth.setUTCDate(1);
-  nextMonth.setUTCHours(0, 0, 0, 0);
-  const resetDate = nextMonth.toISOString();
-
-  // Get User Plan
-  const sub = await getOrCreateSubscription(userId);
-  const plan = sub.plan_type;
-  
-  // Look up limit map
-  const featureLimitDef = FEATURE_LIMITS[featureName];
-  if (!featureLimitDef) {
-    // If feature has no specified limits, allow unlimited usage
-    return { allowed: true, plan, usedCount: 0, limit: Infinity, remaining: Infinity, resetDate };
+  let plan: "FREE" | "PREMIUM" | "ADMIN" = "FREE";
+  if (sub.subscription_plan === "admin") {
+    plan = "ADMIN";
+  } else if (sub.subscription_plan !== "free") {
+    plan = "PREMIUM";
   }
 
-  const limit = featureLimitDef[plan];
-  if (limit === Infinity) {
-    return { allowed: true, plan, usedCount: 0, limit: Infinity, remaining: Infinity, resetDate };
-  }
-
-  // Fetch usage count for this month
-  const { data, error } = await supabase
-    .from("user_usage_limits")
-    .select("used_count")
-    .eq("user_id", userId)
-    .eq("feature_name", featureName)
-    .eq("reset_month", currentMonth)
-    .maybeSingle();
-
-  if (error) {
-    console.error("[FeatureGuard] Error checking usage metrics:", error);
-    return { allowed: true, plan, usedCount: 0, limit, remaining: limit, resetDate };
-  }
-
-  const usedCount = data ? data.used_count : 0;
-  const allowed = usedCount < limit;
-  const remaining = Math.max(0, limit - usedCount);
-
-  return { allowed, plan, usedCount, limit, remaining, resetDate };
+  return {
+    allowed: result.allowed,
+    plan,
+    usedCount: result.used,
+    limit: result.limit === Infinity ? 999999 : result.limit,
+    remaining: result.remaining === Infinity ? 999999 : result.remaining,
+    resetDate: result.resetDate
+  };
 }
 
 /**
@@ -141,53 +101,8 @@ export async function incrementUsage(
     blockedReason?: string;
   }
 ): Promise<void> {
-  const currentMonth = new Date().toISOString().substring(0, 7);
-  const sub = await getOrCreateSubscription(userId);
-  const plan = sub.plan_type;
-
-  // Perform limit updates
-  const { data: existingLimit } = await supabase
-    .from("user_usage_limits")
-    .select("id, used_count")
-    .eq("user_id", userId)
-    .eq("feature_name", featureName)
-    .eq("reset_month", currentMonth)
-    .maybeSingle();
-
-  if (existingLimit) {
-    await supabase
-      .from("user_usage_limits")
-      .update({ used_count: existingLimit.used_count + 1, last_used: new Date().toISOString() })
-      .eq("id", existingLimit.id);
-  } else {
-    const featureLimitDef = FEATURE_LIMITS[featureName];
-    const defaultLimit = featureLimitDef ? featureLimitDef.FREE : 5;
-    await supabase
-      .from("user_usage_limits")
-      .insert({
-        user_id: userId,
-        feature_name: featureName,
-        monthly_limit: defaultLimit,
-        used_count: 1,
-        reset_month: currentMonth,
-        last_used: new Date().toISOString()
-      });
-  }
-
-  // Insert feature execution telemetry data row
-  await supabase
-    .from("feature_telemetry")
-    .insert({
-      user_id: userId,
-      feature_name: featureName,
-      plan_type: plan,
-      execution_time_ms: options?.executionTimeMs || 0,
-      ai_tokens: options?.aiTokens || 0,
-      estimated_cost_usd: options?.estimatedCostUsd || 0.000000,
-      device_hash: options?.deviceHash || null,
-      ip_hash: options?.ipHash || null,
-      blocked_reason: options?.blockedReason || null
-    });
+  const { incrementUsage: incUsage } = await import("@/lib/services/subscription");
+  await incUsage(userId, featureName);
 }
 
 /**

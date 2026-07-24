@@ -26,6 +26,8 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { getScopedKey } from "@/lib/security/LocalStorage";
+import RemainingUsageBadge from "./RemainingUsageBadge";
+import UpgradeBanner from "./UpgradeBanner";
 
 const TARGET_ROLES = [
   "Software Engineer",
@@ -139,6 +141,7 @@ export default function AtsResumeAnalyzer({ onScoreUpdate, onTabChange, onAnalys
   const [result, setResult] = useState<EvaluationData | null>(null);
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
   const [showPasteText, setShowPasteText] = useState<boolean>(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState<boolean>(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -250,6 +253,7 @@ export default function AtsResumeAnalyzer({ onScoreUpdate, onTabChange, onAnalys
             if (typeof window !== "undefined") {
               window.dispatchEvent(new Event("active_resume_updated"));
             }
+            import("@/components/RemainingUsageBadge").then(({ triggerBadgeRefresh }) => triggerBadgeRefresh());
           }
           if (onAnalysisComplete && resData.atsScore) {
             onAnalysisComplete({
@@ -265,7 +269,12 @@ export default function AtsResumeAnalyzer({ onScoreUpdate, onTabChange, onAnalys
           setActiveTaskId(null);
         } else if (updatedTask.status === "FAILED") {
           setIsScanning(false);
-          setErrorMsg(updatedTask.error || "Evaluation failed. Please try again.");
+          const err = updatedTask.error || "";
+          if (err.toLowerCase().includes("limit reached") || err.toLowerCase().includes("upgrade to premium")) {
+            setShowUpgradeModal(true);
+          } else {
+            setErrorMsg(err || "Evaluation failed. Please try again.");
+          }
           setActiveTaskId(null);
         }
       }
@@ -376,7 +385,10 @@ export default function AtsResumeAnalyzer({ onScoreUpdate, onTabChange, onAnalys
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         {/* Upload & Options Form (Left) */}
         <div className="lg:col-span-6 bg-white p-8 rounded-[2.5rem] border border-slate-200/60 shadow-sm space-y-6">
-          <h3 className="text-xl font-black text-slate-900 font-display">Optimization Settings</h3>
+          <div className="flex justify-between items-center flex-wrap gap-4">
+            <h3 className="text-xl font-black text-slate-900 font-display">Optimization Settings</h3>
+            <RemainingUsageBadge featureName="ats_analyzer" />
+          </div>
 
           {/* Target Role Selector */}
           <div className="space-y-3">
@@ -1220,6 +1232,7 @@ export default function AtsResumeAnalyzer({ onScoreUpdate, onTabChange, onAnalys
           </div>
         </motion.div>
       )}
+      <UpgradeBanner isOpen={showUpgradeModal} onClose={() => setShowUpgradeModal(false)} featureName="ats_analyzer" />
     </div>
   );
 }
