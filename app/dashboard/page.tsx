@@ -151,24 +151,57 @@ export default function DashboardPage() {
   const [monthlyConsistency, setMonthlyConsistency] = useState<number>(0);
   const [recentBadges, setRecentBadges] = useState<string[]>([]);
 
+  // Helper to convert active state to query parameter value
+  const getTabParamFromState = (active: string, sub: string): string => {
+    if (active === "resume-os") {
+      if (sub === "ats") return "resume";
+      if (sub === "enhancer") return "enhancer";
+      if (sub === "jd-match") return "jd-match";
+      if (sub === "builder") return "builder";
+      if (sub === "comparison") return "comparison";
+      if (sub === "history") return "history";
+      return "resume-os";
+    }
+    if (active === "projects-os") return "projects";
+    if (active === "mentorship-os") return "mentorship";
+    if (active === "dashboard") return "";
+    return active;
+  };
+
+  // Helper to resolve state from query parameter value
+  const resolveStateFromTabParam = (tabParam: string | null) => {
+    if (!tabParam || tabParam === "dashboard") {
+      return { active: "dashboard", sub: "overview" };
+    }
+    if (["resume", "enhancer", "jd-match", "builder", "comparison", "history", "resume-os"].includes(tabParam)) {
+      let sub = "overview";
+      if (tabParam === "resume") sub = "ats";
+      else if (tabParam === "enhancer") sub = "enhancer";
+      else if (tabParam === "jd-match") sub = "jd-match";
+      else if (tabParam === "builder") sub = "builder";
+      else if (tabParam === "comparison") sub = "comparison";
+      else if (tabParam === "history") sub = "history";
+      return { active: "resume-os", sub };
+    }
+    if (tabParam === "projects") {
+      return { active: "projects-os", sub: "overview" };
+    }
+    if (tabParam === "mentorship") {
+      return { active: "mentorship-os", sub: "overview" };
+    }
+    return { active: tabParam, sub: "overview" };
+  };
+
   // Load client-only preferences on mount to prevent SSR hydration mismatches
   useEffect(() => {
     // 1. Resolve active tab from URL query params
     const params = new URLSearchParams(window.location.search);
     const tabParam = params.get("tab");
     if (tabParam) {
-      if (["resume", "enhancer", "jd-match", "builder"].includes(tabParam)) {
-        setActiveTab("resume-os");
-        if (tabParam === "resume") setResumeSubTab("ats");
-        if (tabParam === "enhancer") setResumeSubTab("enhancer");
-        if (tabParam === "jd-match") setResumeSubTab("jd-match");
-        if (tabParam === "builder") setResumeSubTab("builder");
-      } else if (tabParam === "projects") {
-        setActiveTab("projects-os");
-      } else if (tabParam === "mentorship") {
-        setActiveTab("mentorship-os");
-      } else {
-        setActiveTab(tabParam);
+      const { active, sub } = resolveStateFromTabParam(tabParam);
+      setActiveTab(active);
+      if (active === "resume-os") {
+        setResumeSubTab(sub);
       }
     }
 
@@ -178,6 +211,41 @@ export default function DashboardPage() {
     // 3. Streak info
     setStreakCount(parseInt(localStorage.getItem("member_learning_streak") || "3"));
     setStreakClaimed(localStorage.getItem("member_claimed_today") === "true");
+  }, []);
+
+  // Synchronize state back to URL query parameters
+  useEffect(() => {
+    if (!mounted) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const currentTabParam = params.get("tab") || "";
+    const targetTabParam = getTabParamFromState(activeTab, resumeSubTab);
+
+    if (currentTabParam !== targetTabParam) {
+      const url = new URL(window.location.href);
+      if (targetTabParam) {
+        url.searchParams.set("tab", targetTabParam);
+      } else {
+        url.searchParams.delete("tab");
+      }
+      window.history.pushState(null, "", url.pathname + url.search);
+    }
+  }, [activeTab, resumeSubTab, mounted]);
+
+  // Synchronize browser navigation (Back/Forward) back to React state
+  useEffect(() => {
+    const handlePopState = () => {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get("tab");
+      const { active, sub } = resolveStateFromTabParam(tabParam);
+      setActiveTab(active);
+      if (active === "resume-os") {
+        setResumeSubTab(sub);
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
   // Checklists (Interactive items)
