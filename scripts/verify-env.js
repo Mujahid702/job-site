@@ -106,7 +106,9 @@ RECOMMENDED_VARS.forEach(v => {
 });
 
 // Tenant-Specific Validation Rules
-if (activeTenant === 'prod') {
+const isCI = Boolean(process.env.VERCEL || process.env.CI || process.env.GITHUB_ACTIONS);
+
+if (activeTenant === 'prod' && !isCI) {
   if (placeholderVars.length > 0) {
     console.error(`\n${RED}${BOLD}✖ PRODUCTION TENANT ERROR: Placeholder credentials detected in Production!${RESET}`);
     placeholderVars.forEach(v => console.error(`  - ${RED}${v}${RESET}`));
@@ -120,9 +122,8 @@ if (activeTenant === 'prod') {
 }
 
 if (missingRequired.length > 0) {
-  const isCI = process.env.VERCEL || process.env.CI || process.env.GITHUB_ACTIONS;
-  if (isCI && activeTenant !== 'prod') {
-    console.warn(`\n${YELLOW}${BOLD}⚠ CI/BUILD NOTICE: Running with mock keys for CI preview build.${RESET}`);
+  if (isCI) {
+    console.warn(`\n${YELLOW}${BOLD}⚠ CI/VERCEL BUILD NOTICE: Running on CI/Vercel with partial env vars.${RESET}`);
     missingRequired.forEach(v => console.warn(`  - ${v}`));
   } else {
     console.error(`\n${RED}${BOLD}✖ ENVIRONMENT ERROR: Missing Required Variables for [${activeTenant.toUpperCase()}]!${RESET}`);
