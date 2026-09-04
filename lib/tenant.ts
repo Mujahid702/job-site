@@ -137,7 +137,40 @@ export const TENANT_CONFIGS: Record<TenantId, TenantConfig> = {
  * 4. Fallback: dev locally, prod in production build
  */
 export function getCurrentTenant(): TenantId {
-  // 1. Explicit variable
+  // 1. Client-side path, query parameter and localStorage override (allows 1-click cloud tenant switching)
+  if (typeof window !== 'undefined') {
+    try {
+      // Check path first
+      const pathname = window.location.pathname.toLowerCase();
+      if (pathname === '/dev' || pathname.startsWith('/dev/')) {
+        localStorage.setItem('bb_active_tenant', 'dev');
+        return 'dev';
+      }
+      if (pathname === '/stage' || pathname.startsWith('/stage/')) {
+        localStorage.setItem('bb_active_tenant', 'stage');
+        return 'stage';
+      }
+      if (pathname === '/prod' || pathname.startsWith('/prod/')) {
+        localStorage.setItem('bb_active_tenant', 'prod');
+        return 'prod';
+      }
+
+      // Check query parameters (?tenant=dev|stage|prod or ?env=dev|stage|prod)
+      const params = new URLSearchParams(window.location.search);
+      const queryTenant = (params.get('tenant') || params.get('env'))?.toLowerCase();
+      if (queryTenant === 'dev' || queryTenant === 'stage' || queryTenant === 'prod') {
+        localStorage.setItem('bb_active_tenant', queryTenant);
+        return queryTenant;
+      }
+
+      const storedTenant = localStorage.getItem('bb_active_tenant')?.toLowerCase();
+      if (storedTenant === 'dev' || storedTenant === 'stage' || storedTenant === 'prod') {
+        return storedTenant as TenantId;
+      }
+    } catch {}
+  }
+
+  // 2. Explicit environment variable
   const explicitEnv = (
     process.env.NEXT_PUBLIC_APP_ENV ||
     process.env.APP_ENV ||
@@ -148,18 +181,18 @@ export function getCurrentTenant(): TenantId {
   if (explicitEnv === 'stage' || explicitEnv === 'staging' || explicitEnv === 'uat') return 'stage';
   if (explicitEnv === 'prod' || explicitEnv === 'production') return 'prod';
 
-  // 2. Vercel environment detection
+  // 3. Vercel environment detection
   const vercelEnv = (process.env.NEXT_PUBLIC_VERCEL_ENV || process.env.VERCEL_ENV || '').toLowerCase();
   if (vercelEnv === 'preview') return 'stage';
   if (vercelEnv === 'production') return 'prod';
 
-  // 3. Browser hostname detection (client-side)
+  // 4. Browser hostname detection (client-side)
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname.toLowerCase();
-    if (hostname.includes('stage') || hostname.includes('uat') || hostname.includes('preview')) {
+    if (hostname.includes('stage') || hostname.includes('uat') || hostname.includes('-stage-')) {
       return 'stage';
     }
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    if (hostname.includes('dev') || hostname.includes('-dev-') || hostname === 'localhost' || hostname === '127.0.0.1') {
       return 'dev';
     }
     if (hostname.includes('vercel.app') && !hostname.includes('-git-') && !hostname.includes('stage')) {
@@ -218,4 +251,15 @@ export function getTenantCacheKey(rawKey: string): string {
 export function getTenantCookieName(baseName: string): string {
   const config = getTenantConfig();
   return `${config.cookiePrefix}${baseName}`;
+}
+
+/**
+ * Programmatically switches the active tenant on the client
+ */
+export function setActiveTenant(tenantId: TenantId): void {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('bb_active_tenant', tenantId);
+    document.cookie = `bb_tenant=${tenantId}; path=/; max-age=2592000; SameSite=Lax`;
+    window.location.href = `/?tenant=${tenantId}`;
+  }
 }
