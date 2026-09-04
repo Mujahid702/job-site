@@ -89,13 +89,13 @@ export default function PlacementReadinessPage() {
       
       // Check admin status
       if (uid) {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("raw_profile_data")
+        const { data: roleRecord } = await supabase
+          .from("user_roles")
+          .select("role")
           .eq("user_id", uid)
           .maybeSingle();
 
-        const role = profile?.raw_profile_data?.role || "";
+        const role = roleRecord?.role || "";
         if (role === "admin" || role === "super_admin") {
           setIsAdmin(true);
           const stats = await getAdminPRIStats();

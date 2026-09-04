@@ -112,7 +112,7 @@ export const FEATURE_FLAGS: Record<string, FeatureFlag> = {
   },
   "placement-copilot": {
     enabled: true,
-    productionVisible: false,
+    productionVisible: true,
     developmentVisible: true,
     metadata: {
       moduleName: "AI Placement Copilot",

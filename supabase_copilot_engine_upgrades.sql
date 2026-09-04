@@ -38,10 +38,10 @@ EXCEPTION
 END $$;
 
 CREATE POLICY "Users can read own copilot memory" ON public.copilot_memory 
-  FOR SELECT USING (true);
+  FOR SELECT USING (auth.uid()::text = user_id OR public.is_admin());
 
 CREATE POLICY "Users can modify own copilot memory" ON public.copilot_memory 
-  FOR ALL USING (true);
+  FOR ALL USING (auth.uid()::text = user_id OR public.is_admin());
 
 CREATE POLICY "Anyone can select company knowledge" ON public.company_knowledge 
   FOR SELECT USING (true);

@@ -11,7 +11,61 @@ const RESET = '\x1b[0m';
 const RED = '\x1b[31m';
 const YELLOW = '\x1b[33m';
 const GREEN = '\x1b[32m';
+const CYAN = '\x1b[36m';
+const MAGENTA = '\x1b[35m';
 const BOLD = '\x1b[1m';
+
+// Parse CLI flags (e.g. --tenant=dev | --tenant=stage | --tenant=prod)
+let targetTenant = null;
+process.argv.forEach(arg => {
+  if (arg.startsWith('--tenant=')) {
+    targetTenant = arg.split('=')[1].toLowerCase();
+  }
+});
+
+// Helper to load variables from a file
+function parseEnvFile(filePath) {
+  const vars = {};
+  if (!fs.existsSync(filePath)) return vars;
+  
+  const content = fs.readFileSync(filePath, 'utf-8');
+  content.split('\n').forEach(line => {
+    const cleaned = line.trim();
+    if (!cleaned || cleaned.startsWith('#')) return;
+    
+    const equalIdx = cleaned.indexOf('=');
+    if (equalIdx === -1) return;
+    
+    const key = cleaned.substring(0, equalIdx).trim();
+    let val = cleaned.substring(equalIdx + 1).trim();
+    
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+      val = val.substring(1, val.length - 1);
+    }
+    
+    if (key) vars[key] = val;
+  });
+  return vars;
+}
+
+// Load env files
+const envLocalPath = path.join(__dirname, '..', '.env.local');
+const envLocalVars = parseEnvFile(envLocalPath);
+const mergedEnv = { ...process.env, ...envLocalVars };
+
+// Resolve active tenant
+const activeTenant = targetTenant || 
+  (mergedEnv.NEXT_PUBLIC_APP_ENV || mergedEnv.APP_ENV || (process.env.NODE_ENV === 'production' ? 'prod' : 'dev')).toLowerCase();
+
+const tenantLabels = {
+  dev: `${YELLOW}${BOLD}[DEV TENANT - Unit Testing & Dev]${RESET}`,
+  stage: `${MAGENTA}${BOLD}[STAGE TENANT - User Acceptance Testing (UAT)]${RESET}`,
+  prod: `${GREEN}${BOLD}[PROD TENANT - Live Production]${RESET}`
+};
+
+console.log(`\n${BOLD}==================================================================${RESET}`);
+console.log(`${BOLD}[Tenant Environment Verifier] Active: ${tenantLabels[activeTenant] || activeTenant}${RESET}`);
+console.log(`${BOLD}==================================================================${RESET}`);
 
 const REQUIRED_VARS = [
   'NEXT_PUBLIC_SUPABASE_URL',
@@ -29,81 +83,57 @@ const RECOMMENDED_VARS = [
   'NEXTAUTH_SECRET'
 ];
 
-console.log(`${BOLD}[Environment Verifier] Starting environment checks...${RESET}`);
-
-// Helper to load variables from a file
-function parseEnvFile(filePath) {
-  const vars = {};
-  if (!fs.existsSync(filePath)) return vars;
-  
-  const content = fs.readFileSync(filePath, 'utf-8');
-  content.split('\n').forEach(line => {
-    // Strip comments
-    const cleaned = line.trim();
-    if (!cleaned || cleaned.startsWith('#')) return;
-    
-    const equalIdx = cleaned.indexOf('=');
-    if (equalIdx === -1) return;
-    
-    const key = cleaned.substring(0, equalIdx).trim();
-    let val = cleaned.substring(equalIdx + 1).trim();
-    
-    // Strip quotes
-    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-      val = val.substring(1, val.length - 1);
-    }
-    
-    if (key) vars[key] = val;
-  });
-  return vars;
-}
-
-// Load env.local and merge with process.env
-const envLocalPath = path.join(__dirname, '..', '.env.local');
-const envLocalVars = parseEnvFile(envLocalPath);
-const mergedEnv = { ...process.env, ...envLocalVars };
-
 const missingRequired = [];
+const placeholderVars = [];
 const missingRecommended = [];
 
 REQUIRED_VARS.forEach(v => {
-  if (!mergedEnv[v] || mergedEnv[v].includes('[ref]') || mergedEnv[v].includes('eyJhbGciOi')) {
+  const val = mergedEnv[v];
+  if (!val) {
     missingRequired.push(v);
+  } else if (val.includes('[ref]') || val.includes('eyJhbGciOi...') || val === 'AIzaSy...') {
+    placeholderVars.push(v);
   }
 });
 
 RECOMMENDED_VARS.forEach(v => {
-  if (!mergedEnv[v] || mergedEnv[v].includes('[ref]') || mergedEnv[v].includes('gsk_')) {
+  const val = mergedEnv[v];
+  if (!val) {
     missingRecommended.push(v);
+  } else if (val.includes('[ref]') || val.includes('gsk_...')) {
+    placeholderVars.push(v);
   }
 });
 
-if (missingRequired.length > 0) {
-  const isCI = process.env.VERCEL || process.env.CI || process.env.GITHUB_ACTIONS;
-  if (isCI) {
-    console.warn(`\n${YELLOW}${BOLD}⚠ CI ENVIRONMENT WARNING: Missing or Placeholder Required Variables detected, bypassing strict exit for CI build.${RESET}`);
-    missingRequired.forEach(v => {
-      console.warn(`  - ${v}`);
-    });
-  } else {
-    console.error(`\n${RED}${BOLD}✖ ENVIRONMENT ERROR: Missing Required Variables!${RESET}`);
-    console.error(`${RED}The following variables must be configured in your .env.local file to run BuggedBrain:${RESET}`);
-    missingRequired.forEach(v => {
-      console.error(`  - ${BOLD}${v}${RESET}`);
-    });
-    console.error(`\n${YELLOW}Please copy .env.example to .env.local and fill in valid API keys/database credentials.${RESET}`);
-    console.error(`${RED}${BOLD}Startup aborted.${RESET}\n`);
+// Tenant-Specific Validation Rules
+if (activeTenant === 'prod') {
+  if (placeholderVars.length > 0) {
+    console.error(`\n${RED}${BOLD}✖ PRODUCTION TENANT ERROR: Placeholder credentials detected in Production!${RESET}`);
+    placeholderVars.forEach(v => console.error(`  - ${RED}${v}${RESET}`));
+    console.error(`${RED}Production deployments require live, non-placeholder credentials.${RESET}\n`);
     process.exit(1);
+  }
+
+  if (mergedEnv.RAZORPAY_KEY_ID && mergedEnv.RAZORPAY_KEY_ID.startsWith('rzp_test_')) {
+    console.warn(`\n${YELLOW}⚠ PRODUCTION WARNING: Test Razorpay key detected in Production mode.${RESET}`);
   }
 }
 
-if (missingRecommended.length > 0) {
-  console.warn(`\n${YELLOW}${BOLD}⚠ ENVIRONMENT WARNING: Missing Recommended Variables!${RESET}`);
-  console.warn(`${YELLOW}Some optional integrations/admin capabilities will be disabled without these keys:${RESET}`);
-  missingRecommended.forEach(v => {
-    console.warn(`  - ${v}`);
-  });
-  console.warn(`${YELLOW}Tip: Fill these in .env.local when testing advanced copilot features or DB sync triggers.${RESET}\n`);
+if (missingRequired.length > 0) {
+  const isCI = process.env.VERCEL || process.env.CI || process.env.GITHUB_ACTIONS;
+  if (isCI && activeTenant !== 'prod') {
+    console.warn(`\n${YELLOW}${BOLD}⚠ CI/BUILD NOTICE: Running with mock keys for CI preview build.${RESET}`);
+    missingRequired.forEach(v => console.warn(`  - ${v}`));
+  } else {
+    console.error(`\n${RED}${BOLD}✖ ENVIRONMENT ERROR: Missing Required Variables for [${activeTenant.toUpperCase()}]!${RESET}`);
+    missingRequired.forEach(v => console.error(`  - ${BOLD}${v}${RESET}`));
+    console.error(`\n${YELLOW}Refer to .env.${activeTenant}.example to configure your credentials.${RESET}\n`);
+    process.exit(1);
+  }
 } else {
-  console.log(`\n${GREEN}✔ ENVIRONMENT SANITY SUCCESS: All required and recommended keys detected.${RESET}\n`);
+  console.log(`\n${GREEN}✔ TENANT VALIDATION SUCCESS: Required variables verified for [${activeTenant.toUpperCase()}].${RESET}\n`);
+}
+
+if (missingRecommended.length > 0 && activeTenant !== 'dev') {
+  console.warn(`${YELLOW}⚠ Recommended keys missing for [${activeTenant.toUpperCase()}]: ${missingRecommended.join(', ')}${RESET}\n`);
 }

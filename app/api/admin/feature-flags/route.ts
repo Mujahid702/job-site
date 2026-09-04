@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
-    if (!user || !isAdmin(user)) {
+    if (!user || !(await isAdmin(user))) {
       return NextResponse.json({ success: false, error: "Unauthorized access: admin privileges required." }, { status: 403 });
     }
 

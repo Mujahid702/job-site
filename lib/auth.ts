@@ -20,13 +20,46 @@ export function getUserRole(user: User): 'super_admin' | 'admin' | 'user' {
   return 'user'
 }
 
-export function isAdmin(user: User): boolean {
-  const role = getUserRole(user)
-  return role === 'admin' || role === 'super_admin'
+export async function isAdmin(user: User): Promise<boolean> {
+  try {
+    const hardcodedRole = getUserRole(user);
+    if (hardcodedRole === 'admin' || hardcodedRole === 'super_admin') {
+      return true;
+    }
+
+    const { createClient } = await import('@/lib/supabase/server')
+    const supabase = await createClient()
+    const { data: roleRecord } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', user.id)
+      .maybeSingle()
+    const role = roleRecord?.role
+    return role === 'admin' || role === 'super_admin'
+  } catch {
+    return false
+  }
 }
 
-export function isSuperAdmin(user: User): boolean {
-  return getUserRole(user) === 'super_admin'
+export async function isSuperAdmin(user: User): Promise<boolean> {
+  try {
+    const hardcodedRole = getUserRole(user);
+    if (hardcodedRole === 'super_admin') {
+      return true;
+    }
+
+    const { createClient } = await import('@/lib/supabase/server')
+    const supabase = await createClient()
+    const { data: roleRecord } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', user.id)
+      .maybeSingle()
+    const role = roleRecord?.role
+    return role === 'super_admin'
+  } catch {
+    return false
+  }
 }
 
 export interface VerifyAuthResult {
@@ -57,7 +90,26 @@ export async function verifyAdmin(): Promise<VerifyAuthResult> {
       }
     }
 
-    if (!isAdmin(user)) {
+    // 1. Direct role check via user email and metadata
+    const hardcodedRole = getUserRole(user);
+    if (hardcodedRole === 'admin' || hardcodedRole === 'super_admin') {
+      return {
+        authenticated: true,
+        authorized: true,
+        response: null,
+        user,
+      }
+    }
+
+    // 2. Database user_roles table lookup
+    const { data: roleRecord } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', user.id)
+      .maybeSingle()
+    const role = roleRecord?.role
+
+    if (role !== 'admin' && role !== 'super_admin') {
       return {
         authenticated: true,
         authorized: false,

@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import { CheckCircle2, Circle, Trophy, Lightbulb, ChevronRight } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
+import { getScopedKey } from "@/lib/security/LocalStorage";
 
 interface PrepItem {
   id: string;
@@ -22,20 +24,38 @@ const defaultItems: PrepItem[] = [
 export default function PrepChecklist({ jobId }: { jobId: string }) {
   const [checkedItems, setCheckedItems] = useState<string[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+  const supabase = createClient();
 
   useEffect(() => {
-    const saved = localStorage.getItem(`prep_checklist_${jobId}`);
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) setUserId(user.id);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUserId(session?.user?.id || null);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [supabase]);
+
+  useEffect(() => {
+    const saved = localStorage.getItem(getScopedKey(`prep_checklist_${jobId}`, userId));
     if (saved) {
       setCheckedItems(JSON.parse(saved));
+    } else {
+      setCheckedItems([]);
     }
     setIsLoaded(true);
-  }, [jobId]);
+  }, [jobId, userId]);
 
   useEffect(() => {
     if (isLoaded) {
-      localStorage.setItem(`prep_checklist_${jobId}`, JSON.stringify(checkedItems));
+      localStorage.setItem(getScopedKey(`prep_checklist_${jobId}`, userId), JSON.stringify(checkedItems));
     }
-  }, [checkedItems, jobId, isLoaded]);
+  }, [checkedItems, jobId, isLoaded, userId]);
 
   const toggleItem = (id: string) => {
     setCheckedItems((prev) => 

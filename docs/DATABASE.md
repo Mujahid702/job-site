@@ -59,6 +59,26 @@ Monitors placement pipelines for the CRM and Application Tracker modules.
 - `salary` (text), `location` (text), `notes` (text).
 - `details` (jsonb): Nested CRM values (interviews scheduler, schedules).
 
+### 6. Assessment Ecosystem Tables (`public.assessment_*`)
+Tracks questions, coding compilations, WASM SQL seeds, timed session states, scores, streaks, and logs.
+*   **`assessment_categories`**: Core category slugs mapping (`slug` PK, `name` text).
+*   **`assessment_topics`**: Concepts list (`id` uuid PK, `name` text, `category_slug` text FK).
+*   **`assessment_questions`**: Questions bank (`id` uuid PK, `topic_id` uuid FK, `question_text` text, `difficulty` text check constraint, `type` text check constraint, `marks` integer).
+*   **`assessment_options`**: Choice options (`id` uuid PK, `question_id` uuid FK, `option_text` text, `is_correct` boolean).
+*   **`coding_problems`**: Starter codes, input/output shapes, constraints, hidden test cases (`question_id` uuid PK/FK, `starter_codes` jsonb, `sample_test_cases` jsonb, `time_limit_ms` integer).
+*   **`sql_problems`**: Schema seed queries, correct queries (`question_id` uuid PK/FK, `sql_schema_seed` text, `correct_query` text).
+*   **`assessment_templates`**: Timed mock templates (`id` uuid PK, `title` text, `duration_minutes` integer, `passing_percentage` integer).
+*   **`assessment_sessions`**: Timed attempt tracker states (`id` uuid PK, `user_id` text, `template_id` uuid FK, `session_type` text check constraint, `status` text check constraint, `score_percentage` numeric, `passed` boolean).
+*   **`assessment_attempts`**: Individual exam attempt links (`id` uuid PK, `session_id` uuid FK, `user_id` text, `is_completed` boolean).
+*   **`assessment_answers`**: Solved answers registry logs (`id` uuid PK, `attempt_id` uuid FK, `question_id` uuid FK, `is_correct` boolean, `time_spent_seconds` integer).
+*   **`coding_submissions`**: Python/JS code outputs history (`id` uuid PK, `attempt_id` uuid FK, `question_id` uuid FK, `user_id` text, `status` text, `execution_time_ms` integer).
+*   **`sql_submissions`**: Executed user SQLite queries (`id` uuid PK, `attempt_id` uuid FK, `question_id` uuid FK, `user_id` text, `submitted_query` text, `status` text).
+*   **`assessment_scores`**: Logged completed attempts scorecard totals (`id` uuid PK, `attempt_id` uuid FK, `user_id` text, `correct_answers` integer, `score_percentage` numeric).
+*   **`assessment_topic_scores`**: Topic rollup records (`user_id` text, `topic_id` uuid FK, `total_solved` integer, `accuracy_percentage` numeric).
+*   **`assessment_performance`**: Daily time series aggregates (`id` uuid PK, `user_id` text, `date` date, `total_time_spent_seconds` integer, `average_accuracy_percentage` numeric).
+*   **`assessment_recommendations`**: AI study suggestions (`id` uuid PK, `user_id` text, `recommended_topic_id` uuid FK, `priority` text).
+*   **`ai_generated_questions`**: AI Generator Draft logs (`id` uuid PK, `question_id` uuid FK, `generation_model` text, `prompt_version` text, `validation_result` jsonb, `admin_approved` boolean).
+
 ---
 
 ## 2. Postgres Functions & Custom Triggers
@@ -100,6 +120,22 @@ To prevent developer data overlaps and secure privacy, RLS is strictly enforced 
 | `public.project_templates` | WRITE (ALL) | `public.is_admin()` (Admin write-only) |
 | `public.project_companies` | SELECT | `true` (Public read allowed) |
 | `public.project_companies` | WRITE (ALL) | `public.is_admin()` (Admin write-only) |
+| `public.assessment_categories` | SELECT | `true` (Public read allowed) |
+| `public.assessment_categories` | WRITE | `public.is_admin()` (Admin write-only) |
+| `public.assessment_topics` | SELECT | `true` (Public read allowed) |
+| `public.assessment_topics` | WRITE | `public.is_admin()` (Admin write-only) |
+| `public.assessment_questions` | SELECT | `true` (Public read allowed) |
+| `public.assessment_questions` | WRITE | `public.is_admin()` (Admin write-only) |
+| `public.assessment_sessions` | ALL | `auth.uid()::text = user_id::text OR public.is_admin()` |
+| `public.assessment_attempts` | ALL | `auth.uid()::text = user_id::text OR public.is_admin()` |
+| `public.assessment_answers` | ALL | `auth.uid()::text = (SELECT user_id FROM public.assessment_attempts WHERE id = attempt_id) OR public.is_admin()` |
+| `public.coding_submissions` | ALL | `auth.uid()::text = user_id::text OR public.is_admin()` |
+| `public.sql_submissions` | ALL | `auth.uid()::text = user_id::text OR public.is_admin()` |
+| `public.assessment_scores` | ALL | `auth.uid()::text = user_id::text OR public.is_admin()` |
+| `public.assessment_topic_scores` | ALL | `auth.uid()::text = user_id::text OR public.is_admin()` |
+| `public.assessment_performance` | ALL | `auth.uid()::text = user_id::text OR public.is_admin()` |
+| `public.assessment_recommendations` | ALL | `auth.uid()::text = user_id::text OR public.is_admin()` |
+| `public.ai_generated_questions` | ALL | `public.is_admin()` (Admin write-only) |
 
 ---
 

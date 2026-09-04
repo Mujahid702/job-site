@@ -36,6 +36,10 @@ drop policy if exists "Allow admins to read retrieval logs" on public.rag_retrie
 create policy "Allow admins to read retrieval logs" on public.rag_retrieval_logs
   for all using (public.is_admin());
 
+drop policy if exists "Anyone can insert retrieval logs" on public.rag_retrieval_logs;
+create policy "Anyone can insert retrieval logs" on public.rag_retrieval_logs
+  for insert with check (true);
+
 -- 4. Create Hybrid Vector Search Match Function
 create or replace function public.match_knowledge_documents_v2 (
   query_embedding vector(768),

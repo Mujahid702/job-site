@@ -67,26 +67,37 @@ ALTER TABLE public.scam_detection_logs ENABLE ROW LEVEL SECURITY;
 
 -- 7. RLS Policies
 -- Allow read access to anyone, but only admins to edit verified companies/recruiters/domains
+DROP POLICY IF EXISTS "Allow read access for verified companies" ON public.verified_companies;
 CREATE POLICY "Allow read access for verified companies" ON public.verified_companies
   FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Allow admin operations for verified companies" ON public.verified_companies;
 CREATE POLICY "Allow admin operations for verified companies" ON public.verified_companies
   FOR ALL USING (public.is_admin());
 
+DROP POLICY IF EXISTS "Allow read access for verified recruiters" ON public.verified_recruiters;
 CREATE POLICY "Allow read access for verified recruiters" ON public.verified_recruiters
   FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Allow admin operations for verified recruiters" ON public.verified_recruiters;
 CREATE POLICY "Allow admin operations for verified recruiters" ON public.verified_recruiters
   FOR ALL USING (public.is_admin());
 
+DROP POLICY IF EXISTS "Allow read access for trusted domains" ON public.trusted_domains;
 CREATE POLICY "Allow read access for trusted domains" ON public.trusted_domains
   FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Allow admin operations for trusted domains" ON public.trusted_domains;
 CREATE POLICY "Allow admin operations for trusted domains" ON public.trusted_domains
   FOR ALL USING (public.is_admin());
 
 -- Users can only manage their own email trust logs
+DROP POLICY IF EXISTS "Allow users to manage own email trust logs" ON public.email_trust_logs;
 CREATE POLICY "Allow users to manage own email trust logs" ON public.email_trust_logs
   FOR ALL USING (user_id = auth.uid() OR public.is_admin());
 
 -- Users can only manage their own scam detection logs
+DROP POLICY IF EXISTS "Allow users to manage own scam detection logs" ON public.scam_detection_logs;
 CREATE POLICY "Allow users to manage own scam detection logs" ON public.scam_detection_logs
   FOR ALL USING (user_id = auth.uid() OR public.is_admin());
 

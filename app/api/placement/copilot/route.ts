@@ -9,6 +9,7 @@ import {
   getCompanyKnowledge, 
   executeCopilotAction 
 } from "@/lib/db/copilot-engine";
+import { retrieveKnowledgeV2 } from "@/lib/ai/rag-v2";
 
 export const dynamic = "force-dynamic";
 
@@ -221,6 +222,24 @@ export async function POST(request: Request) {
       }
     }
 
+    // 11.5. Retrieve matching RAG 2.0 vector knowledge base items
+    const ragFilters = {
+      company: context.targetCompanies?.[0] || undefined,
+      role: context.targetRole || undefined,
+    };
+    const ragDocs = await retrieveKnowledgeV2(message, ragFilters, 3, 0.15);
+
+    let vectorRAG = "";
+    if (ragDocs && ragDocs.length > 0) {
+      vectorRAG = `\n### RETRIEVED PLACEMENT KNOWLEDGE CONTEXT:\n`;
+      ragDocs.forEach((doc, idx) => {
+        vectorRAG += `--- VERIFIED RESOURCE CHUNK ${idx + 1}: ${doc.title} (${doc.category.toUpperCase()}) ---\n`;
+        vectorRAG += `Content:\n${doc.content}\n`;
+        vectorRAG += `Metadata: Company: ${doc.company || "General"}, Difficulty: ${doc.difficulty || "General"}\n`;
+        vectorRAG += `--------------------------------------------------\n\n`;
+      });
+    }
+
     // 12. Construct system instruction prompt
     const systemPrompt = `You are the ${routing.agent} of BuggedBrain Placement OS. 
 Your goal is to guide this student:
@@ -237,6 +256,8 @@ Agent Focus instruction:
 ${routing.instruction}
 
 ${companyRAG}
+
+${vectorRAG}
 
 CRITICAL INSTRUCTIONS:
 1. Speak in your specialized agent persona. Customize advice to the user's specific skills and weaknesses.

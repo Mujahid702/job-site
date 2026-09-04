@@ -200,9 +200,158 @@ Creates the 5-stage customized career roadmap checklist.
   }
   ```
 
+## 4. Assessment OS API Endpoints
+
+### 1. Catalog Explorer (`/api/assessments/catalog`)
+Fetches all category, topic, and exam template blueprints.
+- **Method**: `GET`
+- **Owner**: Developer A (Evaluation Lead)
+- **Auth Level**: Authenticated User
+- **Rate Limits**: 45 requests / minute
+- **Expected Latency**: 250ms
+- **Response Shape (200 OK)**:
+  ```json
+  {
+    "success": true,
+    "categories": [{ "slug": "aptitude", "name": "Quantitative Aptitude" }],
+    "topics": [{ "id": "t-1", "name": "Number System", "category_slug": "aptitude" }],
+    "templates": [{ "id": "temp-1", "title": "Amazon Prep Mock", "duration_minutes": 60 }]
+  }
+  ```
+
+### 2. Practice Starter (`/api/assessments/practice/start`)
+Initializes an adaptive student practice quiz session.
+- **Method**: `POST`
+- **Auth Level**: Authenticated User (respects unlimited practice policy limits)
+- **Expected Latency**: 350ms
+- **Input Parameters**:
+  ```json
+  {
+    "topicId": "t-1",
+    "difficulty": "Medium",
+    "limit": 5
+  }
+  ```
+- **Response Shape (200 OK)**:
+  ```json
+  {
+    "success": true,
+    "sessionId": "sess-abc",
+    "attemptId": "att-xyz",
+    "questions": [{ "id": "q-1", "question_text": "Solve..." }]
+  }
+  ```
+
+### 3. Exam Starter (`/api/assessments/exam/start`)
+Launches a timed Company-style or general exam session.
+- **Method**: `POST`
+- **Auth Level**: Authenticated User (Server-enforced monthly limit: 3 attempts)
+- **Expected Latency**: 500ms
+- **Input Parameters**:
+  ```json
+  {
+    "templateId": "temp-1"
+  }
+  ```
+- **Response Shape (200 OK)**:
+  ```json
+  {
+    "success": true,
+    "sessionId": "sess-abc",
+    "attemptId": "att-xyz",
+    "durationMinutes": 60,
+    "questions": [{ "id": "q-1", "question_text": "...", "type": "MCQ" }]
+  }
+  ```
+
+### 4. Solve Answer logger (`/api/assessments/session/answer`)
+Evaluates MCQ option selections and logs answers.
+- **Method**: `POST`
+- **Auth Level**: Authenticated User (IDOR ownership checked server-side)
+- **Expected Latency**: 180ms
+- **Input Parameters**:
+  ```json
+  {
+    "attemptId": "att-xyz",
+    "questionId": "q-1",
+    "selectedOptionId": "opt-2",
+    "timeSpent": 25
+  }
+  ```
+- **Response Shape (200 OK)**:
+  ```json
+  {
+    "success": true,
+    "isCorrect": true,
+    "scorePercentage": 100
+  }
+  ```
+
+### 5. Coding Submission Sandbox (`/api/assessments/session/coding-submit`)
+Runs compiler sandbox tests on student solutions via Judge0.
+- **Method**: `POST`
+- **Auth Level**: Authenticated User (IDOR protected)
+- **Expected Latency**: 2500ms
+- **Input Parameters**:
+  ```json
+  {
+    "attemptId": "att-xyz",
+    "questionId": "q-coding",
+    "code": "def solution():\n    return True",
+    "language": "python",
+    "timeSpent": 120
+  }
+  ```
+
+### 6. SQL Submission Sandbox (`/api/assessments/session/sql-submit`)
+Executes user SQL queries in WASM SQLite sandboxes.
+- **Method**: `POST`
+- **Auth Level**: Authenticated User
+- **Expected Latency**: 1200ms
+- **Input Parameters**:
+  ```json
+  {
+    "attemptId": "att-xyz",
+    "questionId": "q-sql",
+    "query": "SELECT * FROM users;",
+    "timeSpent": 45
+  }
+  ```
+
+### 7. Session Finalizer (`/api/assessments/session/finish`)
+Grants XP, logs daily streaks, and increments exam usage counts.
+- **Method**: `POST`
+- **Auth Level**: Authenticated User
+- **Input Parameters**:
+  ```json
+  {
+    "attemptId": "att-xyz"
+  }
+  ```
+
+### 8. Scorecard Details Result (`/api/assessments/session/result`)
+Calculates time efficiency, difficulty accuracy, and percentiles.
+- **Method**: `GET`
+- **Auth Level**: Authenticated User (IDOR protected)
+- **Expected Latency**: 350ms
+- **Query Parameters**: `?attemptId=att-xyz`
+- **Response Shape (200 OK)**:
+  ```json
+  {
+    "success": true,
+    "score": { "scorePercentage": 80, "passed": true },
+    "report": {
+      "percentile": 85.5,
+      "timeEfficiency": { "speedRating": "Fast", "averageTimePerQuestion": 22 },
+      "difficultyAnalysis": { "Easy": { "accuracy": 100, "total": 2 } },
+      "recommendation": "Focus on quantitative aptitude next."
+    }
+  }
+  ```
+
 ---
 
-## 4. Recruiter CRM & Trust Hub API Endpoints
+## 5. Recruiter CRM & Trust Hub API Endpoints
 
 ### 1. Recruiter Validation OTP (`/api/recruiter-verifications/otp/send`)
 Triggers OTP verification code to recruiter's LinkedIn email.
@@ -235,7 +384,7 @@ Triggers OTP verification code to recruiter's LinkedIn email.
 
 ---
 
-## 5. Security & Error Code Reference
+## 6. Security & Error Code Reference
 
 When an API call fails, the response envelope will return the standard error structure:
 

@@ -6,9 +6,15 @@
     "predev": "node scripts/verify-env.js",
     "prebuild": "node scripts/verify-env.js",
     "dev": "next dev",
+    "dev:dev": "node scripts/run-tenant.js dev dev",
+    "dev:stage": "node scripts/run-tenant.js stage dev",
+    "dev:prod": "node scripts/run-tenant.js prod dev",
     "build": "next build",
+    "build:stage": "node scripts/run-tenant.js stage build",
+    "build:prod": "node scripts/run-tenant.js prod build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "verify:tenant": "node scripts/verify-env.js"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
@@ -24,6 +30,7 @@
     "next": "16.2.10",
     "pdf-lib": "^1.17.1",
     "pdf-parse": "^1.1.1",
+    "pg": "^8.22.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "sql.js": "^1.14.1",

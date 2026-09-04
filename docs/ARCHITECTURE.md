@@ -69,3 +69,20 @@ BuggedBrain utilizes a hybrid state mechanism combining local caches, database s
 
 ### 4. Telemetry Telecommunications
 - Real-time logging of latency and token consumption metrics is run in the background after AI query resolutions, avoiding request blockages.
+
+---
+
+## 4. Evaluation & Sandbox Compiler Architecture
+
+To ensure speed, accuracy, and security, BuggedBrain decouples student evaluations and compiler executions into server-side and WebAssembly sandbox layers:
+
+### 1. Centralized Evaluation Engine (`lib/services/`)
+*   **Scoring Engine (`scoringEngine.ts`)**: Evaluates tests deterministically using strict mathematical criteria. MCQ answers are validated against options; SQL queries are validated against exact tabular results match; Coding problems are evaluated against test case pass ratios.
+*   **Adaptive Difficulty Engine (`scoringEngine.ts`)**: Recommends focused syllabus pathways based on a student's difficulty accuracies (Easy, Medium, Hard) and rolling time limits performance.
+*   **Analytics Intelligence (`analyticsIntelligence.ts`)**: Recalculates category/topic metrics, consistency days, and compiles weak topics warnings (topics with accuracy < 50% across $\ge 3$ attempts) in real time.
+*   **Result Intelligence (`resultIntelligence.ts`)**: Calculates time efficiency speeds, difficulty accuracies, next actionable recommendations, and peer percentiles (only when distinct completions for a template $\ge 10$).
+
+### 2. Secure Code & Query Compilation Sandbox (`lib/compiler/`)
+*   **SQLite WASM Sandbox (`SqlSandbox.ts`)**: Utilizes `sql.js` in-memory SQLite compiled in WebAssembly. Seeds schemas on the fly and executes user query comparisons securely without database write access.
+*   **Execution Sandbox (`ExecutionProvider.ts`)**: Connects to remote Judge0 API instances to execute code (supporting python, javascript, etc.) against hidden test cases. Falls back gracefully to local JS simulated runner environments on connection drops.
+*   **Session State Isolation**: All compiler execution, attempt starts, and score updates validate `user_id` context via Supabase `auth.getUser()`, completely blocking IDOR parameter-tampering hacks.

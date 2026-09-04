@@ -23,6 +23,22 @@ export async function generateResponse(options: AIRequestOptions): Promise<AIRes
   // Resolve model name for logging if not specified
   const model = options.model || (provider === 'gemini' ? 'gemini-3.5-flash' : 'default');
 
+  // Dynamically resolve userId if missing or anonymous for secure caching isolation
+  let userId = options.userId;
+  if (!userId || userId === 'anonymous') {
+    try {
+      const { createClient } = await import('@/lib/supabase/server');
+      const supabase = await createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        userId = user.id;
+      }
+    } catch {
+      // Bypassed if createClient/auth is unavailable (e.g. build time)
+    }
+  }
+  userId = userId || 'anonymous';
+
   const cachePrefix = CACHEABLE_TASKS[taskType];
   let cacheKey = '';
 
@@ -35,7 +51,7 @@ export async function generateResponse(options: AIRequestOptions): Promise<AIRes
         temperature: options.temperature,
         responseMimeType: options.responseMimeType,
         responseSchema: options.responseSchema,
-        userId: options.userId || "anonymous",
+        userId: userId,
       });
       const hash = crypto.createHash('sha256').update(hashInput).digest('hex');
       cacheKey = `${cachePrefix}:${hash}`;
@@ -60,7 +76,7 @@ export async function generateResponse(options: AIRequestOptions): Promise<AIRes
           completionTokens,
           responseTimeMs,
           success: true,
-          userId: options.userId,
+          userId: userId,
         });
 
         return {
@@ -149,7 +165,7 @@ export async function generateResponse(options: AIRequestOptions): Promise<AIRes
       responseTimeMs,
       success: result.success,
       error: result.error,
-      userId: options.userId,
+      userId: userId,
     });
 
     return {
@@ -172,7 +188,7 @@ export async function generateResponse(options: AIRequestOptions): Promise<AIRes
       responseTimeMs,
       success: false,
       error: errorMsg,
-      userId: options.userId,
+      userId: userId,
     });
 
     return {

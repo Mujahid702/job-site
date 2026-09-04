@@ -18,7 +18,7 @@ export async function POST(request: Request) {
 
     if (!isAuthorized) {
       const { data: { user } } = await supabase.auth.getUser();
-      if (user && isAdmin(user)) {
+      if (user && (await isAdmin(user))) {
         isAuthorized = true;
       }
     }

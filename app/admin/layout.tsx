@@ -16,7 +16,7 @@ export default async function AdminLayout({
     redirect("/login");
   }
 
-  if (!isAdmin(user)) {
+  if (!(await isAdmin(user))) {
     redirect("/");
   }
 

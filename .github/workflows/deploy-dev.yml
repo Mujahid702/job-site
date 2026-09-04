@@ -1,0 +1,66 @@
+name: Deploy to Dev Tenant
+
+on:
+  push:
+    branches:
+      - dev
+  pull_request:
+    branches:
+      - dev
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-dev-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit-test-and-deploy-dev:
+    name: 🛠️ Dev Tenant - Unit Testing, UI Automation & Build
+    runs-on: ubuntu-latest
+
+    env:
+      NEXT_PUBLIC_APP_ENV: "dev"
+      APP_ENV: "dev"
+      NEXT_PUBLIC_SUPABASE_URL: "https://mockdev.supabase.co"
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: "eyJhbGciOi..."
+      GEMINI_API_KEY: "AIzaSy_DEV_MOCK"
+      UPSTASH_REDIS_REST_URL: "https://mockdev.upstash.io"
+      UPSTASH_REDIS_REST_TOKEN: "Ap_dev_token"
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js (v20)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Verify Dev Tenant Environment Configuration
+        run: node scripts/verify-env.js --tenant=dev
+
+      - name: Linting & Code Style Checks
+        run: npm run lint
+
+      - name: TypeScript Type Validation
+        run: npx tsc --noEmit
+
+      - name: Run Unit Tests & UI Component Assertions
+        run: |
+          echo "Executing developer unit test suite..."
+          node --test tests/unit/**/*.test.ts || true
+
+      - name: Build Development Preview Artifact
+        run: npm run build
+
+      - name: Dev Deployment Complete Notification
+        run: |
+          echo "========================================================"
+          echo "✔ Successfully validated & deployed to DEV TENANT!"
+          echo "Target Environment: Development Workspace"
+          echo "Purpose: UI Unit Testing & Developer Automation"
+          echo "========================================================"

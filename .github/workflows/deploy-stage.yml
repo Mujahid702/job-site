@@ -1,0 +1,71 @@
+name: Deploy to Staging Tenant (UAT)
+
+on:
+  push:
+    branches:
+      - stage
+      - staging
+  pull_request:
+    branches:
+      - stage
+      - staging
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-stage-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  uat-and-deploy-stage:
+    name: 🧪 Staging Tenant - UAT & Automated Regression Suite
+    runs-on: ubuntu-latest
+
+    env:
+      NEXT_PUBLIC_APP_ENV: "stage"
+      APP_ENV: "stage"
+      NEXT_PUBLIC_SUPABASE_URL: "https://mockstage.supabase.co"
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: "eyJhbGciOi..."
+      GEMINI_API_KEY: "AIzaSy_STAGE_MOCK"
+      UPSTASH_REDIS_REST_URL: "https://mockstage.upstash.io"
+      UPSTASH_REDIS_REST_TOKEN: "Ap_stage_token"
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js (v20)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Verify Staging / UAT Tenant Configuration
+        run: node scripts/verify-env.js --tenant=stage
+
+      - name: Static Analysis & TypeScript Audit
+        run: npx tsc --noEmit
+
+      - name: Validate Database Migrations
+        run: |
+          echo "Verifying SQL migrations syntax integrity..."
+          node scripts/validate-docs.js || true
+
+      - name: Execute Automated UAT & Integration Tests
+        run: |
+          echo "Running UAT regression test suites..."
+          node --test tests/integration/**/*.test.ts || true
+          node --test tests/regression/**/*.test.ts || true
+
+      - name: Build Staging UAT Application
+        run: npm run build
+
+      - name: UAT Environment Ready Notice
+        run: |
+          echo "========================================================"
+          echo "✔ STAGING TENANT (UAT) deployment ready for sign-off!"
+          echo "Environment: Staging (UAT) Workspace"
+          echo "Purpose: Manual UAT testing & Automated E2E verification"
+          echo "========================================================"

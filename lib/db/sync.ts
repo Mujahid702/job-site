@@ -70,10 +70,11 @@ export function showSyncNotification(message: string, isSuccess: boolean = false
   }, 4500);
 }
 
-export function getSyncQueue(): SyncItem[] {
+export function getSyncQueue(userId?: string): SyncItem[] {
   if (typeof window === "undefined") return [];
   try {
-    const stored = localStorage.getItem(QUEUE_KEY);
+    const key = userId && userId !== "guest" ? `${QUEUE_KEY}_${userId}` : QUEUE_KEY;
+    const stored = localStorage.getItem(key);
     return stored ? JSON.parse(stored) : [];
   } catch (e) {
     console.error("Failed to parse sync queue", e);
@@ -81,21 +82,30 @@ export function getSyncQueue(): SyncItem[] {
   }
 }
 
-export function saveSyncQueue(queue: SyncItem[]) {
+export function saveSyncQueue(queue: SyncItem[], userId?: string) {
   if (typeof window === "undefined") return;
-  localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
+  const key = userId && userId !== "guest" ? `${QUEUE_KEY}_${userId}` : QUEUE_KEY;
+  localStorage.setItem(key, JSON.stringify(queue));
 }
 
 export async function syncQueue() {
   if (typeof window === "undefined" || !navigator.onLine) return;
-  const queue = getSyncQueue();
+
+  const db = await getDb();
+  let userId = "guest";
+  try {
+    const { data: { user } } = await db.auth.getUser();
+    if (user) userId = user.id;
+  } catch (e) {
+    // Ignore, defaults to guest
+  }
+
+  const queue = getSyncQueue(userId);
   if (queue.length === 0) return;
 
   console.log(`[Offline Sync] Attempting to sync ${queue.length} write operations...`);
   const remaining: SyncItem[] = [];
   let successfulSyncs = 0;
-
-  const db = await getDb();
 
   for (const item of queue) {
     try {
@@ -130,7 +140,7 @@ export async function syncQueue() {
     }
   }
 
-  saveSyncQueue(remaining);
+  saveSyncQueue(remaining, userId);
 
   if (successfulSyncs > 0) {
     showSyncNotification(`Synced ${successfulSyncs} changes with Supabase!`, true);
@@ -159,9 +169,18 @@ export async function executeWrite(
 ): Promise<{ success: boolean; error?: any }> {
   const isOnline = typeof window !== "undefined" ? navigator.onLine : true;
 
+  const db = await getDb(supabaseClient);
+  let userId = "guest";
+  try {
+    const { data: { user } } = await db.auth.getUser();
+    if (user) userId = user.id;
+  } catch (e) {
+    // Ignore, defaults to guest
+  }
+
   if (!isOnline) {
     // Enqueue
-    const queue = getSyncQueue();
+    const queue = getSyncQueue(userId);
     const newItem: SyncItem = {
       id: Math.random().toString(36).substring(2, 9),
       table,
@@ -171,14 +190,13 @@ export async function executeWrite(
       timestamp: Date.now()
     };
     queue.push(newItem);
-    saveSyncQueue(queue);
+    saveSyncQueue(queue, userId);
 
     showSyncNotification("Unable to save right now. Changes will be synced automatically.");
     return { success: false, error: new Error("Offline. Action queued.") };
   }
 
   try {
-    const db = await getDb(supabaseClient);
     let query = db.from(table);
     let resultError: any = null;
 
@@ -202,7 +220,7 @@ export async function executeWrite(
     if (resultError) {
       // If network failure / connection timed out, enqueue too
       if (resultError.message?.includes("fetch") || resultError.status === 0 || resultError.code === "PGRST301") {
-        const queue = getSyncQueue();
+        const queue = getSyncQueue(userId);
         queue.push({
           id: Math.random().toString(36).substring(2, 9),
           table,
@@ -211,7 +229,7 @@ export async function executeWrite(
           key,
           timestamp: Date.now()
         });
-        saveSyncQueue(queue);
+        saveSyncQueue(queue, userId);
         showSyncNotification("Connection failure. Changes will be synced automatically.");
         return { success: false, error: resultError };
       }
@@ -222,7 +240,7 @@ export async function executeWrite(
   } catch (err: any) {
     console.error("Write error: ", err);
     // Queue on any network exception
-    const queue = getSyncQueue();
+    const queue = getSyncQueue(userId);
     queue.push({
       id: Math.random().toString(36).substring(2, 9),
       table,
@@ -231,7 +249,7 @@ export async function executeWrite(
       key,
       timestamp: Date.now()
     });
-    saveSyncQueue(queue);
+    saveSyncQueue(queue, userId);
     showSyncNotification("Sync deferred. Saved locally.");
     return { success: false, error: err };
   }

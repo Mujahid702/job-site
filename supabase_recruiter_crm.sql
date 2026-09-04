@@ -69,20 +69,28 @@ ALTER TABLE public.recruiter_templates ENABLE ROW LEVEL SECURITY;
 
 -- 5. Row Level Security Policies
 -- Recruiters
+DROP POLICY IF EXISTS "Users can operate on own recruiters" ON public.recruiters;
 CREATE POLICY "Users can operate on own recruiters" ON public.recruiters
   FOR ALL USING (auth.uid() = user_id OR public.is_admin());
 
 -- Activities
+DROP POLICY IF EXISTS "Users can operate on own recruiter activities" ON public.recruiter_activities;
 CREATE POLICY "Users can operate on own recruiter activities" ON public.recruiter_activities
   FOR ALL USING (auth.uid() = user_id OR public.is_admin());
 
 -- Follow-ups
+DROP POLICY IF EXISTS "Users can operate on own recruiter followups" ON public.recruiter_followups;
 CREATE POLICY "Users can operate on own recruiter followups" ON public.recruiter_followups
   FOR ALL USING (auth.uid() = user_id OR public.is_admin());
 
 -- Templates
-CREATE POLICY "Users can operate on own templates or read global templates" ON public.recruiter_templates
-  FOR ALL USING (auth.uid() = user_id OR user_id IS NULL OR public.is_admin());
+DROP POLICY IF EXISTS "Anyone can view own templates or global templates" ON public.recruiter_templates;
+CREATE POLICY "Anyone can view own templates or global templates" ON public.recruiter_templates
+  FOR SELECT USING (auth.uid() = user_id OR user_id IS NULL OR public.is_admin());
+
+DROP POLICY IF EXISTS "Users can modify own templates" ON public.recruiter_templates;
+CREATE POLICY "Users can modify own templates" ON public.recruiter_templates
+  FOR ALL USING (auth.uid() = user_id OR public.is_admin());
 
 -- 6. Indexes for optimized performance
 CREATE INDEX IF NOT EXISTS idx_recruiters_user_id ON public.recruiters(user_id);
@@ -91,6 +99,7 @@ CREATE INDEX IF NOT EXISTS idx_rec_followups_rec_id ON public.recruiter_followup
 CREATE INDEX IF NOT EXISTS idx_rec_templates_user_id ON public.recruiter_templates(user_id);
 
 -- 7. Insert Default Predefined Templates
+DELETE FROM public.recruiter_templates WHERE user_id IS NULL;
 INSERT INTO public.recruiter_templates (name, type, subject, body) VALUES
 ('LinkedIn Connection Request', 'LinkedIn Connection Request', NULL, 'Hi {{name}}, I noticed your work recruiting for tech roles at {{company}}. I am a student targeting {{role}} opportunities. I would love to connect and follow your team''s hiring updates.'),
 ('Cold Outreach Email', 'Cold Outreach', 'Targeting {{role}} Opportunities at {{company}}', 'Dear {{name}},\n\nI hope you are doing well.\n\nI recently saw that {{company}} is looking for talented professionals for the {{role}} position. I have built projects using {{skills}} and believe I could contribute to your team.\n\nI have attached my resume for your review. Would you be open to a brief chat next week to discuss opportunities?\n\nBest regards,\n[My Name]'),

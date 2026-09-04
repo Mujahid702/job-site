@@ -4,6 +4,7 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 import { Job } from "@/types/job";
 import { supabase } from "@/lib/supabase";
 import { getSavedJobs, saveJob, unsaveJob } from "@/lib/db/jobs";
+import { getScopedKey } from "@/lib/security/LocalStorage";
 
 interface SavedJobsContextType {
   savedJobs: Job[];
@@ -47,13 +48,15 @@ export function SavedJobsProvider({ children }: { children: React.ReactNode }) {
         const dbJobs = await getSavedJobs(userId);
         setSavedJobs(dbJobs);
       } else {
-        const stored = localStorage.getItem("saved_jobs");
+        const stored = localStorage.getItem(getScopedKey("saved_jobs", null));
         if (stored) {
           try {
             setSavedJobs(JSON.parse(stored));
           } catch (e) {
             console.error("Failed to parse saved jobs", e);
           }
+        } else {
+          setSavedJobs([]);
         }
       }
     }
@@ -62,8 +65,10 @@ export function SavedJobsProvider({ children }: { children: React.ReactNode }) {
 
   // Keep localStorage as temporary fallback
   useEffect(() => {
-    localStorage.setItem("saved_jobs", JSON.stringify(savedJobs));
-  }, [savedJobs]);
+    if (typeof window !== "undefined") {
+      localStorage.setItem(getScopedKey("saved_jobs", userId), JSON.stringify(savedJobs));
+    }
+  }, [savedJobs, userId]);
 
   const toggleSaveJob = async (job: Job) => {
     const isSaved = savedJobs.some((j) => j.id === job.id);

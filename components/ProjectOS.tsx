@@ -76,6 +76,124 @@ export default function ProjectOS() {
   const [completedTasks, setCompletedTasks] = useState<Record<string, boolean>>({});
   const [expandedPhase, setExpandedPhase] = useState<number | null>(0);
 
+  const [simulatingPhaseIdx, setSimulatingPhaseIdx] = useState<number | null>(null);
+  const [liveLogs, setLiveLogs] = useState<string[]>([]);
+
+  const handleDownloadSkeleton = () => {
+    if (!blueprint) return;
+    const title = blueprint.title || "Project_Setup";
+    const safeTitle = title.replace(/\s+/g, "_");
+    
+    let shellScript = `#!/bin/bash
+# Auto-generated project scaffold script by BuggedBrain Project OS
+# Project: ${title}
+
+echo "🚀 Starting repository scaffolding for: ${title}..."
+mkdir -p src/config src/controllers src/models src/routes src/middleware tests public
+
+echo "📦 Initializing package.json..."
+cat << 'EOF' > package.json
+{
+  "name": "${safeTitle.toLowerCase()}",
+  "version": "1.0.0",
+  "description": "Scaffold project for ${title}",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/app.js",
+    "dev": "nodemon src/app.js",
+    "test": "jest"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "dotenv": "^16.4.5",
+    "cors": "^2.8.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0",
+    "jest": "^29.7.0"
+  }
+}
+EOF
+
+echo "📝 Creating README.md..."
+cat << 'EOF' > README.md
+# ${title}
+
+Auto-generated scaffold by BuggedBrain Placement OS.
+
+## Getting Started
+1. Run \`npm install\`
+2. Configure environment variables in \`.env\`
+3. Start the application with \`npm run dev\`
+EOF
+
+echo "⚡ Creating entrypoint src/app.js..."
+cat << 'EOF' > src/app.js
+const express = require('express');
+const cors = require('cors');
+require('dotenv').config();
+
+const app = express();
+const PORT = process.env.PORT || 5000;
+
+app.use(cors());
+app.use(express.json());
+
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'OK', timestamp: new Date() });
+});
+
+app.listen(PORT, () => {
+  console.log(\`🚀 Server running on port \${PORT}\`);
+});
+EOF
+
+echo "🛠️ Creating config files..."
+touch .env
+echo "PORT=5000" > .env
+echo "DATABASE_URL=" >> .env
+
+echo "✅ Project scaffolded successfully! Open directory in VS Code to begin writing code."
+`;
+
+    const blob = new Blob([shellScript], { type: "text/plain;charset=utf-8" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `scaffold_${safeTitle.toLowerCase()}.sh`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  };
+
+  const handleSimulateWalkthrough = (phaseIdx: number, phaseTitle: string) => {
+    setSimulatingPhaseIdx(phaseIdx);
+    setLiveLogs([]);
+    
+    const logs = [
+      `[SYSTEM] Initializing build verification for: ${phaseTitle}...`,
+      `[COMPILER] Parsing code modules and configurations...`,
+      `[LINTER] Running static code analysis checks...`,
+      `[LINTER] Clean compile: 0 errors, 1 warning (deprecation notice)`,
+      `[DATABASE] Testing connection to remote postgres cluster...`,
+      `[DATABASE] Migrations lookup: Schema compatibility confirmed.`,
+      `[TEST] Running automated unit tests...`,
+      `[TEST] PASS: tests/health.test.ts (12ms)`,
+      `[TEST] PASS: tests/integration.test.ts (48ms)`,
+      `[SECURITY] Scanning for vulnerable dependencies...`,
+      `[SECURITY] Audit: No high or critical CVEs found.`,
+      `[SYSTEM] Scaffolding verification completed successfully! ✓`
+    ];
+
+    let currentIdx = 0;
+    const interval = setInterval(() => {
+      if (currentIdx < logs.length) {
+        setLiveLogs(prev => [...prev, logs[currentIdx]]);
+        currentIdx++;
+      } else {
+        clearInterval(interval);
+      }
+    }, 600);
+  };
+
   // User Stats state
   const [workspaceStats, setWorkspaceStats] = useState(() => {
     return {
@@ -1267,7 +1385,7 @@ export default function ProjectOS() {
                   {blueprint.architecture.scalabilityConsiderations ? (
                     <div className="space-y-4">
                       {Object.entries(blueprint.architecture.scalabilityConsiderations).map(([key, val]: [string, any], idx: number) => (
-                        <div key={idx} className="p-5 border border-slate-200 rounded-3xl bg-slate-50/20 space-y-2 hover:border-indigo-200 transition-colors">
+                        <div key={idx} className="p-5 border border-slate-200 rounded-3xl bg-slate-50/20 hover:border-indigo-200 transition-colors">
                           <strong className="text-[10px] font-black text-indigo-700 uppercase tracking-widest block">
                             {key.replace(/([A-Z])/g, " $1").trim()}
                           </strong>
@@ -1464,6 +1582,41 @@ export default function ProjectOS() {
                                   </div>
                                 </div>
 
+                                {/* Walkthrough Logs Simulator */}
+                                <div className="p-4 bg-slate-900 border border-slate-800 rounded-2xl space-y-3">
+                                  <div className="flex justify-between items-center flex-wrap gap-2">
+                                    <strong className="text-[8px] font-black text-indigo-300 uppercase tracking-widest block">
+                                      Phase Execution Walkthrough Verification
+                                    </strong>
+                                    {simulatingPhaseIdx !== pIdx ? (
+                                      <button
+                                        onClick={() => handleSimulateWalkthrough(pIdx, phase.title)}
+                                        className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white border-none text-[9px] font-black uppercase tracking-widest rounded-lg flex items-center gap-1 cursor-pointer"
+                                      >
+                                        <Play className="w-2.5 h-2.5 fill-white text-white" />
+                                        Run Verification Simulation
+                                      </button>
+                                    ) : (
+                                      <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest animate-pulse">
+                                        Simulating build...
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {simulatingPhaseIdx === pIdx && (
+                                    <div className="bg-slate-950 p-4 rounded-xl border border-slate-850 font-mono text-[10px] leading-relaxed text-slate-300 overflow-y-auto max-h-[140px] space-y-1 text-left">
+                                      {liveLogs.map((log, lIdx) => (
+                                        <div key={lIdx} className={cn(
+                                          log.includes("PASS") || log.includes("successfully") ? "text-emerald-400" :
+                                          log.includes("[SYSTEM]") ? "text-indigo-450" : "text-slate-300"
+                                        )}>
+                                          {log}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+
                                 {/* Metadata Grid */}
                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-slate-50/50 p-4 border border-slate-150 rounded-2xl">
                                   <div className="space-y-1">
@@ -1577,22 +1730,33 @@ export default function ProjectOS() {
                 <div className="space-y-4">
                   <div className="flex justify-between items-center bg-slate-50 p-4 border border-slate-150 rounded-2xl">
                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Target Markdown code</span>
-                    <button
-                      onClick={() => handleCopyText(blueprint.documentation[activeDocTab], "doc-copy")}
-                      className="px-3.5 py-2 bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-blue-600 transition-all flex items-center gap-1.5 cursor-pointer"
-                    >
-                      {copiedKey === "doc-copy" ? (
-                        <>
-                          <Check className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>Copied!</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-3.5 h-3.5" />
-                          <span>Copy Clipboard</span>
-                        </>
+                    <div className="flex gap-2">
+                      {activeDocTab === "readme" && (
+                        <button
+                          onClick={handleDownloadSkeleton}
+                          className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-800 border border-slate-250 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Download className="w-3.5 h-3.5 text-slate-500" />
+                          <span>Scaffold Script</span>
+                        </button>
                       )}
-                    </button>
+                      <button
+                        onClick={() => handleCopyText(blueprint.documentation[activeDocTab], "doc-copy")}
+                        className="px-3.5 py-2 bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-blue-600 transition-all flex items-center gap-1.5 cursor-pointer"
+                      >
+                        {copiedKey === "doc-copy" ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>Copied!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5" />
+                            <span>Copy Clipboard</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
 
                   <pre className="bg-slate-950 text-slate-300 p-6 rounded-3xl font-mono text-[11px] overflow-y-auto max-h-[300px] border border-slate-900 leading-relaxed whitespace-pre-wrap select-all">

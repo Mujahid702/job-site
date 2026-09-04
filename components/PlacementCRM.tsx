@@ -17,10 +17,14 @@ import {
   TrendingUp,
   ChevronLeft,
   X,
-  FileSpreadsheet
+  FileSpreadsheet,
+  ExternalLink
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PlacementApplication, InterviewSchedule, OfferDetails, CrmDocument } from "@/types/crm";
+import { useEffect } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { getScopedKey } from "@/lib/security/LocalStorage";
 
 // Constants
 const KANBAN_STAGES: { id: PlacementApplication["status"]; label: string; color: string; border: string; bg: string; dot: string }[] = [
@@ -138,39 +142,61 @@ const INITIAL_MOCK_DOCUMENTS: CrmDocument[] = [
 export default function PlacementCRM() {
   const [activeTab, setActiveTab] = useState<"dashboard" | "kanban" | "comparison" | "documents" | "badges">("dashboard");
   
-  // Applications and Doc state
-  const [apps, setApps] = useState<PlacementApplication[]>(() => {
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem("placement_crm_applications");
-      if (stored) {
-        try { return JSON.parse(stored); } catch {}
-      }
-    }
-    return INITIAL_MOCK_APPLICATIONS;
-  });
+  const [userId, setUserId] = useState<string | null>(null);
+  const [apps, setApps] = useState<PlacementApplication[]>(INITIAL_MOCK_APPLICATIONS);
+  const [documents, setDocuments] = useState<CrmDocument[]>(INITIAL_MOCK_DOCUMENTS);
+  const [isLoaded, setIsLoaded] = useState(false);
 
-  const [documents, setDocuments] = useState<CrmDocument[]>(() => {
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) setUserId(user.id);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUserId(session?.user?.id || null);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  // Load from localStorage once userId is known
+  useEffect(() => {
     if (typeof window !== "undefined") {
-      const stored = localStorage.getItem("placement_crm_documents");
-      if (stored) {
-        try { return JSON.parse(stored); } catch {}
+      const appKey = getScopedKey("placement_crm_applications", userId);
+      const docKey = getScopedKey("placement_crm_documents", userId);
+      
+      const storedApps = localStorage.getItem(appKey);
+      if (storedApps) {
+        try { setApps(JSON.parse(storedApps)); } catch {}
+      } else {
+        setApps(INITIAL_MOCK_APPLICATIONS);
       }
+
+      const storedDocs = localStorage.getItem(docKey);
+      if (storedDocs) {
+        try { setDocuments(JSON.parse(storedDocs)); } catch {}
+      } else {
+        setDocuments(INITIAL_MOCK_DOCUMENTS);
+      }
+      setIsLoaded(true);
     }
-    return INITIAL_MOCK_DOCUMENTS;
-  });
+  }, [userId]);
 
   // Save changes
   const saveApps = (updated: PlacementApplication[]) => {
     setApps(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("placement_crm_applications", JSON.stringify(updated));
+    if (typeof window !== "undefined" && isLoaded) {
+      localStorage.setItem(getScopedKey("placement_crm_applications", userId), JSON.stringify(updated));
     }
   };
 
   const saveDocs = (updated: CrmDocument[]) => {
     setDocuments(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("placement_crm_documents", JSON.stringify(updated));
+    if (typeof window !== "undefined" && isLoaded) {
+      localStorage.setItem(getScopedKey("placement_crm_documents", userId), JSON.stringify(updated));
     }
   };
 
@@ -801,7 +827,19 @@ Based on the parameters analyzed:
                           <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
                           <strong className="text-sm font-black text-slate-800">{task.type} @ {task.companyName}</strong>
                         </div>
-                        <p className="text-xs text-slate-400 font-bold">{task.role} • Platform: {task.platform} • Time: {task.time}</p>
+                        <p className="text-xs text-slate-400 font-bold flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <span>{task.role} • Platform: {task.platform} • Time: {task.time}</span>
+                          {task.googleCalendarLink && (
+                            <a href={task.googleCalendarLink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 text-[10px] text-teal-600 hover:underline">
+                              [Google Calendar]
+                            </a>
+                          )}
+                          {task.outlookCalendarLink && (
+                            <a href={task.outlookCalendarLink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 text-[10px] text-indigo-650 hover:underline">
+                              [Outlook Calendar]
+                            </a>
+                          )}
+                        </p>
                       </div>
                       <span className="px-3 py-1 bg-amber-100 border border-amber-200 text-amber-800 text-[9px] font-black uppercase tracking-widest rounded-lg">Today</span>
                     </div>
@@ -847,7 +885,19 @@ Based on the parameters analyzed:
                     >
                       <div>
                         <strong className="text-xs font-black text-slate-800 block">{task.type} - {task.companyName} ({task.role})</strong>
-                        <span className="text-[10px] text-slate-400 font-bold block mt-1">Date: {task.date} | Time: {task.time} | Venue: {task.platform}</span>
+                        <span className="text-[10px] text-slate-400 font-bold flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
+                          <span>Date: {task.date} | Time: {task.time} | Venue: {task.platform}</span>
+                          {task.googleCalendarLink && (
+                            <a href={task.googleCalendarLink} target="_blank" rel="noopener noreferrer" className="text-teal-650 hover:underline">
+                              [Google Calendar]
+                            </a>
+                          )}
+                          {task.outlookCalendarLink && (
+                            <a href={task.outlookCalendarLink} target="_blank" rel="noopener noreferrer" className="text-indigo-650 hover:underline">
+                              [Outlook Calendar]
+                            </a>
+                          )}
+                        </span>
                       </div>
                       <ChevronRight className="w-4 h-4 text-slate-400" />
                     </div>
@@ -1580,6 +1630,18 @@ Based on the parameters analyzed:
                       <span className="px-1.5 py-0.5 bg-slate-200 text-slate-700 rounded text-[9px] mr-2 uppercase tracking-wide inline-block">{sch.type}</span>
                       <span>Date: {sch.date} | Time: {sch.time} | Platform: {sch.platform}</span>
                       {sch.notes && <p className="text-[10px] text-slate-400 mt-1 italic">Notes: {sch.notes}</p>}
+                      <div className="flex gap-2.5 mt-1.5">
+                        {sch.googleCalendarLink && (
+                          <a href={sch.googleCalendarLink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] text-teal-650 hover:text-teal-700 hover:underline">
+                            Google Event <ExternalLink className="w-2.5 h-2.5" />
+                          </a>
+                        )}
+                        {sch.outlookCalendarLink && (
+                          <a href={sch.outlookCalendarLink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] text-indigo-650 hover:text-indigo-700 hover:underline">
+                            Outlook Event <ExternalLink className="w-2.5 h-2.5" />
+                          </a>
+                        )}
+                      </div>
                     </div>
                     <button
                       type="button"

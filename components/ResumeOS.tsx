@@ -77,6 +77,74 @@ export default function ResumeOS({ onScoreUpdate, subTab = "overview", onSubTabC
   const [completedRoadmapStepsCount, setCompletedRoadmapStepsCount] = useState<number>(1);
   const [avgInterviewScore, setAvgInterviewScore] = useState<number>(50);
 
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [syncStatus, setSyncStatus] = useState<string | null>(null);
+
+  const checkLayoutDiagnostics = (text: string) => {
+    const warnings: string[] = [];
+    if (!text) return warnings;
+
+    const lower = text.toLowerCase();
+    
+    // 1. Missing Core Sections
+    if (!lower.includes("education")) warnings.push("Missing 'Education' section header.");
+    if (!lower.includes("experience") && !lower.includes("work")) warnings.push("Missing 'Experience' or 'Work History' section header.");
+    if (!lower.includes("project")) warnings.push("Missing 'Projects' section header.");
+    if (!lower.includes("skill")) warnings.push("Missing 'Skills' section header.");
+
+    // 2. Length/Page Split Diagnostics
+    const wordCount = text.split(/\s+/).length;
+    if (wordCount > 1000) {
+      warnings.push("High word count warning: Your resume has over 1,000 words. This might cause page split/overflow issues (we recommend keeping student resumes strictly to 1 page).");
+    }
+
+    // 3. Contact Info Checks
+    if (!lower.includes("@") || (!lower.includes(".com") && !lower.includes(".in"))) {
+      warnings.push("Contact Details Alert: Could not detect a valid email address.");
+    }
+    if (!lower.includes("linkedin.com")) {
+      warnings.push("Social Presence: Missing a LinkedIn profile URL.");
+    }
+    if (!lower.includes("github.com")) {
+      warnings.push("Portfolio Link: Missing a GitHub profile link (crucial for tech roles).");
+    }
+
+    return warnings;
+  };
+
+  const syncLatestSnapshotToDb = async () => {
+    if (!userId || snapshots.length === 0) return;
+    setIsSyncing(true);
+    setSyncStatus("Syncing...");
+    try {
+      const latest = snapshots[snapshots.length - 1];
+      const { error } = await supabase.from("resume_scans").upsert({
+        user_id: userId,
+        score: latest.atsScore,
+        raw_text: latest.rawText,
+        role_targeted: latest.roleTargeted,
+        categories: {
+          completeness: latest.completeness,
+          keywordCoverage: latest.keywordCoverage,
+          skillsRelevance: latest.skillsRelevance,
+          projectStrength: latest.projectStrength,
+          roleMatch: latest.roleMatch,
+          readability: latest.readability
+        },
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'user_id' });
+
+      if (error) throw error;
+      setSyncStatus("Synced successfully!");
+      setTimeout(() => setSyncStatus(null), 3000);
+    } catch (err: any) {
+      console.error("Sync failed:", err);
+      setSyncStatus("Sync failed: " + err.message);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   // Listen to Auth State
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -609,6 +677,55 @@ export default function ResumeOS({ onScoreUpdate, subTab = "overview", onSubTabC
                 Unlock explainable ATS audits, dynamic keyword analysis, JD tailoring, visual improvement graphs, and placement readiness timelines all in one centralized hub.
               </p>
             </div>
+
+            {/* ATS Layout Diagnostics & Alerts */}
+            {latestSnapshot && latestSnapshot.rawText && (
+              <div className="p-6 bg-slate-50 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+                <h4 className="text-xs font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
+                  <ShieldAlert className="w-4.5 h-4.5 text-indigo-600" />
+                  ATS Layout Diagnostics & Real-time Warnings
+                </h4>
+                {checkLayoutDiagnostics(latestSnapshot.rawText).length > 0 ? (
+                  <ul className="space-y-2">
+                    {checkLayoutDiagnostics(latestSnapshot.rawText).map((warn, idx) => (
+                      <li key={idx} className="flex items-start gap-2 text-xs text-amber-850 font-bold">
+                        <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                        <span>{warn}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-emerald-600 font-bold flex items-center gap-2">
+                    <CheckCircle2 className="w-4.5 h-4.5 text-emerald-500" />
+                    All layout diagnostics passed! Your resume structure is highly ATS-optimized.
+                  </p>
+                )}
+
+                {/* Database Synchronization Status */}
+                {userId && (
+                  <div className="pt-3 border-t border-slate-200 flex items-center justify-between flex-wrap gap-4">
+                    <span className="text-[10px] text-slate-400 font-black uppercase tracking-wider">
+                      Resume Cache Sync Status
+                    </span>
+                    <div className="flex items-center gap-3">
+                      {syncStatus && (
+                        <span className="text-[10px] text-slate-650 font-bold">
+                          {syncStatus}
+                        </span>
+                      )}
+                      <button
+                        onClick={syncLatestSnapshotToDb}
+                        disabled={isSyncing}
+                        className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-[10px] font-black uppercase tracking-widest rounded-lg flex items-center gap-1.5 cursor-pointer border-none"
+                      >
+                        <RefreshCw className={cn("w-3 h-3 text-teal-300", isSyncing && "animate-spin")} />
+                        Sync to Cloud DB
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Health Score Summary Row */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">

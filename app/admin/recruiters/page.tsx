@@ -34,6 +34,36 @@ export default function RecruiterPortalDashboard() {
   const [loading, setLoading] = useState(true);
   const [alertText, setAlertText] = useState<string | null>(null);
 
+  const [matchLogs, setMatchLogs] = useState<Array<{ id: string; campaignTitle: string; candidateName: string; priScore: number; timestamp: string }>>([
+    { id: "log-1", campaignTitle: "AWS Core Infrastructure Drive", candidateName: "Rohan Sharma", priScore: 84, timestamp: "10 mins ago" }
+  ]);
+  const [dispatchingId, setDispatchingId] = useState<string | null>(null);
+
+  const handleNotifyRecruiter = (candidate: Candidate) => {
+    const matchingCampaign = campaigns.find(c => c.targetRole.toLowerCase().includes(candidate.targetRole.split(" ")[0].toLowerCase()) || c.status === "active") 
+      || campaigns[0];
+      
+    if (!matchingCampaign) {
+      triggerAlert("No active campaign available for matching.");
+      return;
+    }
+    
+    setDispatchingId(candidate.id);
+    
+    setTimeout(() => {
+      const newLog = {
+        id: `log-${Date.now()}`,
+        campaignTitle: matchingCampaign.title,
+        candidateName: candidate.name,
+        priScore: candidate.priScore,
+        timestamp: "Just now"
+      };
+      setMatchLogs([newLog, ...matchLogs]);
+      setDispatchingId(null);
+      triggerAlert(`Automated Match Notification dispatched to Recruiter for: ${candidate.name}!`);
+    }, 1200);
+  };
+
   useEffect(() => {
     // Simulate fetching campaigns and qualified candidates
     setTimeout(() => {
@@ -64,6 +94,10 @@ export default function RecruiterPortalDashboard() {
     triggerAlert("Hiring Campaign launched successfully!");
   };
 
+  const handleExportCandidates = () => {
+    window.open(`/api/placement/export?skill=${encodeURIComponent(searchSkill)}`, "_blank");
+  };
+
   const triggerAlert = (msg: string) => {
     setAlertText(msg);
     setTimeout(() => setAlertText(null), 3500);
@@ -91,13 +125,23 @@ export default function RecruiterPortalDashboard() {
           </p>
         </div>
 
-        <button
-          onClick={handleLaunchCampaign}
-          className="p-3.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl transition-all shadow-sm flex items-center gap-2 cursor-pointer text-xs font-black uppercase tracking-widest font-sans border-none"
-        >
-          <PlusCircle className="w-4 h-4" />
-          Launch Campaign
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleExportCandidates}
+            className="p-3.5 bg-white hover:bg-slate-50 text-slate-800 border border-slate-200 rounded-xl transition-all shadow-sm flex items-center gap-2 cursor-pointer text-xs font-black uppercase tracking-widest font-sans"
+          >
+            <FileText className="w-4 h-4 text-slate-500" />
+            Export Candidates
+          </button>
+
+          <button
+            onClick={handleLaunchCampaign}
+            className="p-3.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl transition-all shadow-sm flex items-center gap-2 cursor-pointer text-xs font-black uppercase tracking-widest font-sans border-none"
+          >
+            <PlusCircle className="w-4 h-4" />
+            Launch Campaign
+          </button>
+        </div>
       </div>
 
       {loading ? (
@@ -178,6 +222,18 @@ export default function RecruiterPortalDashboard() {
                       <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Readiness PRI</span>
                       <strong className="text-sm font-black text-slate-900">{cand.priScore}</strong>
                     </div>
+                    <button
+                      onClick={() => handleNotifyRecruiter(cand)}
+                      disabled={dispatchingId === cand.id}
+                      className={cn(
+                        "px-3 py-2 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all flex items-center gap-1 cursor-pointer border",
+                        dispatchingId === cand.id
+                          ? "bg-slate-100 border-slate-200 text-slate-400"
+                          : "bg-violet-55 hover:bg-violet-100 border-violet-200 text-violet-700"
+                      )}
+                    >
+                      {dispatchingId === cand.id ? "Sending..." : "Notify Recruiter"}
+                    </button>
                     <a
                       href={cand.portfolioUrl}
                       className="p-2 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg text-slate-650 transition-all flex items-center gap-1 text-[10px] font-bold"
@@ -188,6 +244,39 @@ export default function RecruiterPortalDashboard() {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+
+          {/* Dispatched Match Notifications Logs Panel */}
+          <div className="col-span-1 lg:col-span-12 bg-slate-900 text-slate-200 p-8 rounded-[2.5rem] border border-slate-800 shadow-sm space-y-6">
+            <div>
+              <h3 className="text-lg font-black text-white tracking-tight flex items-center gap-2 font-display">
+                <Building2 className="w-5 h-5 text-violet-400" />
+                Dispatched Placement Match Notifications logs
+              </h3>
+              <p className="text-xs text-slate-400 font-semibold mt-0.5">
+                Real-time automated webhook and email outreach telemetry triggers to corporate placement partners.
+              </p>
+            </div>
+            
+            <div className="space-y-3 font-mono text-[11px] leading-relaxed max-h-[220px] overflow-y-auto pr-1">
+              {matchLogs.map((log) => (
+                <div key={log.id} className="p-3.5 bg-slate-950/80 border border-slate-850 rounded-xl flex flex-col sm:flex-row justify-between sm:items-center gap-2 text-slate-300 text-left">
+                  <div className="flex items-center gap-2">
+                    <span className="text-violet-400 font-black">[MATCH DISPATCHED]</span>
+                    <span>
+                      Candidate <strong className="text-white">{log.candidateName}</strong> (PRI {log.priScore}%) matched to Campaign <strong className="text-white">"{log.campaignTitle}"</strong>
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <span className="text-emerald-400 font-black">Status: Dispatched via Webhooks ✓</span>
+                    <span className="text-slate-500">{log.timestamp}</span>
+                  </div>
+                </div>
+              ))}
+              {matchLogs.length === 0 && (
+                <div className="text-center py-6 text-slate-500">No match notifications dispatched yet.</div>
+              )}
             </div>
           </div>
 

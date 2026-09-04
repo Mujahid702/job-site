@@ -32,6 +32,7 @@ interface Question {
   hints?: string[];
   options?: Option[];
   correct_answer_text?: string;
+  topic_id?: string;
 }
 
 export default function AssessmentWorkspacePage({ params }: { params: Promise<{ id: string }> }) {
@@ -182,26 +183,59 @@ export default function AssessmentWorkspacePage({ params }: { params: Promise<{ 
     setActiveConsoleTab("result");
 
     try {
-      const endpoint = question.type === "SQL" ? "/api/assessment/sql/run" : "/api/assessment/compiler/submit";
-      const payload = question.type === "SQL"
-        ? { questionId: question.id, query: codeContent }
-        : { questionId: question.id, language, code: codeContent };
-
-      const res = await fetch(endpoint, {
+      // 1. Start a temporary practice session for this question
+      const startRes = await fetch("/api/assessment/session/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({
+          session_type: "Practice",
+          topicId: question.topic_id,
+          difficulty: question.difficulty,
+          limit: 1
+        })
+      });
+      const startData = await startRes.json();
+      if (!startRes.ok || !startData.success) {
+        throw new Error(startData.message || "Failed to start evaluation session");
+      }
+      const sessionId = startData.sessionId;
+
+      // 2. Submit solution code to session evaluator
+      const subRes = await fetch("/api/assessment/session/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId,
+          questionId: question.id,
+          code: codeContent,
+          language
+        })
+      });
+      const subData = await subRes.json();
+      if (!subRes.ok || !subData.success) {
+        throw new Error(subData.message || "Failed to compile solution");
+      }
+
+      // 3. Finalize/Complete the session to log scores, XP, streaks, and PRI
+      const compRes = await fetch("/api/assessment/session/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId })
+      });
+      const compData = await compRes.json();
+
+      // 4. Map results to visual UI state
+      setSubmitResults({
+        success: true,
+        status: subData.status,
+        passedCount: subData.passedCount,
+        totalCount: subData.totalCount,
+        results: subData.results || [],
+        xpGained: compData.xpGained || 0
       });
 
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setSubmitResults(data);
-        
-        // Trigger AI coach feedback streaming
-        triggerAICoach(codeContent, data.status || (data.match ? "Accepted" : "Wrong Answer"));
-      } else {
-        setSubmitResults({ success: false, error: data.message || "Submission failed." });
-      }
+      // Trigger AI coach feedback analysis
+      triggerAICoach(codeContent, subData.status);
     } catch (err: any) {
       setSubmitResults({ success: false, error: err.message || "Network submission failed." });
     } finally {
@@ -242,26 +276,44 @@ export default function AssessmentWorkspacePage({ params }: { params: Promise<{ 
     if (!question) return;
     setMcqChecked(true);
 
-    const isCorrect = selectedOption.toLowerCase() === (question.correct_answer_text || "").toLowerCase();
-    
-    // Save to user attempts logs if authenticated
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      const userId = user?.id || "guest-user";
+    const chosenOption = question.options?.find(o => o.option_text === selectedOption);
+    const isCorrect = chosenOption?.is_correct || false;
 
-      if (userId !== "guest-user") {
-        await supabase.from("assessment_submissions").insert({
-          user_id: userId,
-          question_id: question.id,
-          language: "mcq",
-          code_content: `Option selected: ${selectedOption}`,
-          status: isCorrect ? "Accepted" : "Wrong Answer",
-          passed_test_cases: isCorrect ? 1 : 0,
-          total_test_cases: 1
-        });
-      }
+    try {
+      // 1. Start session
+      const startRes = await fetch("/api/assessment/session/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_type: "Practice",
+          topicId: question.topic_id,
+          difficulty: question.difficulty,
+          limit: 1
+        })
+      });
+      const startData = await startRes.json();
+      if (!startRes.ok || !startData.success) return;
+      const sessionId = startData.sessionId;
+
+      // 2. Submit answer
+      await fetch("/api/assessment/session/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId,
+          questionId: question.id,
+          selectedOptionId: chosenOption?.id || null
+        })
+      });
+
+      // 3. Complete session
+      await fetch("/api/assessment/session/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId })
+      });
     } catch (err) {
-      console.error(err);
+      console.error("MCQ session submission error:", err);
     }
   };
 

@@ -63,10 +63,12 @@ ALTER TABLE public.recruiter_ratings ENABLE ROW LEVEL SECURITY;
 -- 5. RLS Policies
 
 -- Anyone can view verifications (needed to show trust score & badges)
+DROP POLICY IF EXISTS "Anyone can view recruiter verifications" ON public.recruiter_verifications;
 CREATE POLICY "Anyone can view recruiter verifications" ON public.recruiter_verifications
   FOR SELECT USING (true);
 
 -- Recruiter profile owner (matched via subquery checking user_id on recruiters) or admin can modify
+DROP POLICY IF EXISTS "Owners or admins can manage recruiter verifications" ON public.recruiter_verifications;
 CREATE POLICY "Owners or admins can manage recruiter verifications" ON public.recruiter_verifications
   FOR ALL USING (
     EXISTS (
@@ -77,26 +79,32 @@ CREATE POLICY "Owners or admins can manage recruiter verifications" ON public.re
   );
 
 -- Admins can view all reports, users can view reports they created
+DROP POLICY IF EXISTS "Authorized view of recruiter reports" ON public.recruiter_reports;
 CREATE POLICY "Authorized view of recruiter reports" ON public.recruiter_reports
   FOR SELECT USING (reporter_user_id = auth.uid() OR public.is_admin());
 
 -- Users can file reports
+DROP POLICY IF EXISTS "Students can file reports" ON public.recruiter_reports;
 CREATE POLICY "Students can file reports" ON public.recruiter_reports
   FOR INSERT WITH CHECK (reporter_user_id = auth.uid());
 
 -- Admins can update reports (resolve/dismiss)
+DROP POLICY IF EXISTS "Admins can update reports" ON public.recruiter_reports;
 CREATE POLICY "Admins can update reports" ON public.recruiter_reports
   FOR UPDATE USING (public.is_admin());
 
 -- Anyone can view ratings
+DROP POLICY IF EXISTS "Anyone can view ratings" ON public.recruiter_ratings;
 CREATE POLICY "Anyone can view ratings" ON public.recruiter_ratings
   FOR SELECT USING (true);
 
 -- Students can insert ratings
+DROP POLICY IF EXISTS "Students can rate recruiters" ON public.recruiter_ratings;
 CREATE POLICY "Students can rate recruiters" ON public.recruiter_ratings
   FOR INSERT WITH CHECK (user_id = auth.uid());
 
 -- Students can update their own reviews or admin bypass
+DROP POLICY IF EXISTS "Students can edit own ratings" ON public.recruiter_ratings;
 CREATE POLICY "Students can edit own ratings" ON public.recruiter_ratings
   FOR ALL USING (user_id = auth.uid() OR public.is_admin());
 
@@ -113,12 +121,18 @@ VALUES (
 ON CONFLICT (id) DO NOTHING;
 
 -- Storage policies
+DROP POLICY IF EXISTS "Admins only read verification documents" ON storage.objects;
 CREATE POLICY "Admins only read verification documents" ON storage.objects
   FOR SELECT USING (bucket_id = 'recruiter-verifications' AND public.is_admin());
 
+DROP POLICY IF EXISTS "Authenticated users can upload verification documents" ON storage.objects;
 CREATE POLICY "Authenticated users can upload verification documents" ON storage.objects
-  FOR INSERT WITH CHECK (bucket_id = 'recruiter-verifications' AND auth.uid() IS NOT NULL);
+  FOR INSERT WITH CHECK (
+    bucket_id = 'recruiter-verifications' 
+    AND auth.uid()::text = (regexp_split_to_array(name, '/'))[1]
+  );
 
+DROP POLICY IF EXISTS "Admins only modify verification documents" ON storage.objects;
 CREATE POLICY "Admins only modify verification documents" ON storage.objects
   FOR ALL USING (bucket_id = 'recruiter-verifications' AND public.is_admin());
 

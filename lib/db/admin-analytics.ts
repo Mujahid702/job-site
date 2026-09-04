@@ -189,7 +189,7 @@ export async function logAdminAction(action: string, details: any = {}) {
     const { createClient } = await import("@/lib/supabase/server");
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user || !isAdmin(user)) return { success: false, error: "Unauthorized" };
+    if (!user || !(await isAdmin(user))) return { success: false, error: "Unauthorized" };
 
     const adminName = user.user_metadata?.full_name || user.email || "System Admin";
     const { error } = await supabase.from("audit_logs").insert({

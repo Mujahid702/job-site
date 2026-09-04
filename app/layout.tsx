@@ -28,6 +28,7 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 import { SavedJobsProvider } from "@/lib/context/SavedJobsContext";
 import SessionTimeoutGuard from "@/components/SessionTimeoutGuard";
 import { ToastProvider } from "@/components/Toast";
+import TenantIndicator from "@/components/TenantIndicator";
 
 export default function RootLayout({
   children,
@@ -57,6 +58,7 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col bg-slate-50 font-sans">
         <ToastProvider>
           <SavedJobsProvider>
+            <TenantIndicator />
             <SessionTimeoutGuard />
             <Header />
             <main className="flex-grow">

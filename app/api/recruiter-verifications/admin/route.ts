@@ -13,7 +13,7 @@ export async function GET(request: Request) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
-    if (!user || !isAdmin(user)) {
+    if (!user || !(await isAdmin(user))) {
       return NextResponse.json({ success: false, message: "Unauthorized. Admin privileges required." }, { status: 401 });
     }
 
@@ -51,7 +51,7 @@ export async function POST(request: Request) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
-    if (!user || !isAdmin(user)) {
+    if (!user || !(await isAdmin(user))) {
       return NextResponse.json({ success: false, message: "Unauthorized. Admin privileges required." }, { status: 401 });
     }
 

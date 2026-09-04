@@ -13,7 +13,7 @@ export async function GET(
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
-    if (!user || !isAdmin(user)) {
+    if (!user || !(await isAdmin(user))) {
       return NextResponse.json({ success: false, message: "Forbidden: Admin privileges required" }, { status: 403 });
     }
 
@@ -39,7 +39,7 @@ export async function PUT(
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
-    if (!user || !isAdmin(user)) {
+    if (!user || !(await isAdmin(user))) {
       return NextResponse.json({ success: false, message: "Forbidden: Admin privileges required" }, { status: 403 });
     }
 
@@ -67,7 +67,7 @@ export async function DELETE(
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
-    if (!user || !isAdmin(user)) {
+    if (!user || !(await isAdmin(user))) {
       return NextResponse.json({ success: false, message: "Forbidden: Admin privileges required" }, { status: 403 });
     }
 

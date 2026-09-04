@@ -48,6 +48,7 @@ import {
   deleteApplication
 } from "@/lib/db/applications";
 import { calculatePRIScore } from "@/lib/db/placement-readiness";
+import { getScopedKey } from "@/lib/security/LocalStorage";
 import {
   PlacementApplication,
   InterviewSchedule,
@@ -209,11 +210,11 @@ export default function PlacementTrackerOS() {
     try {
       const data = await getApplications(uid);
       setApps(data);
-      localStorage.setItem("placement_crm_applications", JSON.stringify(data));
+      localStorage.setItem(getScopedKey("placement_crm_applications", uid), JSON.stringify(data));
     } catch (err) {
       console.error("Failed to load crm tracker:", err);
       // Fallback cache
-      const stored = localStorage.getItem("placement_crm_applications");
+      const stored = localStorage.getItem(getScopedKey("placement_crm_applications", uid));
       if (stored) {
         setApps(JSON.parse(stored));
       }

@@ -8,6 +8,7 @@ export interface CareerLedgerEntry {
   xp_earned: number;
   pri_increase: number;
   badge_unlocked?: string | null;
+  idempotency_key?: string | null;
   created_at?: string;
 }
 
@@ -36,6 +37,7 @@ function getLocalLedger(): CareerLedgerEntry[] {
         xp_earned: 0,
         pri_increase: 0,
         badge_unlocked: null,
+        idempotency_key: null,
         created_at: new Date(Date.now() - 3600000 * 24).toISOString()
       }
     ];
@@ -60,8 +62,9 @@ export async function addLedgerEntry(
   xpEarned: number,
   priIncrease: number,
   badgeUnlocked?: string | null,
-  supabaseClient?: any
-): Promise<{ success: boolean; entry?: CareerLedgerEntry }> {
+  supabaseClient?: any,
+  idempotencyKey?: string | null
+): Promise<{ success: boolean; entry?: CareerLedgerEntry; alreadyAwarded?: boolean }> {
   const isGuest = !userId || userId === "guest-user";
   
   const entry: CareerLedgerEntry = {
@@ -70,6 +73,7 @@ export async function addLedgerEntry(
     xp_earned: xpEarned,
     pri_increase: priIncrease,
     badge_unlocked: badgeUnlocked || null,
+    idempotency_key: idempotencyKey || null,
     created_at: new Date().toISOString()
   };
 
@@ -83,8 +87,22 @@ export async function addLedgerEntry(
 
   try {
     const db = await getDb(supabaseClient);
+
+    // 1. Enforce Idempotency: check if key was already claimed
+    if (idempotencyKey) {
+      const { data: existing } = await db
+        .from("career_ledger")
+        .select("*")
+        .eq("idempotency_key", idempotencyKey)
+        .maybeSingle();
+
+      if (existing) {
+        console.warn(`[Ledger] Action "${action}" already rewarded with idempotency key "${idempotencyKey}". Bypassing duplicate XP allocation.`);
+        return { success: true, entry: existing, alreadyAwarded: true };
+      }
+    }
     
-    // Save to Supabase using executeWrite helper
+    // 2. Save to Supabase using executeWrite helper
     await executeWrite("career_ledger", "insert", entry, undefined, db);
     
     return { success: true, entry };
